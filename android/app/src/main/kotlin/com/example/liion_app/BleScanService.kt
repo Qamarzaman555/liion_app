@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -28,8 +29,8 @@ class BleScanService : Service() {
         
         // Nordic UART Service UUIDs
         val SERVICE_UUID: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
-        val TX_CHAR_UUID: UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e") // Write to this
-        val RX_CHAR_UUID: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e") // Receive from this
+        val TX_CHAR_UUID: UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+        val RX_CHAR_UUID: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
         val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         
         // Connection states
@@ -42,10 +43,14 @@ class BleScanService : Service() {
         const val MAX_RECONNECT_ATTEMPTS = 10
         const val RECONNECT_BACKOFF_MS = 1000L
         
-        val scannedDevices = mutableMapOf<String, String>() // address -> name
+        val scannedDevices = mutableMapOf<String, String>()
         var isScanning = false
         var connectionState = STATE_DISCONNECTED
         var connectedDeviceAddress: String? = null
+        
+        // Battery state
+        var phoneBatteryLevel: Int = -1
+        var isPhoneCharging: Boolean = false
         
         private var instance: BleScanService? = null
         
@@ -64,6 +69,13 @@ class BleScanService : Service() {
         
         fun sendCommand(command: String): Boolean {
             return instance?.writeCommand(command) ?: false
+        }
+        
+        fun getPhoneBatteryInfo(): Map<String, Any> {
+            return mapOf(
+                "level" to phoneBatteryLevel,
+                "isCharging" to isPhoneCharging
+            )
         }
     }
 
@@ -87,6 +99,32 @@ class BleScanService : Service() {
     
     private var pendingConnectAddress: String? = null
 
+    // Battery monitoring
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+                val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                
+                val batteryPct = (level * 100 / scale.toFloat()).toInt()
+                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == BatteryManager.BATTERY_STATUS_FULL
+                
+                if (phoneBatteryLevel != batteryPct || isPhoneCharging != isCharging) {
+                    phoneBatteryLevel = batteryPct
+                    isPhoneCharging = isCharging
+                    
+                    // Notify Flutter about battery change
+                    MainActivity.sendBatteryUpdate(phoneBatteryLevel, isPhoneCharging)
+                    
+                    // Update notification with battery info
+                    updateNotificationWithBattery()
+                }
+            }
+        }
+    }
+
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
@@ -97,7 +135,6 @@ class BleScanService : Service() {
                 scannedDevices[device.address] = deviceName
                 MainActivity.sendDeviceUpdate(device.address, deviceName)
                 
-                // Auto-connect if this is the saved device and we should reconnect
                 if (isNew && shouldAutoReconnect && connectionState == STATE_DISCONNECTED) {
                     attemptAutoConnect()
                 }
@@ -119,11 +156,10 @@ class BleScanService : Service() {
                         reconnectAttempts = 0
                         pendingConnectAddress = null
                         
-                        // Save device for auto-reconnect
                         saveLastDevice(gatt.device.address, gatt.device.name ?: "Leo Usb")
                         shouldAutoReconnect = true
                         
-                        updateNotification("Connected to ${gatt.device.name ?: "Leo Usb"}")
+                        updateNotificationWithBattery()
                         MainActivity.sendConnectionUpdate(STATE_CONNECTED, connectedDeviceAddress)
                         
                         try {
@@ -144,15 +180,13 @@ class BleScanService : Service() {
                         
                         closeGatt()
                         
-                        // Check if we should auto-reconnect
                         if (shouldAutoReconnect && bluetoothAdapter?.isEnabled == true && previousAddress != null) {
-                            // Connection failed or dropped - schedule reconnect
                             if (status != BluetoothGatt.GATT_SUCCESS || wasConnected) {
-                                updateNotification("Reconnecting to Leo...")
+                                updateNotificationWithBattery()
                                 scheduleReconnect(previousAddress)
                             }
                         } else {
-                            updateNotification("Scanning for Leo USB devices...")
+                            updateNotificationWithBattery()
                         }
                         
                         MainActivity.sendConnectionUpdate(STATE_DISCONNECTED, null)
@@ -225,23 +259,15 @@ class BleScanService : Service() {
     }
 
     private fun setupUartService(gatt: BluetoothGatt) {
-        val uartService = gatt.getService(SERVICE_UUID)
-        if (uartService == null) {
-            return
-        }
+        val uartService = gatt.getService(SERVICE_UUID) ?: return
 
-        // Get TX characteristic (for writing commands)
         txCharacteristic = uartService.getCharacteristic(TX_CHAR_UUID)
-        
-        // Get RX characteristic (for receiving data)
         rxCharacteristic = uartService.getCharacteristic(RX_CHAR_UUID)
         
-        // Enable notifications on RX characteristic
         rxCharacteristic?.let { rxChar ->
             try {
                 gatt.setCharacteristicNotification(rxChar, true)
                 
-                // Write to CCCD to enable notifications
                 val descriptor = rxChar.getDescriptor(CCCD_UUID)
                 descriptor?.let {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -260,15 +286,12 @@ class BleScanService : Service() {
     }
 
     private fun writeCommand(command: String): Boolean {
-        if (!isUartReady || connectionState != STATE_CONNECTED) {
-            return false
-        }
+        if (!isUartReady || connectionState != STATE_CONNECTED) return false
 
         val txChar = txCharacteristic ?: return false
         val gatt = bluetoothGatt ?: return false
 
         return try {
-            // Add newline character (LF = 10)
             val commandWithLF = "$command\n"
             val bytes = commandWithLF.toByteArray(Charsets.UTF_8)
 
@@ -300,17 +323,14 @@ class BleScanService : Service() {
                 
                 when (state) {
                     BluetoothAdapter.STATE_ON -> {
-                        // Bluetooth turned on, restart scanning and try to reconnect
                         bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
                         startBleScan()
                         
-                        // Try to reconnect if we have a saved device
                         if (shouldAutoReconnect) {
                             handler.postDelayed({ attemptAutoConnect() }, 1000)
                         }
                     }
                     BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_TURNING_OFF -> {
-                        // Bluetooth turning off, clear state but keep shouldAutoReconnect
                         stopBleScan()
                         cancelReconnect()
                         closeGatt()
@@ -339,8 +359,24 @@ class BleScanService : Service() {
         bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
         
         // Register Bluetooth state receiver
-        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        registerReceiver(bluetoothStateReceiver, filter)
+        val btFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        registerReceiver(bluetoothStateReceiver, btFilter)
+        
+        // Register battery receiver
+        val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        registerReceiver(batteryReceiver, batteryFilter)
+        
+        // Get initial battery level
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        batteryIntent?.let {
+            val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+            val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            
+            phoneBatteryLevel = (level * 100 / scale.toFloat()).toInt()
+            isPhoneCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -350,7 +386,6 @@ class BleScanService : Service() {
         if (bluetoothAdapter?.isEnabled == true) {
             startBleScan()
             
-            // Try to reconnect to last device if auto-reconnect is enabled
             if (shouldAutoReconnect && connectionState == STATE_DISCONNECTED) {
                 handler.postDelayed({ attemptAutoConnect() }, 500)
             }
@@ -362,7 +397,6 @@ class BleScanService : Service() {
     private fun connectToDevice(address: String, userInitiated: Boolean): Boolean {
         if (bluetoothAdapter?.isEnabled != true) return false
         
-        // If user initiated, enable auto-reconnect
         if (userInitiated) {
             shouldAutoReconnect = true
             reconnectAttempts = 0
@@ -377,7 +411,7 @@ class BleScanService : Service() {
             pendingConnectAddress = address
             
             MainActivity.sendConnectionUpdate(STATE_CONNECTING, address)
-            updateNotification("Connecting to ${device.name ?: "Leo Usb"}...")
+            updateNotificationWithBattery()
             
             bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
             true
@@ -386,7 +420,6 @@ class BleScanService : Service() {
             connectionState = STATE_DISCONNECTED
             pendingConnectAddress = null
             
-            // Schedule retry if auto-reconnect is enabled
             if (shouldAutoReconnect) {
                 scheduleReconnect(address)
             }
@@ -398,7 +431,6 @@ class BleScanService : Service() {
         cancelReconnect()
         
         if (userInitiated) {
-            // User manually disconnected - disable auto-reconnect
             shouldAutoReconnect = false
             reconnectAttempts = 0
             clearSavedDevice()
@@ -416,7 +448,7 @@ class BleScanService : Service() {
         }
         
         if (userInitiated) {
-            updateNotification("Scanning for Leo USB devices...")
+            updateNotificationWithBattery()
         }
     }
 
@@ -436,11 +468,9 @@ class BleScanService : Service() {
         
         val savedAddress = prefs?.getString(KEY_LAST_DEVICE_ADDRESS, null) ?: return
         
-        // Check if device is in scanned list OR try to connect directly
         if (scannedDevices.containsKey(savedAddress)) {
             connectToDevice(savedAddress, userInitiated = false)
         } else {
-            // Try to connect even if not in scan list (device might be connectable)
             connectToDevice(savedAddress, userInitiated = false)
         }
     }
@@ -448,7 +478,6 @@ class BleScanService : Service() {
     private fun scheduleReconnect(address: String) {
         if (!shouldAutoReconnect) return
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            // Max attempts reached, reset and keep trying with longer delay
             reconnectAttempts = 0
         }
         
@@ -565,6 +594,29 @@ class BleScanService : Service() {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
+    private fun updateNotificationWithBattery() {
+        val batteryText = if (phoneBatteryLevel >= 0) {
+            val chargingText = if (isPhoneCharging) "⚡" else ""
+            "Phone: $phoneBatteryLevel%$chargingText"
+        } else {
+            ""
+        }
+        
+        val statusText = when (connectionState) {
+            STATE_CONNECTED -> "Connected to Leo"
+            STATE_CONNECTING -> "Connecting..."
+            else -> "Scanning..."
+        }
+        
+        val fullText = if (batteryText.isNotEmpty()) {
+            "$statusText | $batteryText"
+        } else {
+            statusText
+        }
+        
+        updateNotification(fullText)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
@@ -572,6 +624,7 @@ class BleScanService : Service() {
         cancelReconnect()
         closeGatt()
         unregisterReceiver(bluetoothStateReceiver)
+        unregisterReceiver(batteryReceiver)
         instance = null
         super.onDestroy()
     }

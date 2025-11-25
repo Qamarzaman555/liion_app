@@ -29,6 +29,20 @@ class BleAdapterState {
   }
 }
 
+class PhoneBatteryInfo {
+  final int level;
+  final bool isCharging;
+
+  PhoneBatteryInfo({required this.level, required this.isCharging});
+
+  factory PhoneBatteryInfo.fromMap(Map<String, dynamic> map) {
+    return PhoneBatteryInfo(
+      level: map['level'] as int? ?? -1,
+      isCharging: map['isCharging'] as bool? ?? false,
+    );
+  }
+}
+
 class BleScanService {
   static const MethodChannel _methodChannel = MethodChannel(
     'com.liion_app/ble_service',
@@ -45,11 +59,15 @@ class BleScanService {
   static const EventChannel _dataReceivedChannel = EventChannel(
     'com.liion_app/data_received',
   );
+  static const EventChannel _batteryChannel = EventChannel(
+    'com.liion_app/phone_battery',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
   static Stream<int>? _adapterStateStream;
   static Stream<String>? _dataReceivedStream;
+  static Stream<PhoneBatteryInfo>? _batteryStream;
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -121,7 +139,7 @@ class BleScanService {
     }
   }
 
-  /// Connect to a BLE device (handled by foreground service)
+  /// Connect to a BLE device
   static Future<bool> connect(String address) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('connect', {
@@ -134,7 +152,7 @@ class BleScanService {
     }
   }
 
-  /// Disconnect from the connected device (handled by foreground service)
+  /// Disconnect from the connected device
   static Future<bool> disconnect() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('disconnect');
@@ -195,7 +213,21 @@ class BleScanService {
     }
   }
 
-  /// Get all scanned devices (Leo Usb filtered)
+  /// Get phone battery info
+  static Future<PhoneBatteryInfo> getPhoneBattery() async {
+    try {
+      final result = await _methodChannel.invokeMethod<Map>('getPhoneBattery');
+      if (result == null) {
+        return PhoneBatteryInfo(level: -1, isCharging: false);
+      }
+      return PhoneBatteryInfo.fromMap(Map<String, dynamic>.from(result));
+    } on PlatformException catch (e) {
+      print('Failed to get phone battery: ${e.message}');
+      return PhoneBatteryInfo(level: -1, isCharging: false);
+    }
+  }
+
+  /// Get all scanned devices
   static Future<List<Map<String, String>>> getScannedDevices() async {
     try {
       final result = await _methodChannel.invokeMethod<List>(
@@ -230,7 +262,7 @@ class BleScanService {
     return _deviceStream!;
   }
 
-  /// Stream of connection state changes (from foreground service)
+  /// Stream of connection state changes
   static Stream<Map<String, dynamic>> get connectionStream {
     _connectionStream ??= _connectionEventChannel.receiveBroadcastStream().map((
       event,
@@ -258,5 +290,13 @@ class BleScanService {
       return event as String;
     });
     return _dataReceivedStream!;
+  }
+
+  /// Stream of phone battery updates
+  static Stream<PhoneBatteryInfo> get phoneBatteryStream {
+    _batteryStream ??= _batteryChannel.receiveBroadcastStream().map((event) {
+      return PhoneBatteryInfo.fromMap(Map<String, dynamic>.from(event as Map));
+    });
+    return _batteryStream!;
   }
 }

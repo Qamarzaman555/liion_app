@@ -19,12 +19,14 @@ class MainActivity : FlutterActivity() {
         private const val CONNECTION_EVENT_CHANNEL = "com.liion_app/ble_connection"
         private const val ADAPTER_STATE_CHANNEL = "com.liion_app/adapter_state"
         private const val DATA_RECEIVED_CHANNEL = "com.liion_app/data_received"
+        private const val BATTERY_CHANNEL = "com.liion_app/phone_battery"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
         private var connectionEventSink: EventChannel.EventSink? = null
         private var adapterStateSink: EventChannel.EventSink? = null
         private var dataReceivedSink: EventChannel.EventSink? = null
+        private var batterySink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -40,7 +42,7 @@ class MainActivity : FlutterActivity() {
         }
         
         fun sendServicesDiscovered(services: List<String>) {
-            // Can be used later for service discovery events
+            // Can be used later
         }
         
         fun sendDataReceived(data: String) {
@@ -48,7 +50,11 @@ class MainActivity : FlutterActivity() {
         }
         
         fun sendUartReady(ready: Boolean) {
-            // UART is ready for communication
+            // UART ready
+        }
+        
+        fun sendBatteryUpdate(level: Int, isCharging: Boolean) {
+            batterySink?.success(mapOf("level" to level, "isCharging" to isCharging))
         }
     }
 
@@ -60,7 +66,7 @@ class MainActivity : FlutterActivity() {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
 
-        // Method Channel for service control
+        // Method Channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -125,11 +131,14 @@ class MainActivity : FlutterActivity() {
                             result.error("INVALID_ARGUMENT", "Command is required", null)
                         }
                     }
+                    "getPhoneBattery" -> {
+                        result.success(BleScanService.getPhoneBatteryInfo())
+                    }
                     else -> result.notImplemented()
                 }
             }
 
-        // Event Channel for real-time device updates
+        // Event Channel for device updates
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -140,12 +149,11 @@ class MainActivity : FlutterActivity() {
                 }
             })
         
-        // Event Channel for connection state updates
+        // Event Channel for connection state
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, CONNECTION_EVENT_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     connectionEventSink = events
-                    // Send current state immediately
                     events?.success(mapOf(
                         "state" to BleScanService.connectionState,
                         "address" to BleScanService.connectedDeviceAddress
@@ -156,12 +164,11 @@ class MainActivity : FlutterActivity() {
                 }
             })
         
-        // Event Channel for adapter state updates
+        // Event Channel for adapter state
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, ADAPTER_STATE_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     adapterStateSink = events
-                    // Send current state immediately
                     events?.success(getBluetoothAdapterState())
                 }
                 override fun onCancel(arguments: Any?) {
@@ -169,7 +176,7 @@ class MainActivity : FlutterActivity() {
                 }
             })
         
-        // Event Channel for data received from Leo
+        // Event Channel for data received
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, DATA_RECEIVED_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -177,6 +184,22 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     dataReceivedSink = null
+                }
+            })
+        
+        // Event Channel for phone battery
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    batterySink = events
+                    // Send current battery state immediately
+                    events?.success(mapOf(
+                        "level" to BleScanService.phoneBatteryLevel,
+                        "isCharging" to BleScanService.isPhoneCharging
+                    ))
+                }
+                override fun onCancel(arguments: Any?) {
+                    batterySink = null
                 }
             })
     }
