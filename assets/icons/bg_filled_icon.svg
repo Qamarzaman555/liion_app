@@ -1,0 +1,11 @@
+<svg width="28" height="18" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <!-- Smartphone Outline -->
+    <rect x="60" y="40" width="80" height="140" rx="10" ry="10" fill="none" stroke="#FFBC00"
+        stroke-width="4" />
+    <circle cx="100" cy="50" r="3" fill="#FFBC00" /> <!-- Front camera -->
+    <rect x="85" y="155" width="30" height="8" rx="4" fill="#FFBC00" /> <!-- Home button -->
+
+    <!-- Background Process Indicator -->
+    <circle cx="100" cy="108" r="25" fill="none" stroke="#FFBC00" stroke-width="6"
+        stroke-dasharray="20 10" stroke-linecap="round" />
+</svg>
