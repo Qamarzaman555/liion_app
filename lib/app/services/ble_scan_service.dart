@@ -42,10 +42,14 @@ class BleScanService {
   static const EventChannel _adapterStateChannel = EventChannel(
     'com.liion_app/adapter_state',
   );
+  static const EventChannel _dataReceivedChannel = EventChannel(
+    'com.liion_app/data_received',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
   static Stream<int>? _adapterStateStream;
+  static Stream<String>? _dataReceivedStream;
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -178,6 +182,19 @@ class BleScanService {
     }
   }
 
+  /// Send command to Leo device
+  static Future<bool> sendCommand(String command) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('sendCommand', {
+        'command': command,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to send command: ${e.message}');
+      return false;
+    }
+  }
+
   /// Get all scanned devices (Leo Usb filtered)
   static Future<List<Map<String, String>>> getScannedDevices() async {
     try {
@@ -231,5 +248,15 @@ class BleScanService {
       return event as int;
     });
     return _adapterStateStream!;
+  }
+
+  /// Stream of data received from Leo device
+  static Stream<String> get dataReceivedStream {
+    _dataReceivedStream ??= _dataReceivedChannel.receiveBroadcastStream().map((
+      event,
+    ) {
+      return event as String;
+    });
+    return _dataReceivedStream!;
   }
 }

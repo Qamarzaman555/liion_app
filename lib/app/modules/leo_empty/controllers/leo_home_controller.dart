@@ -10,9 +10,15 @@ class LeoHomeController extends GetxController {
   final connectingDeviceAddress = Rxn<String>();
   final adapterState = BleAdapterState.off.obs;
 
+  // Data from Leo
+  final mwhValue = ''.obs;
+  final lastReceivedData = ''.obs;
+  final receivedDataLog = <String>[].obs;
+
   StreamSubscription? _deviceSubscription;
   StreamSubscription? _connectionSubscription;
   StreamSubscription? _adapterStateSubscription;
+  StreamSubscription? _dataReceivedSubscription;
 
   @override
   void onInit() {
@@ -20,11 +26,11 @@ class LeoHomeController extends GetxController {
     _listenToAdapterState();
     _listenToDeviceStream();
     _listenToConnectionStream();
+    _listenToDataReceived();
     _loadInitialState();
   }
 
   Future<void> _loadInitialState() async {
-    // Get initial states from the service
     adapterState.value = await BleScanService.getAdapterState();
     connectionState.value = await BleScanService.getConnectionState();
     connectedDeviceAddress.value =
@@ -49,12 +55,10 @@ class LeoHomeController extends GetxController {
     ) {
       adapterState.value = state;
 
-      // Reload devices when BT turns on
       if (state == BleAdapterState.on) {
         _loadDevices();
       }
 
-      // Clear UI state when BT turns off
       if (state == BleAdapterState.off) {
         scannedDevices.clear();
       }
@@ -82,6 +86,10 @@ class LeoHomeController extends GetxController {
       if (newState == BleConnectionState.connected) {
         connectedDeviceAddress.value = address;
         connectingDeviceAddress.value = null;
+        // Request mwh value when connected
+        Future.delayed(const Duration(seconds: 1), () {
+          requestMwhValue();
+        });
       } else if (newState == BleConnectionState.connecting) {
         connectingDeviceAddress.value = address;
       } else if (newState == BleConnectionState.disconnected) {
@@ -89,6 +97,56 @@ class LeoHomeController extends GetxController {
         connectingDeviceAddress.value = null;
       }
     });
+  }
+
+  void _listenToDataReceived() {
+    _dataReceivedSubscription = BleScanService.dataReceivedStream.listen((
+      data,
+    ) {
+      lastReceivedData.value = data;
+      receivedDataLog.insert(
+        0,
+        '${DateTime.now().toString().substring(11, 19)}: $data',
+      );
+
+      // Keep only last 50 entries
+      if (receivedDataLog.length > 50) {
+        receivedDataLog.removeLast();
+      }
+
+      // Parse mwh value
+      _parseReceivedData(data);
+    });
+  }
+
+  void _parseReceivedData(String data) {
+    try {
+      List<String> parts = data.split(' ');
+      if (parts.length >= 2 && parts[1].toLowerCase() == 'mwh') {
+        String value = parts.length > 2 ? parts[2] : parts[0];
+        value = value.replaceAll(RegExp(r'[^0-9]'), '');
+        if (value.isNotEmpty) {
+          mwhValue.value = value;
+        }
+      }
+    } catch (e) {
+      print('Error parsing data: $e');
+    }
+  }
+
+  /// Request mWh value from Leo
+  Future<void> requestMwhValue() async {
+    if (connectionState.value == BleConnectionState.connected) {
+      await BleScanService.sendCommand('mwh');
+    }
+  }
+
+  /// Send custom command to Leo
+  Future<bool> sendCommand(String command) async {
+    if (connectionState.value != BleConnectionState.connected) {
+      return false;
+    }
+    return await BleScanService.sendCommand(command);
   }
 
   Future<void> refreshDevices() async {
@@ -136,6 +194,7 @@ class LeoHomeController extends GetxController {
     _deviceSubscription?.cancel();
     _connectionSubscription?.cancel();
     _adapterStateSubscription?.cancel();
+    _dataReceivedSubscription?.cancel();
     super.onClose();
   }
 }

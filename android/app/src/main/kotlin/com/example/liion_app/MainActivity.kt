@@ -18,11 +18,13 @@ class MainActivity : FlutterActivity() {
         private const val EVENT_CHANNEL = "com.liion_app/ble_devices"
         private const val CONNECTION_EVENT_CHANNEL = "com.liion_app/ble_connection"
         private const val ADAPTER_STATE_CHANNEL = "com.liion_app/adapter_state"
+        private const val DATA_RECEIVED_CHANNEL = "com.liion_app/data_received"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
         private var connectionEventSink: EventChannel.EventSink? = null
         private var adapterStateSink: EventChannel.EventSink? = null
+        private var dataReceivedSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -39,6 +41,14 @@ class MainActivity : FlutterActivity() {
         
         fun sendServicesDiscovered(services: List<String>) {
             // Can be used later for service discovery events
+        }
+        
+        fun sendDataReceived(data: String) {
+            dataReceivedSink?.success(data)
+        }
+        
+        fun sendUartReady(ready: Boolean) {
+            // UART is ready for communication
         }
     }
 
@@ -106,6 +116,15 @@ class MainActivity : FlutterActivity() {
                     "getConnectedDeviceAddress" -> {
                         result.success(BleScanService.connectedDeviceAddress)
                     }
+                    "sendCommand" -> {
+                        val command = call.argument<String>("command")
+                        if (command != null) {
+                            val success = BleScanService.sendCommand(command)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Command is required", null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -147,6 +166,17 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     adapterStateSink = null
+                }
+            })
+        
+        // Event Channel for data received from Leo
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, DATA_RECEIVED_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    dataReceivedSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    dataReceivedSink = null
                 }
             })
     }

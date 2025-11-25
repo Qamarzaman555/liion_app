@@ -44,8 +44,20 @@ class LeoHomeView extends GetView<LeoHomeController> {
             ),
             // Bluetooth & Connection Status Bar
             Obx(() => _buildStatusBar()),
+            // mWh Value Card (shown when connected)
+            Obx(() {
+              if (controller.connectionState.value ==
+                  BleConnectionState.connected) {
+                return _buildMwhCard();
+              }
+              return const SizedBox.shrink();
+            }),
             Expanded(
               child: Obx(() {
+                if (controller.connectionState.value ==
+                    BleConnectionState.connected) {
+                  return _buildDataLog();
+                }
                 if (controller.scannedDevices.isEmpty) {
                   return _buildEmptyState();
                 }
@@ -72,7 +84,6 @@ class LeoHomeView extends GetView<LeoHomeController> {
       ),
       child: Row(
         children: [
-          // Bluetooth Status
           Icon(
             isBluetoothOn ? Icons.bluetooth : Icons.bluetooth_disabled,
             size: 20,
@@ -91,7 +102,6 @@ class LeoHomeView extends GetView<LeoHomeController> {
           const SizedBox(width: 16),
           Container(width: 1, height: 20, color: Colors.grey.shade300),
           const SizedBox(width: 16),
-          // Connection Status
           Icon(
             isConnected ? Icons.link : Icons.link_off,
             size: 20,
@@ -129,6 +139,208 @@ class LeoHomeView extends GetView<LeoHomeController> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMwhCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primaryColor,
+            AppColors.primaryColor.withOpacity(0.8),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryColor.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Battery Energy',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => controller.requestMwhValue(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.refresh, color: Colors.white, size: 16),
+                      SizedBox(width: 4),
+                      Text(
+                        'Refresh',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Obx(
+            () => Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  controller.mwhValue.value.isEmpty
+                      ? '--'
+                      : controller.mwhValue.value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Inter',
+                    fontSize: 48,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8, left: 8),
+                  child: Text(
+                    'mWh',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontFamily: 'Inter',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Disconnect button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => controller.disconnectDevice(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.red,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Disconnect',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataLog() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Data Log',
+                style: TextStyle(
+                  color: Color(0xFF282828),
+                  fontFamily: 'Inter',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              TextButton(
+                onPressed: () => controller.receivedDataLog.clear(),
+                child: const Text(
+                  'Clear',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Obx(() {
+            if (controller.receivedDataLog.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No data received yet',
+                  style: TextStyle(
+                    color: Color(0xFF888888),
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                  ),
+                ),
+              );
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: controller.receivedDataLog.length,
+              itemBuilder: (context, index) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    controller.receivedDataLog[index],
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      color: Color(0xFF282828),
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
+        ),
+      ],
     );
   }
 
@@ -236,7 +448,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                     side: isConnected
-                        ? BorderSide(color: Colors.green, width: 2)
+                        ? const BorderSide(color: Colors.green, width: 2)
                         : BorderSide.none,
                   ),
                   child: ListTile(

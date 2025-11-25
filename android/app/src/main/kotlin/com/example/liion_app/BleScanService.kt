@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import java.util.UUID
 
 class BleScanService : Service() {
 
@@ -24,6 +25,12 @@ class BleScanService : Service() {
         const val KEY_LAST_DEVICE_ADDRESS = "last_device_address"
         const val KEY_LAST_DEVICE_NAME = "last_device_name"
         const val KEY_AUTO_RECONNECT = "auto_reconnect"
+        
+        // Nordic UART Service UUIDs
+        val SERVICE_UUID: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+        val TX_CHAR_UUID: UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e") // Write to this
+        val RX_CHAR_UUID: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e") // Receive from this
+        val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         
         // Connection states
         const val STATE_DISCONNECTED = 0
@@ -54,6 +61,10 @@ class BleScanService : Service() {
         fun disconnect() {
             instance?.disconnectDevice(userInitiated = true)
         }
+        
+        fun sendCommand(command: String): Boolean {
+            return instance?.writeCommand(command) ?: false
+        }
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -61,6 +72,11 @@ class BleScanService : Service() {
     private var bluetoothGatt: BluetoothGatt? = null
     private var prefs: SharedPreferences? = null
     private val handler = Handler(Looper.getMainLooper())
+    
+    // UART characteristics
+    private var txCharacteristic: BluetoothGattCharacteristic? = null
+    private var rxCharacteristic: BluetoothGattCharacteristic? = null
+    private var isUartReady = false
     
     // Reconnection state
     private var reconnectRunnable: Runnable? = null
@@ -122,6 +138,9 @@ class BleScanService : Service() {
                         
                         connectionState = STATE_DISCONNECTED
                         connectedDeviceAddress = null
+                        isUartReady = false
+                        txCharacteristic = null
+                        rxCharacteristic = null
                         
                         closeGatt()
                         
@@ -145,9 +164,131 @@ class BleScanService : Service() {
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             handler.post {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
+                    setupUartService(gatt)
                     MainActivity.sendServicesDiscovered(gatt.services.map { it.uuid.toString() })
                 }
             }
+        }
+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            handler.post {
+                if (characteristic.uuid == RX_CHAR_UUID) {
+                    val receivedData = String(value, Charsets.UTF_8).trim()
+                    MainActivity.sendDataReceived(receivedData)
+                }
+            }
+        }
+
+        @Deprecated("Deprecated in API 33")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            handler.post {
+                if (characteristic.uuid == RX_CHAR_UUID) {
+                    val receivedData = String(characteristic.value, Charsets.UTF_8).trim()
+                    MainActivity.sendDataReceived(receivedData)
+                }
+            }
+        }
+
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            handler.post {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    // Write successful
+                } else {
+                    // Write failed
+                }
+            }
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            handler.post {
+                if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == CCCD_UUID) {
+                    isUartReady = true
+                    MainActivity.sendUartReady(true)
+                }
+            }
+        }
+    }
+
+    private fun setupUartService(gatt: BluetoothGatt) {
+        val uartService = gatt.getService(SERVICE_UUID)
+        if (uartService == null) {
+            return
+        }
+
+        // Get TX characteristic (for writing commands)
+        txCharacteristic = uartService.getCharacteristic(TX_CHAR_UUID)
+        
+        // Get RX characteristic (for receiving data)
+        rxCharacteristic = uartService.getCharacteristic(RX_CHAR_UUID)
+        
+        // Enable notifications on RX characteristic
+        rxCharacteristic?.let { rxChar ->
+            try {
+                gatt.setCharacteristicNotification(rxChar, true)
+                
+                // Write to CCCD to enable notifications
+                val descriptor = rxChar.getDescriptor(CCCD_UUID)
+                descriptor?.let {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeDescriptor(it, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        @Suppress("DEPRECATION")
+                        gatt.writeDescriptor(it)
+                    }
+                }
+            } catch (e: SecurityException) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun writeCommand(command: String): Boolean {
+        if (!isUartReady || connectionState != STATE_CONNECTED) {
+            return false
+        }
+
+        val txChar = txCharacteristic ?: return false
+        val gatt = bluetoothGatt ?: return false
+
+        return try {
+            // Add newline character (LF = 10)
+            val commandWithLF = "$command\n"
+            val bytes = commandWithLF.toByteArray(Charsets.UTF_8)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeCharacteristic(
+                    txChar,
+                    bytes,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                ) == BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                txChar.value = bytes
+                @Suppress("DEPRECATION")
+                txChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                @Suppress("DEPRECATION")
+                gatt.writeCharacteristic(txChar)
+            }
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+            false
         }
     }
 
@@ -176,6 +317,9 @@ class BleScanService : Service() {
                         connectionState = STATE_DISCONNECTED
                         connectedDeviceAddress = null
                         pendingConnectAddress = null
+                        isUartReady = false
+                        txCharacteristic = null
+                        rxCharacteristic = null
                         scannedDevices.clear()
                         MainActivity.sendConnectionUpdate(STATE_DISCONNECTED, null)
                     }
@@ -261,6 +405,9 @@ class BleScanService : Service() {
         }
         
         pendingConnectAddress = null
+        isUartReady = false
+        txCharacteristic = null
+        rxCharacteristic = null
         
         try {
             bluetoothGatt?.disconnect()
