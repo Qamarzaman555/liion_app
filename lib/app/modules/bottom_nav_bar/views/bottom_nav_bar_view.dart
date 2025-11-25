@@ -60,6 +60,8 @@ class BottomNavBarView extends GetView<BottomNavBarController> {
                     label: "Leo",
                     icon: SvgPicture.asset(
                       SvgAssets.leoHomeIcon,
+                      width: 24,
+                      height: 24,
                       colorFilter: ColorFilter.mode(
                         controller.currentIndex.value == 0
                             ? AppColors.secondaryColor
@@ -72,6 +74,8 @@ class BottomNavBarView extends GetView<BottomNavBarController> {
                     label: "Phone",
                     icon: SvgPicture.asset(
                       SvgAssets.leoBatteryIcon,
+                      width: 24,
+                      height: 24,
                       colorFilter: ColorFilter.mode(
                         controller.currentIndex.value == 1
                             ? AppColors.secondaryColor
@@ -83,7 +87,9 @@ class BottomNavBarView extends GetView<BottomNavBarController> {
                   BottomNavigationBarItem(
                     label: "Settings",
                     icon: SvgPicture.asset(
-                      SvgAssets.leoSettingIcon,
+                      SvgAssets.leoSettingsIcon,
+                      width: 24,
+                      height: 24,
                       colorFilter: ColorFilter.mode(
                         controller.currentIndex.value == 2
                             ? AppColors.secondaryColor
