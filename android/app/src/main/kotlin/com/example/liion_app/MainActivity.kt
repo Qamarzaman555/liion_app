@@ -20,6 +20,7 @@ class MainActivity : FlutterActivity() {
         private const val ADAPTER_STATE_CHANNEL = "com.liion_app/adapter_state"
         private const val DATA_RECEIVED_CHANNEL = "com.liion_app/data_received"
         private const val BATTERY_CHANNEL = "com.liion_app/phone_battery"
+        private const val CHARGE_LIMIT_CHANNEL = "com.liion_app/charge_limit"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -27,6 +28,7 @@ class MainActivity : FlutterActivity() {
         private var adapterStateSink: EventChannel.EventSink? = null
         private var dataReceivedSink: EventChannel.EventSink? = null
         private var batterySink: EventChannel.EventSink? = null
+        private var chargeLimitSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -55,6 +57,22 @@ class MainActivity : FlutterActivity() {
         
         fun sendBatteryUpdate(level: Int, isCharging: Boolean) {
             batterySink?.success(mapOf("level" to level, "isCharging" to isCharging))
+        }
+        
+        fun sendChargeLimitUpdate(limit: Int, enabled: Boolean) {
+            chargeLimitSink?.success(mapOf(
+                "limit" to limit,
+                "enabled" to enabled,
+                "confirmed" to BleScanService.chargeLimitConfirmed
+            ))
+        }
+        
+        fun sendChargeLimitConfirmed(confirmed: Boolean) {
+            chargeLimitSink?.success(mapOf(
+                "limit" to BleScanService.chargeLimit,
+                "enabled" to BleScanService.chargeLimitEnabled,
+                "confirmed" to confirmed
+            ))
         }
     }
 
@@ -134,6 +152,28 @@ class MainActivity : FlutterActivity() {
                     "getPhoneBattery" -> {
                         result.success(BleScanService.getPhoneBatteryInfo())
                     }
+                    "setChargeLimit" -> {
+                        val limit = call.argument<Int>("limit")
+                        val enabled = call.argument<Boolean>("enabled")
+                        if (limit != null && enabled != null) {
+                            val success = BleScanService.setChargeLimit(limit, enabled)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Limit and enabled are required", null)
+                        }
+                    }
+                    "getChargeLimit" -> {
+                        result.success(BleScanService.getChargeLimitInfo())
+                    }
+                    "setChargeLimitEnabled" -> {
+                        val enabled = call.argument<Boolean>("enabled")
+                        if (enabled != null) {
+                            val success = BleScanService.setChargeLimitEnabled(enabled)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Enabled is required", null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -192,7 +232,6 @@ class MainActivity : FlutterActivity() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     batterySink = events
-                    // Send current battery state immediately
                     events?.success(mapOf(
                         "level" to BleScanService.phoneBatteryLevel,
                         "isCharging" to BleScanService.isPhoneCharging
@@ -200,6 +239,22 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     batterySink = null
+                }
+            })
+        
+        // Event Channel for charge limit updates
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, CHARGE_LIMIT_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    chargeLimitSink = events
+                    events?.success(mapOf(
+                        "limit" to BleScanService.chargeLimit,
+                        "enabled" to BleScanService.chargeLimitEnabled,
+                        "confirmed" to BleScanService.chargeLimitConfirmed
+                    ))
+                }
+                override fun onCancel(arguments: Any?) {
+                    chargeLimitSink = null
                 }
             })
     }

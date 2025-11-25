@@ -26,6 +26,8 @@ class BleScanService : Service() {
         const val KEY_LAST_DEVICE_ADDRESS = "last_device_address"
         const val KEY_LAST_DEVICE_NAME = "last_device_name"
         const val KEY_AUTO_RECONNECT = "auto_reconnect"
+        const val KEY_CHARGE_LIMIT = "charge_limit"
+        const val KEY_CHARGE_LIMIT_ENABLED = "charge_limit_enabled"
         
         // Nordic UART Service UUIDs
         val SERVICE_UUID: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
@@ -43,6 +45,9 @@ class BleScanService : Service() {
         const val MAX_RECONNECT_ATTEMPTS = 10
         const val RECONNECT_BACKOFF_MS = 1000L
         
+        // Charge limit timer
+        const val CHARGE_LIMIT_INTERVAL_MS = 30000L // 30 seconds
+        
         val scannedDevices = mutableMapOf<String, String>()
         var isScanning = false
         var connectionState = STATE_DISCONNECTED
@@ -51,6 +56,13 @@ class BleScanService : Service() {
         // Battery state
         var phoneBatteryLevel: Int = -1
         var isPhoneCharging: Boolean = false
+        
+        // Charge limit state
+        var chargeLimit: Int = 90
+        var chargeLimitEnabled: Boolean = false
+        var chargeLimitConfirmed: Boolean = false
+        var chargingTimeSeconds: Long = 0
+        var dischargingTimeSeconds: Long = 0
         
         private var instance: BleScanService? = null
         
@@ -77,6 +89,24 @@ class BleScanService : Service() {
                 "isCharging" to isPhoneCharging
             )
         }
+        
+        fun setChargeLimit(limit: Int, enabled: Boolean): Boolean {
+            return instance?.updateChargeLimit(limit, enabled) ?: false
+        }
+        
+        fun setChargeLimitEnabled(enabled: Boolean): Boolean {
+            return instance?.updateChargeLimitEnabled(enabled) ?: false
+        }
+        
+        fun getChargeLimitInfo(): Map<String, Any> {
+            return mapOf(
+                "limit" to chargeLimit,
+                "enabled" to chargeLimitEnabled,
+                "confirmed" to chargeLimitConfirmed,
+                "chargingTime" to chargingTimeSeconds,
+                "dischargingTime" to dischargingTimeSeconds
+            )
+        }
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -98,6 +128,11 @@ class BleScanService : Service() {
         set(value) { prefs?.edit()?.putBoolean(KEY_AUTO_RECONNECT, value)?.apply() }
     
     private var pendingConnectAddress: String? = null
+    
+    // Charge limit timer
+    private var chargeLimitRunnable: Runnable? = null
+    private var timeTrackingRunnable: Runnable? = null
+    private var lastChargingState: Boolean? = null
 
     // Battery monitoring
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -111,15 +146,33 @@ class BleScanService : Service() {
                 val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                         status == BatteryManager.BATTERY_STATUS_FULL
                 
-                if (phoneBatteryLevel != batteryPct || isPhoneCharging != isCharging) {
+                val levelChanged = phoneBatteryLevel != batteryPct
+                val chargingStateChanged = isPhoneCharging != isCharging
+                
+                if (levelChanged || chargingStateChanged) {
                     phoneBatteryLevel = batteryPct
                     isPhoneCharging = isCharging
+                    
+                    // Reset time counters if charging state changed
+                    if (chargingStateChanged) {
+                        if (isCharging) {
+                            chargingTimeSeconds = 0
+                        } else {
+                            dischargingTimeSeconds = 0
+                        }
+                        lastChargingState = isCharging
+                    }
                     
                     // Notify Flutter about battery change
                     MainActivity.sendBatteryUpdate(phoneBatteryLevel, isPhoneCharging)
                     
                     // Update notification with battery info
                     updateNotificationWithBattery()
+                    
+                    // Send charge limit command on battery change
+                    if (levelChanged && isUartReady && connectionState == STATE_CONNECTED) {
+                        sendChargeLimitCommand()
+                    }
                 }
             }
         }
@@ -177,6 +230,10 @@ class BleScanService : Service() {
                         isUartReady = false
                         txCharacteristic = null
                         rxCharacteristic = null
+                        chargeLimitConfirmed = false
+                        
+                        // Stop charge limit timer
+                        stopChargeLimitTimer()
                         
                         closeGatt()
                         
@@ -212,6 +269,7 @@ class BleScanService : Service() {
             handler.post {
                 if (characteristic.uuid == RX_CHAR_UUID) {
                     val receivedData = String(value, Charsets.UTF_8).trim()
+                    handleReceivedData(receivedData)
                     MainActivity.sendDataReceived(receivedData)
                 }
             }
@@ -225,6 +283,7 @@ class BleScanService : Service() {
             handler.post {
                 if (characteristic.uuid == RX_CHAR_UUID) {
                     val receivedData = String(characteristic.value, Charsets.UTF_8).trim()
+                    handleReceivedData(receivedData)
                     MainActivity.sendDataReceived(receivedData)
                 }
             }
@@ -253,7 +312,29 @@ class BleScanService : Service() {
                 if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == CCCD_UUID) {
                     isUartReady = true
                     MainActivity.sendUartReady(true)
+                    
+                    // Start charge limit timer and send initial command
+                    startChargeLimitTimer()
+                    startTimeTracking()
+                    
+                    // Send initial charge limit command
+                    handler.postDelayed({
+                        sendChargeLimitCommand()
+                    }, 500)
                 }
+            }
+        }
+    }
+
+    private fun handleReceivedData(data: String) {
+        val parts = data.split(" ")
+        if (parts.size >= 4 && parts[2] == "charge_limit") {
+            try {
+                val value = parts[3].toIntOrNull() ?: return
+                chargeLimitConfirmed = value == 1
+                MainActivity.sendChargeLimitConfirmed(chargeLimitConfirmed)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -315,6 +396,96 @@ class BleScanService : Service() {
         }
     }
 
+    private fun sendChargeLimitCommand() {
+        if (!isUartReady || connectionState != STATE_CONNECTED) return
+        
+        val limitValue = if (chargeLimitEnabled) chargeLimit else 0
+        val chargingFlag = if (isPhoneCharging) 1 else 0
+        val timeValue = if (isPhoneCharging) chargingTimeSeconds else dischargingTimeSeconds
+        
+        val command = "app_msg limit $limitValue $phoneBatteryLevel $chargingFlag $timeValue"
+        writeCommand(command)
+    }
+
+    private fun updateChargeLimit(limit: Int, enabled: Boolean): Boolean {
+        if (limit < 0 || limit > 100) return false
+        
+        chargeLimit = limit
+        chargeLimitEnabled = enabled
+        
+        // Save to preferences
+        prefs?.edit()?.apply {
+            putInt(KEY_CHARGE_LIMIT, limit)
+            putBoolean(KEY_CHARGE_LIMIT_ENABLED, enabled)
+            apply()
+        }
+        
+        // Send command if connected
+        if (isUartReady && connectionState == STATE_CONNECTED) {
+            sendChargeLimitCommand()
+        }
+        
+        MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
+        updateNotificationWithBattery()
+        return true
+    }
+    
+    private fun updateChargeLimitEnabled(enabled: Boolean): Boolean {
+        chargeLimitEnabled = enabled
+        
+        // Save to preferences
+        prefs?.edit()?.putBoolean(KEY_CHARGE_LIMIT_ENABLED, enabled)?.apply()
+        
+        // Send command if connected - enabled sends chargeLimit, disabled sends 0
+        if (isUartReady && connectionState == STATE_CONNECTED) {
+            sendChargeLimitCommand()
+        }
+        
+        MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
+        updateNotificationWithBattery()
+        return true
+    }
+
+    private fun startChargeLimitTimer() {
+        stopChargeLimitTimer()
+        
+        chargeLimitRunnable = object : Runnable {
+            override fun run() {
+                if (isUartReady && connectionState == STATE_CONNECTED) {
+                    sendChargeLimitCommand()
+                }
+                handler.postDelayed(this, CHARGE_LIMIT_INTERVAL_MS)
+            }
+        }
+        handler.postDelayed(chargeLimitRunnable!!, CHARGE_LIMIT_INTERVAL_MS)
+    }
+
+    private fun stopChargeLimitTimer() {
+        chargeLimitRunnable?.let { handler.removeCallbacks(it) }
+        chargeLimitRunnable = null
+    }
+
+    private fun startTimeTracking() {
+        stopTimeTracking()
+        
+        timeTrackingRunnable = object : Runnable {
+            override fun run() {
+                if (isPhoneCharging) {
+                    chargingTimeSeconds++
+                } else {
+                    dischargingTimeSeconds++
+                }
+                handler.postDelayed(this, 1000)
+            }
+        }
+        handler.postDelayed(timeTrackingRunnable!!, 1000)
+    }
+
+    private fun stopTimeTracking() {
+        timeTrackingRunnable?.let { handler.removeCallbacks(it) }
+        timeTrackingRunnable = null
+    }
+
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
@@ -333,6 +504,8 @@ class BleScanService : Service() {
                     BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_TURNING_OFF -> {
                         stopBleScan()
                         cancelReconnect()
+                        stopChargeLimitTimer()
+                        stopTimeTracking()
                         closeGatt()
                         connectionState = STATE_DISCONNECTED
                         connectedDeviceAddress = null
@@ -340,6 +513,7 @@ class BleScanService : Service() {
                         isUartReady = false
                         txCharacteristic = null
                         rxCharacteristic = null
+                        chargeLimitConfirmed = false
                         scannedDevices.clear()
                         MainActivity.sendConnectionUpdate(STATE_DISCONNECTED, null)
                     }
@@ -353,6 +527,10 @@ class BleScanService : Service() {
         instance = this
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
+        
+        // Load saved charge limit settings
+        chargeLimit = prefs?.getInt(KEY_CHARGE_LIMIT, 90) ?: 90
+        chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
         
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
@@ -376,6 +554,7 @@ class BleScanService : Service() {
             phoneBatteryLevel = (level * 100 / scale.toFloat()).toInt()
             isPhoneCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                     status == BatteryManager.BATTERY_STATUS_FULL
+            lastChargingState = isPhoneCharging
         }
     }
 
@@ -429,6 +608,8 @@ class BleScanService : Service() {
 
     private fun disconnectDevice(userInitiated: Boolean) {
         cancelReconnect()
+        stopChargeLimitTimer()
+        stopTimeTracking()
         
         if (userInitiated) {
             shouldAutoReconnect = false
@@ -440,6 +621,7 @@ class BleScanService : Service() {
         isUartReady = false
         txCharacteristic = null
         rxCharacteristic = null
+        chargeLimitConfirmed = false
         
         try {
             bluetoothGatt?.disconnect()
@@ -608,8 +790,14 @@ class BleScanService : Service() {
             else -> "Scanning..."
         }
         
+        val limitText = if (chargeLimitEnabled && connectionState == STATE_CONNECTED) {
+            " | Limit: $chargeLimit%"
+        } else {
+            ""
+        }
+        
         val fullText = if (batteryText.isNotEmpty()) {
-            "$statusText | $batteryText"
+            "$statusText | $batteryText$limitText"
         } else {
             statusText
         }
@@ -622,6 +810,8 @@ class BleScanService : Service() {
     override fun onDestroy() {
         stopBleScan()
         cancelReconnect()
+        stopChargeLimitTimer()
+        stopTimeTracking()
         closeGatt()
         unregisterReceiver(bluetoothStateReceiver)
         unregisterReceiver(batteryReceiver)

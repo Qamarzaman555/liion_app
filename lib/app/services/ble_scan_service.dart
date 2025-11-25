@@ -43,6 +43,26 @@ class PhoneBatteryInfo {
   }
 }
 
+class ChargeLimitInfo {
+  final int limit;
+  final bool enabled;
+  final bool confirmed;
+
+  ChargeLimitInfo({
+    required this.limit,
+    required this.enabled,
+    required this.confirmed,
+  });
+
+  factory ChargeLimitInfo.fromMap(Map<String, dynamic> map) {
+    return ChargeLimitInfo(
+      limit: map['limit'] as int? ?? 90,
+      enabled: map['enabled'] as bool? ?? false,
+      confirmed: map['confirmed'] as bool? ?? false,
+    );
+  }
+}
+
 class BleScanService {
   static const MethodChannel _methodChannel = MethodChannel(
     'com.liion_app/ble_service',
@@ -62,12 +82,16 @@ class BleScanService {
   static const EventChannel _batteryChannel = EventChannel(
     'com.liion_app/phone_battery',
   );
+  static const EventChannel _chargeLimitChannel = EventChannel(
+    'com.liion_app/charge_limit',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
   static Stream<int>? _adapterStateStream;
   static Stream<String>? _dataReceivedStream;
   static Stream<PhoneBatteryInfo>? _batteryStream;
+  static Stream<ChargeLimitInfo>? _chargeLimitStream;
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -227,6 +251,48 @@ class BleScanService {
     }
   }
 
+  /// Set charge limit
+  static Future<bool> setChargeLimit(int limit, bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setChargeLimit', {
+        'limit': limit,
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to set charge limit: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get charge limit info
+  static Future<ChargeLimitInfo> getChargeLimit() async {
+    try {
+      final result = await _methodChannel.invokeMethod<Map>('getChargeLimit');
+      if (result == null) {
+        return ChargeLimitInfo(limit: 90, enabled: false, confirmed: false);
+      }
+      return ChargeLimitInfo.fromMap(Map<String, dynamic>.from(result));
+    } on PlatformException catch (e) {
+      print('Failed to get charge limit: ${e.message}');
+      return ChargeLimitInfo(limit: 90, enabled: false, confirmed: false);
+    }
+  }
+
+  /// Enable or disable charge limit (saved to SharedPrefs, sends command immediately)
+  static Future<bool> setChargeLimitEnabled(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setChargeLimitEnabled',
+        {'enabled': enabled},
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to set charge limit enabled: ${e.message}');
+      return false;
+    }
+  }
+
   /// Get all scanned devices
   static Future<List<Map<String, String>>> getScannedDevices() async {
     try {
@@ -298,5 +364,15 @@ class BleScanService {
       return PhoneBatteryInfo.fromMap(Map<String, dynamic>.from(event as Map));
     });
     return _batteryStream!;
+  }
+
+  /// Stream of charge limit updates
+  static Stream<ChargeLimitInfo> get chargeLimitStream {
+    _chargeLimitStream ??= _chargeLimitChannel.receiveBroadcastStream().map((
+      event,
+    ) {
+      return ChargeLimitInfo.fromMap(Map<String, dynamic>.from(event as Map));
+    });
+    return _chargeLimitStream!;
   }
 }
