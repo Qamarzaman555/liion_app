@@ -8,6 +8,28 @@ class BleConnectionState {
   static const int connected = 2;
 }
 
+class BleAdapterState {
+  static const int off = 0;
+  static const int turningOn = 1;
+  static const int on = 2;
+  static const int turningOff = 3;
+
+  static String getName(int state) {
+    switch (state) {
+      case off:
+        return 'Off';
+      case turningOn:
+        return 'Turning On';
+      case on:
+        return 'On';
+      case turningOff:
+        return 'Turning Off';
+      default:
+        return 'Unknown';
+    }
+  }
+}
+
 class BleScanService {
   static const MethodChannel _methodChannel = MethodChannel(
     'com.liion_app/ble_service',
@@ -18,9 +40,13 @@ class BleScanService {
   static const EventChannel _connectionEventChannel = EventChannel(
     'com.liion_app/ble_connection',
   );
+  static const EventChannel _adapterStateChannel = EventChannel(
+    'com.liion_app/adapter_state',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
+  static Stream<int>? _adapterStateStream;
 
   static const String _lastDeviceKey = 'last_connected_device';
   static GetStorage? _storage;
@@ -90,6 +116,17 @@ class BleScanService {
     } on PlatformException catch (e) {
       print('Failed to check Bluetooth status: ${e.message}');
       return false;
+    }
+  }
+
+  /// Get current adapter state
+  static Future<int> getAdapterState() async {
+    try {
+      final result = await _methodChannel.invokeMethod<int>('getAdapterState');
+      return result ?? BleAdapterState.off;
+    } on PlatformException catch (e) {
+      print('Failed to get adapter state: ${e.message}');
+      return BleAdapterState.off;
     }
   }
 
@@ -210,5 +247,15 @@ class BleScanService {
       return Map<String, dynamic>.from(event as Map);
     });
     return _connectionStream!;
+  }
+
+  /// Stream of adapter state changes
+  static Stream<int> get adapterStateStream {
+    _adapterStateStream ??= _adapterStateChannel.receiveBroadcastStream().map((
+      event,
+    ) {
+      return event as int;
+    });
+    return _adapterStateStream!;
   }
 }

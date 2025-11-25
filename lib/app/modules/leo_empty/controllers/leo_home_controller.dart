@@ -8,28 +8,36 @@ class LeoHomeController extends GetxController {
   final connectionState = BleConnectionState.disconnected.obs;
   final connectedDeviceAddress = Rxn<String>();
   final connectingDeviceAddress = Rxn<String>();
+  final adapterState = BleAdapterState.off.obs;
 
   StreamSubscription? _deviceSubscription;
   StreamSubscription? _connectionSubscription;
+  StreamSubscription? _adapterStateSubscription;
   Timer? _reconnectTimer;
   bool _shouldAutoReconnect = true;
 
   @override
   void onInit() {
     super.onInit();
-    _ensureBluetoothAndLoad();
+    _listenToAdapterState();
     _listenToDeviceStream();
     _listenToConnectionStream();
+    _ensureBluetoothAndLoad();
   }
 
   Future<void> _ensureBluetoothAndLoad() async {
-    final btEnabled = await BleScanService.isBluetoothEnabled();
-    if (!btEnabled) {
+    // Get initial adapter state
+    adapterState.value = await BleScanService.getAdapterState();
+
+    if (adapterState.value != BleAdapterState.on) {
       await BleScanService.requestEnableBluetooth();
     }
-    await _loadDevices();
-    await _loadConnectionState();
-    _attemptAutoConnect();
+
+    if (adapterState.value == BleAdapterState.on) {
+      await _loadDevices();
+      await _loadConnectionState();
+      _attemptAutoConnect();
+    }
   }
 
   Future<void> _loadDevices() async {
@@ -42,6 +50,41 @@ class LeoHomeController extends GetxController {
     connectionState.value = await BleScanService.getConnectionState();
     connectedDeviceAddress.value =
         await BleScanService.getConnectedDeviceAddress();
+  }
+
+  void _listenToAdapterState() {
+    _adapterStateSubscription = BleScanService.adapterStateStream.listen((
+      state,
+    ) {
+      final previousState = adapterState.value;
+      adapterState.value = state;
+
+      // Bluetooth turned on
+      if (state == BleAdapterState.on && previousState != BleAdapterState.on) {
+        _onBluetoothEnabled();
+      }
+
+      // Bluetooth turned off
+      if (state == BleAdapterState.off) {
+        _onBluetoothDisabled();
+      }
+    });
+  }
+
+  void _onBluetoothEnabled() async {
+    // Start service and load devices when BT is enabled
+    await BleScanService.startService();
+    await _loadDevices();
+    _attemptAutoConnect();
+  }
+
+  void _onBluetoothDisabled() {
+    // Clear connection state when BT is disabled
+    connectionState.value = BleConnectionState.disconnected;
+    connectedDeviceAddress.value = null;
+    connectingDeviceAddress.value = null;
+    scannedDevices.clear();
+    _reconnectTimer?.cancel();
   }
 
   void _listenToDeviceStream() {
@@ -85,8 +128,8 @@ class LeoHomeController extends GetxController {
         connectedDeviceAddress.value = null;
         connectingDeviceAddress.value = null;
 
-        // Auto-reconnect if disconnected unexpectedly
-        if (_shouldAutoReconnect) {
+        // Auto-reconnect if disconnected unexpectedly and BT is still on
+        if (_shouldAutoReconnect && adapterState.value == BleAdapterState.on) {
           _scheduleAutoReconnect();
         }
       }
@@ -96,6 +139,8 @@ class LeoHomeController extends GetxController {
   void _attemptAutoConnect() async {
     // Don't auto-connect if already connected or connecting
     if (connectionState.value != BleConnectionState.disconnected) return;
+    // Don't auto-connect if BT is off
+    if (adapterState.value != BleAdapterState.on) return;
 
     final lastDevice = BleScanService.getLastConnectedDevice();
     if (lastDevice == null) return;
@@ -122,8 +167,7 @@ class LeoHomeController extends GetxController {
   }
 
   Future<void> rescan() async {
-    final btEnabled = await BleScanService.isBluetoothEnabled();
-    if (!btEnabled) {
+    if (adapterState.value != BleAdapterState.on) {
       final enabled = await BleScanService.requestEnableBluetooth();
       if (!enabled) return;
       await BleScanService.startService();
@@ -159,10 +203,15 @@ class LeoHomeController extends GetxController {
         connectingDeviceAddress.value == address;
   }
 
+  bool get isBluetoothOn => adapterState.value == BleAdapterState.on;
+
+  String get adapterStateName => BleAdapterState.getName(adapterState.value);
+
   @override
   void onClose() {
     _deviceSubscription?.cancel();
     _connectionSubscription?.cancel();
+    _adapterStateSubscription?.cancel();
     _reconnectTimer?.cancel();
     super.onClose();
   }

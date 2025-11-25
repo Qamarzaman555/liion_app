@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/services/ble_scan_service.dart';
 import '../controllers/leo_home_controller.dart';
 
 class LeoHomeView extends GetView<LeoHomeController> {
@@ -16,7 +17,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 40, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 40, 20, 10),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -41,6 +42,8 @@ class LeoHomeView extends GetView<LeoHomeController> {
                 ],
               ),
             ),
+            // Bluetooth & Connection Status Bar
+            Obx(() => _buildStatusBar()),
             Expanded(
               child: Obx(() {
                 if (controller.scannedDevices.isEmpty) {
@@ -51,6 +54,80 @@ class LeoHomeView extends GetView<LeoHomeController> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBar() {
+    final isBluetoothOn = controller.isBluetoothOn;
+    final isConnected =
+        controller.connectionState.value == BleConnectionState.connected;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          // Bluetooth Status
+          Icon(
+            isBluetoothOn ? Icons.bluetooth : Icons.bluetooth_disabled,
+            size: 20,
+            color: isBluetoothOn ? Colors.blue : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'BT: ${controller.adapterStateName}',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: isBluetoothOn ? Colors.blue : Colors.grey,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(width: 1, height: 20, color: Colors.grey.shade300),
+          const SizedBox(width: 16),
+          // Connection Status
+          Icon(
+            isConnected ? Icons.link : Icons.link_off,
+            size: 20,
+            color: isConnected ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isConnected
+                  ? 'Connected'
+                  : controller.connectionState.value ==
+                        BleConnectionState.connecting
+                  ? 'Connecting...'
+                  : 'Disconnected',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isConnected ? Colors.green : Colors.grey,
+              ),
+            ),
+          ),
+          if (!isBluetoothOn)
+            GestureDetector(
+              onTap: () => BleScanService.requestEnableBluetooth(),
+              child: Text(
+                'Enable',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primaryColor,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
