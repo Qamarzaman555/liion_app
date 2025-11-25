@@ -1,9 +1,38 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'app/routes/app_pages.dart';
+import 'app/services/ble_scan_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize storage for auto-reconnect
+  await BleScanService.init();
+
+  // Request permissions and start service on Android
+  if (Platform.isAndroid) {
+    await _requestPermissionsAndStartService();
+  }
+
   runApp(const MyApp());
+}
+
+Future<void> _requestPermissionsAndStartService() async {
+  // Request BLE and notification permissions
+  final statuses = await [
+    Permission.bluetoothScan,
+    Permission.bluetoothConnect,
+    Permission.locationWhenInUse,
+    Permission.notification,
+  ].request();
+
+  // Check if BLE permissions are granted
+  if (statuses[Permission.bluetoothScan]!.isGranted &&
+      statuses[Permission.bluetoothConnect]!.isGranted) {
+    await BleScanService.startService();
+  }
 }
 
 class MyApp extends StatelessWidget {

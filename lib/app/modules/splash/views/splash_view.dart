@@ -17,10 +17,7 @@ class SplashView extends GetView<SplashController> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFFFFFF),
-                  Color(0xFFFFFFFF),
-                ],
+                colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
               ),
             ),
           ),

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../routes/app_routes.dart';
 
-class SplashController extends GetxController with GetSingleTickerProviderStateMixin {
+class SplashController extends GetxController
+    with GetSingleTickerProviderStateMixin {
   late AnimationController animationController;
   late Animation<double> animation;
 
@@ -19,10 +20,7 @@ class SplashController extends GetxController with GetSingleTickerProviderStateM
       duration: const Duration(seconds: 2),
     );
     animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: animationController,
-        curve: Curves.linear,
-      ),
+      CurvedAnimation(parent: animationController, curve: Curves.linear),
     );
     animationController.forward();
   }
