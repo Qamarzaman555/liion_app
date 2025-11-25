@@ -8,9 +8,6 @@ import 'app/services/ble_scan_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize storage for auto-reconnect
-  await BleScanService.init();
-
   // Request permissions and start service on Android
   if (Platform.isAndroid) {
     await _requestPermissionsAndStartService();

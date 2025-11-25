@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:get_storage/get_storage.dart';
 
 class BleConnectionState {
   static const int disconnected = 0;
@@ -47,31 +46,6 @@ class BleScanService {
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
   static Stream<int>? _adapterStateStream;
-
-  static const String _lastDeviceKey = 'last_connected_device';
-  static GetStorage? _storage;
-
-  static Future<void> init() async {
-    await GetStorage.init();
-    _storage = GetStorage();
-  }
-
-  /// Save last connected device for auto-reconnect
-  static void saveLastConnectedDevice(String address, String name) {
-    _storage?.write(_lastDeviceKey, {'address': address, 'name': name});
-  }
-
-  /// Get last connected device
-  static Map<String, String>? getLastConnectedDevice() {
-    final data = _storage?.read(_lastDeviceKey);
-    if (data == null) return null;
-    return Map<String, String>.from(data);
-  }
-
-  /// Clear last connected device
-  static void clearLastConnectedDevice() {
-    _storage?.remove(_lastDeviceKey);
-  }
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -143,7 +117,7 @@ class BleScanService {
     }
   }
 
-  /// Connect to a BLE device
+  /// Connect to a BLE device (handled by foreground service)
   static Future<bool> connect(String address) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('connect', {
@@ -156,7 +130,7 @@ class BleScanService {
     }
   }
 
-  /// Disconnect from the connected device
+  /// Disconnect from the connected device (handled by foreground service)
   static Future<bool> disconnect() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('disconnect');
@@ -239,7 +213,7 @@ class BleScanService {
     return _deviceStream!;
   }
 
-  /// Stream of connection state changes
+  /// Stream of connection state changes (from foreground service)
   static Stream<Map<String, dynamic>> get connectionStream {
     _connectionStream ??= _connectionEventChannel.receiveBroadcastStream().map((
       event,

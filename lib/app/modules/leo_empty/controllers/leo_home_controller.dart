@@ -13,8 +13,6 @@ class LeoHomeController extends GetxController {
   StreamSubscription? _deviceSubscription;
   StreamSubscription? _connectionSubscription;
   StreamSubscription? _adapterStateSubscription;
-  Timer? _reconnectTimer;
-  bool _shouldAutoReconnect = true;
 
   @override
   void onInit() {
@@ -22,22 +20,21 @@ class LeoHomeController extends GetxController {
     _listenToAdapterState();
     _listenToDeviceStream();
     _listenToConnectionStream();
-    _ensureBluetoothAndLoad();
+    _loadInitialState();
   }
 
-  Future<void> _ensureBluetoothAndLoad() async {
-    // Get initial adapter state
+  Future<void> _loadInitialState() async {
+    // Get initial states from the service
     adapterState.value = await BleScanService.getAdapterState();
+    connectionState.value = await BleScanService.getConnectionState();
+    connectedDeviceAddress.value =
+        await BleScanService.getConnectedDeviceAddress();
 
     if (adapterState.value != BleAdapterState.on) {
       await BleScanService.requestEnableBluetooth();
     }
 
-    if (adapterState.value == BleAdapterState.on) {
-      await _loadDevices();
-      await _loadConnectionState();
-      _attemptAutoConnect();
-    }
+    await _loadDevices();
   }
 
   Future<void> _loadDevices() async {
@@ -46,45 +43,22 @@ class LeoHomeController extends GetxController {
     isScanning.value = await BleScanService.isServiceRunning();
   }
 
-  Future<void> _loadConnectionState() async {
-    connectionState.value = await BleScanService.getConnectionState();
-    connectedDeviceAddress.value =
-        await BleScanService.getConnectedDeviceAddress();
-  }
-
   void _listenToAdapterState() {
     _adapterStateSubscription = BleScanService.adapterStateStream.listen((
       state,
     ) {
-      final previousState = adapterState.value;
       adapterState.value = state;
 
-      // Bluetooth turned on
-      if (state == BleAdapterState.on && previousState != BleAdapterState.on) {
-        _onBluetoothEnabled();
+      // Reload devices when BT turns on
+      if (state == BleAdapterState.on) {
+        _loadDevices();
       }
 
-      // Bluetooth turned off
+      // Clear UI state when BT turns off
       if (state == BleAdapterState.off) {
-        _onBluetoothDisabled();
+        scannedDevices.clear();
       }
     });
-  }
-
-  void _onBluetoothEnabled() async {
-    // Start service and load devices when BT is enabled
-    await BleScanService.startService();
-    await _loadDevices();
-    _attemptAutoConnect();
-  }
-
-  void _onBluetoothDisabled() {
-    // Clear connection state when BT is disabled
-    connectionState.value = BleConnectionState.disconnected;
-    connectedDeviceAddress.value = null;
-    connectingDeviceAddress.value = null;
-    scannedDevices.clear();
-    _reconnectTimer?.cancel();
   }
 
   void _listenToDeviceStream() {
@@ -94,8 +68,6 @@ class LeoHomeController extends GetxController {
       );
       if (!exists) {
         scannedDevices.add(device);
-        // Try auto-connect when a new device is found
-        _attemptAutoConnect();
       }
     });
   }
@@ -110,67 +82,23 @@ class LeoHomeController extends GetxController {
       if (newState == BleConnectionState.connected) {
         connectedDeviceAddress.value = address;
         connectingDeviceAddress.value = null;
-        _reconnectTimer?.cancel();
-
-        // Save for auto-reconnect
-        if (address != null) {
-          final device = scannedDevices.firstWhereOrNull(
-            (d) => d['address'] == address,
-          );
-          if (device != null) {
-            BleScanService.saveLastConnectedDevice(
-              address,
-              device['name'] ?? 'Leo Usb',
-            );
-          }
-        }
+      } else if (newState == BleConnectionState.connecting) {
+        connectingDeviceAddress.value = address;
       } else if (newState == BleConnectionState.disconnected) {
         connectedDeviceAddress.value = null;
         connectingDeviceAddress.value = null;
-
-        // Auto-reconnect if disconnected unexpectedly and BT is still on
-        if (_shouldAutoReconnect && adapterState.value == BleAdapterState.on) {
-          _scheduleAutoReconnect();
-        }
       }
     });
   }
 
-  void _attemptAutoConnect() async {
-    // Don't auto-connect if already connected or connecting
-    if (connectionState.value != BleConnectionState.disconnected) return;
-    // Don't auto-connect if BT is off
-    if (adapterState.value != BleAdapterState.on) return;
-
-    final lastDevice = BleScanService.getLastConnectedDevice();
-    if (lastDevice == null) return;
-
-    final address = lastDevice['address'];
-    if (address == null) return;
-
-    // Check if the device is in scanned list
-    final deviceInList = scannedDevices.any((d) => d['address'] == address);
-    if (deviceInList) {
-      await connectToDevice(address);
-    }
-  }
-
-  void _scheduleAutoReconnect() {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), () {
-      _attemptAutoConnect();
-    });
-  }
-
   Future<void> refreshDevices() async {
-    await _ensureBluetoothAndLoad();
+    await _loadInitialState();
   }
 
   Future<void> rescan() async {
     if (adapterState.value != BleAdapterState.on) {
       final enabled = await BleScanService.requestEnableBluetooth();
       if (!enabled) return;
-      await BleScanService.startService();
     }
 
     isScanning.value = true;
@@ -181,15 +109,11 @@ class LeoHomeController extends GetxController {
   }
 
   Future<void> connectToDevice(String address) async {
-    _shouldAutoReconnect = true;
     connectingDeviceAddress.value = address;
     await BleScanService.connect(address);
   }
 
   Future<void> disconnectDevice() async {
-    _shouldAutoReconnect = false; // User manually disconnected
-    _reconnectTimer?.cancel();
-    BleScanService.clearLastConnectedDevice();
     await BleScanService.disconnect();
   }
 
@@ -212,7 +136,6 @@ class LeoHomeController extends GetxController {
     _deviceSubscription?.cancel();
     _connectionSubscription?.cancel();
     _adapterStateSubscription?.cancel();
-    _reconnectTimer?.cancel();
     super.onClose();
   }
 }

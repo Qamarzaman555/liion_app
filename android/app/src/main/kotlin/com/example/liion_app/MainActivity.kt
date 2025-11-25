@@ -3,10 +3,8 @@ package com.example.liion_app
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -38,26 +36,19 @@ class MainActivity : FlutterActivity() {
         fun sendAdapterStateUpdate(state: Int) {
             adapterStateSink?.success(state)
         }
+        
+        fun sendServicesDiscovered(services: List<String>) {
+            // Can be used later for service discovery events
+        }
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
-    private var connectionManager: BleConnectionManager? = null
-    private var bluetoothStateReceiver: BroadcastReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
-        
-        connectionManager = BleConnectionManager(this).apply {
-            onConnectionStateChanged = { state, address ->
-                sendConnectionUpdate(state, address)
-            }
-        }
-
-        // Register Bluetooth state receiver
-        registerBluetoothStateReceiver()
 
         // Method Channel for service control
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
@@ -96,24 +87,24 @@ class MainActivity : FlutterActivity() {
                     "connect" -> {
                         val address = call.argument<String>("address")
                         if (address != null) {
-                            val success = connectionManager?.connect(address) ?: false
+                            val success = BleScanService.connect(address)
                             result.success(success)
                         } else {
                             result.error("INVALID_ARGUMENT", "Address is required", null)
                         }
                     }
                     "disconnect" -> {
-                        connectionManager?.disconnect()
+                        BleScanService.disconnect()
                         result.success(true)
                     }
                     "isConnected" -> {
-                        result.success(connectionManager?.isConnected() ?: false)
+                        result.success(BleScanService.connectionState == BleScanService.STATE_CONNECTED)
                     }
                     "getConnectionState" -> {
-                        result.success(connectionManager?.getConnectionState() ?: 0)
+                        result.success(BleScanService.connectionState)
                     }
                     "getConnectedDeviceAddress" -> {
-                        result.success(connectionManager?.getConnectedDeviceAddress())
+                        result.success(BleScanService.connectedDeviceAddress)
                     }
                     else -> result.notImplemented()
                 }
@@ -135,6 +126,11 @@ class MainActivity : FlutterActivity() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     connectionEventSink = events
+                    // Send current state immediately
+                    events?.success(mapOf(
+                        "state" to BleScanService.connectionState,
+                        "address" to BleScanService.connectedDeviceAddress
+                    ))
                 }
                 override fun onCancel(arguments: Any?) {
                     connectionEventSink = null
@@ -155,32 +151,8 @@ class MainActivity : FlutterActivity() {
             })
     }
 
-    private fun registerBluetoothStateReceiver() {
-        bluetoothStateReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
-                    val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                    sendAdapterStateUpdate(mapAdapterState(state))
-                }
-            }
-        }
-        
-        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        registerReceiver(bluetoothStateReceiver, filter)
-    }
-
     private fun getBluetoothAdapterState(): Int {
         return when (bluetoothAdapter?.state) {
-            BluetoothAdapter.STATE_OFF -> 0
-            BluetoothAdapter.STATE_TURNING_ON -> 1
-            BluetoothAdapter.STATE_ON -> 2
-            BluetoothAdapter.STATE_TURNING_OFF -> 3
-            else -> 0
-        }
-    }
-
-    private fun mapAdapterState(state: Int): Int {
-        return when (state) {
             BluetoothAdapter.STATE_OFF -> 0
             BluetoothAdapter.STATE_TURNING_ON -> 1
             BluetoothAdapter.STATE_ON -> 2
@@ -224,12 +196,5 @@ class MainActivity : FlutterActivity() {
     private fun stopBleService() {
         val serviceIntent = Intent(this, BleScanService::class.java)
         stopService(serviceIntent)
-    }
-
-    override fun onDestroy() {
-        bluetoothStateReceiver?.let {
-            unregisterReceiver(it)
-        }
-        super.onDestroy()
     }
 }
