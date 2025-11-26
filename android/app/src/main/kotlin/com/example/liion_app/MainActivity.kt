@@ -34,16 +34,37 @@ class MainActivity : FlutterActivity() {
         private var chargeLimitSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
+        fun clearAllSinks() {
+            eventSink = null
+            connectionEventSink = null
+            adapterStateSink = null
+            dataReceivedSink = null
+            batterySink = null
+            chargeLimitSink = null
+        }
+        
         fun sendDeviceUpdate(address: String, name: String) {
-            eventSink?.success(mapOf("address" to address, "name" to name))
+            try {
+                eventSink?.success(mapOf("address" to address, "name" to name))
+            } catch (e: Exception) {
+                eventSink = null
+            }
         }
         
         fun sendConnectionUpdate(state: Int, address: String?) {
-            connectionEventSink?.success(mapOf("state" to state, "address" to address))
+            try {
+                connectionEventSink?.success(mapOf("state" to state, "address" to address))
+            } catch (e: Exception) {
+                connectionEventSink = null
+            }
         }
         
         fun sendAdapterStateUpdate(state: Int) {
-            adapterStateSink?.success(state)
+            try {
+                adapterStateSink?.success(state)
+            } catch (e: Exception) {
+                adapterStateSink = null
+            }
         }
         
         fun sendServicesDiscovered(services: List<String>) {
@@ -51,7 +72,11 @@ class MainActivity : FlutterActivity() {
         }
         
         fun sendDataReceived(data: String) {
-            dataReceivedSink?.success(data)
+            try {
+                dataReceivedSink?.success(data)
+            } catch (e: Exception) {
+                dataReceivedSink = null
+            }
         }
         
         fun sendUartReady(ready: Boolean) {
@@ -59,29 +84,44 @@ class MainActivity : FlutterActivity() {
         }
         
         fun sendBatteryUpdate(level: Int, isCharging: Boolean) {
-            batterySink?.success(mapOf("level" to level, "isCharging" to isCharging))
+            try {
+                batterySink?.success(mapOf("level" to level, "isCharging" to isCharging))
+            } catch (e: Exception) {
+                batterySink = null
+            }
         }
         
         fun sendChargeLimitUpdate(limit: Int, enabled: Boolean) {
-            chargeLimitSink?.success(mapOf(
-                "limit" to limit,
-                "enabled" to enabled,
-                "confirmed" to BleScanService.chargeLimitConfirmed
-            ))
+            try {
+                chargeLimitSink?.success(mapOf(
+                    "limit" to limit,
+                    "enabled" to enabled,
+                    "confirmed" to BleScanService.chargeLimitConfirmed
+                ))
+            } catch (e: Exception) {
+                chargeLimitSink = null
+            }
         }
         
         fun sendChargeLimitConfirmed(confirmed: Boolean) {
-            chargeLimitSink?.success(mapOf(
-                "limit" to BleScanService.chargeLimit,
-                "enabled" to BleScanService.chargeLimitEnabled,
-                "confirmed" to confirmed
-            ))
+            try {
+                chargeLimitSink?.success(mapOf(
+                    "limit" to BleScanService.chargeLimit,
+                    "enabled" to BleScanService.chargeLimitEnabled,
+                    "confirmed" to confirmed
+                ))
+            } catch (e: Exception) {
+                chargeLimitSink = null
+            }
         }
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        // Clear any stale event sinks from previous instance
+        clearAllSinks()
+        
         super.configureFlutterEngine(flutterEngine)
 
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -337,5 +377,11 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+    
+    override fun onDestroy() {
+        // Clear event sinks when activity is destroyed
+        clearAllSinks()
+        super.onDestroy()
     }
 }
