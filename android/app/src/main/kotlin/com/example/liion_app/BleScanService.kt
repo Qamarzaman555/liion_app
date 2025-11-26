@@ -306,7 +306,7 @@ class BleScanService : Service() {
                         MainActivity.sendConnectionUpdate(STATE_CONNECTED, connectedDeviceAddress)
                         
                         try {
-                            gatt.discoverServices()
+                            gatt.requestMtu(512)
                         } catch (e: SecurityException) {
                             e.printStackTrace()
                         }
@@ -341,6 +341,18 @@ class BleScanService : Service() {
                         }
                         
                         MainActivity.sendConnectionUpdate(STATE_DISCONNECTED, null)
+                    }
+                }
+            }
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            handler.post {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    try {
+                        gatt.discoverServices()
+                    } catch (e: SecurityException) {
+                        e.printStackTrace()
                     }
                 }
             }
