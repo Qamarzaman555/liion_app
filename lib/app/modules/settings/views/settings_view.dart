@@ -26,25 +26,24 @@ class SettingsView extends GetView<SettingsController> {
           children: [
             const SizedBox(height: 8),
 
-            // TODO: Charge Limit feature - commented out for now
-            // // Battery Section
-            // const Text(
-            //   'Battery',
-            //   style: TextStyle(
-            //     fontSize: 14,
-            //     fontWeight: FontWeight.w600,
-            //     color: Color(0xFF888888),
-            //   ),
-            // ),
-            // const SizedBox(height: 8),
-            // _buildSettingsTile(
-            //   icon: Icons.battery_charging_full,
-            //   title: 'Set Charge Limit',
-            //   subtitle: 'Configure maximum charge percentage',
-            //   onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
-            // ),
-            //
-            // const SizedBox(height: 24),
+            // Battery Section
+            const Text(
+              'Battery',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF888888),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildSettingsTile(
+              icon: Icons.battery_charging_full,
+              title: 'Set Charge Limit',
+              subtitle: 'Configure maximum charge percentage',
+              onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
+            ),
+
+            const SizedBox(height: 24),
 
             // Advanced Section
             const Text(
