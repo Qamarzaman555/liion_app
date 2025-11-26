@@ -27,8 +27,9 @@ class BleScanService : Service() {
         const val KEY_LAST_DEVICE_ADDRESS = "last_device_address"
         const val KEY_LAST_DEVICE_NAME = "last_device_name"
         const val KEY_AUTO_RECONNECT = "auto_reconnect"
-        const val KEY_CHARGE_LIMIT = "charge_limit"
-        const val KEY_CHARGE_LIMIT_ENABLED = "charge_limit_enabled"
+        // TODO: Charge Limit feature - commented out for now
+        // const val KEY_CHARGE_LIMIT = "charge_limit"
+        // const val KEY_CHARGE_LIMIT_ENABLED = "charge_limit_enabled"
         
         // Nordic UART Service UUIDs
         val SERVICE_UUID: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
@@ -46,8 +47,9 @@ class BleScanService : Service() {
         const val MAX_RECONNECT_ATTEMPTS = 10
         const val RECONNECT_BACKOFF_MS = 1000L
         
-        // Charge limit timer
-        const val CHARGE_LIMIT_INTERVAL_MS = 30000L // 30 seconds
+        // TODO: Charge Limit feature - commented out for now
+        // // Charge limit timer
+        // const val CHARGE_LIMIT_INTERVAL_MS = 30000L // 30 seconds
         
         // Keep-alive interval (every 5 minutes)
         const val KEEP_ALIVE_INTERVAL_MS = 300000L
@@ -62,21 +64,23 @@ class BleScanService : Service() {
         var isPhoneCharging: Boolean = false
         var currentNowMicroAmps: Int = 0
         
-        // Battery health calculation
-        var designedCapacityMah: Int = 0
-        var estimatedCapacityMah: Double = 0.0
-        var batteryHealthPercent: Double = -1.0
-        var healthCalculationInProgress: Boolean = false
-        var healthCalculationWasActive: Boolean = false  // Track if calculation was interrupted
-        var healthCalculationStartPercent: Int = -1
-        var healthCalculationEndPercent: Int = -1
-        var accumulatedCurrentMah: Double = 0.0
-        const val HEALTH_CALCULATION_RANGE = 60 // Need 60% charge increase
+        // TODO: Battery Health feature - commented out for now
+        // // Battery health calculation
+        // var designedCapacityMah: Int = 0
+        // var estimatedCapacityMah: Double = 0.0
+        // var batteryHealthPercent: Double = -1.0
+        // var healthCalculationInProgress: Boolean = false
+        // var healthCalculationWasActive: Boolean = false  // Track if calculation was interrupted
+        // var healthCalculationStartPercent: Int = -1
+        // var healthCalculationEndPercent: Int = -1
+        // var accumulatedCurrentMah: Double = 0.0
+        // const val HEALTH_CALCULATION_RANGE = 60 // Need 60% charge increase
         
-        // Charge limit state
-        var chargeLimit: Int = 90
-        var chargeLimitEnabled: Boolean = false
-        var chargeLimitConfirmed: Boolean = false
+        // TODO: Charge Limit feature - commented out for now
+        // // Charge limit state
+        // var chargeLimit: Int = 90
+        // var chargeLimitEnabled: Boolean = false
+        // var chargeLimitConfirmed: Boolean = false
         var chargingTimeSeconds: Long = 0
         var dischargingTimeSeconds: Long = 0
         
@@ -107,44 +111,46 @@ class BleScanService : Service() {
             )
         }
         
-        fun getBatteryHealthInfo(): Map<String, Any> {
-            return mapOf(
-                "designedCapacityMah" to designedCapacityMah,
-                "estimatedCapacityMah" to estimatedCapacityMah,
-                "batteryHealthPercent" to batteryHealthPercent,
-                "calculationInProgress" to healthCalculationInProgress,
-                "calculationStartPercent" to healthCalculationStartPercent,
-                "calculationProgress" to if (healthCalculationInProgress && healthCalculationStartPercent >= 0) {
-                    ((phoneBatteryLevel - healthCalculationStartPercent).coerceAtLeast(0) * 100 / HEALTH_CALCULATION_RANGE)
-                } else 0
-            )
-        }
+        // TODO: Battery Health feature - commented out for now
+        // fun getBatteryHealthInfo(): Map<String, Any> {
+        //     return mapOf(
+        //         "designedCapacityMah" to designedCapacityMah,
+        //         "estimatedCapacityMah" to estimatedCapacityMah,
+        //         "batteryHealthPercent" to batteryHealthPercent,
+        //         "calculationInProgress" to healthCalculationInProgress,
+        //         "calculationStartPercent" to healthCalculationStartPercent,
+        //         "calculationProgress" to if (healthCalculationInProgress && healthCalculationStartPercent >= 0) {
+        //             ((phoneBatteryLevel - healthCalculationStartPercent).coerceAtLeast(0) * 100 / HEALTH_CALCULATION_RANGE)
+        //         } else 0
+        //     )
+        // }
         
-        fun startBatteryHealthCalculation(): Boolean {
-            return instance?.startHealthCalculation() ?: false
-        }
+        // fun startBatteryHealthCalculation(): Boolean {
+        //     return instance?.startHealthCalculation() ?: false
+        // }
         
-        fun stopBatteryHealthCalculation() {
-            instance?.stopHealthCalculation()
-        }
+        // fun stopBatteryHealthCalculation() {
+        //     instance?.stopHealthCalculation()
+        // }
         
-        fun setChargeLimit(limit: Int, enabled: Boolean): Boolean {
-            return instance?.updateChargeLimit(limit, enabled) ?: false
-        }
+        // TODO: Charge Limit feature - commented out for now
+        // fun setChargeLimit(limit: Int, enabled: Boolean): Boolean {
+        //     return instance?.updateChargeLimit(limit, enabled) ?: false
+        // }
         
-        fun setChargeLimitEnabled(enabled: Boolean): Boolean {
-            return instance?.updateChargeLimitEnabled(enabled) ?: false
-        }
+        // fun setChargeLimitEnabled(enabled: Boolean): Boolean {
+        //     return instance?.updateChargeLimitEnabled(enabled) ?: false
+        // }
         
-        fun getChargeLimitInfo(): Map<String, Any> {
-            return mapOf(
-                "limit" to chargeLimit,
-                "enabled" to chargeLimitEnabled,
-                "confirmed" to chargeLimitConfirmed,
-                "chargingTime" to chargingTimeSeconds,
-                "dischargingTime" to dischargingTimeSeconds
-            )
-        }
+        // fun getChargeLimitInfo(): Map<String, Any> {
+        //     return mapOf(
+        //         "limit" to chargeLimit,
+        //         "enabled" to chargeLimitEnabled,
+        //         "confirmed" to chargeLimitConfirmed,
+        //         "chargingTime" to chargingTimeSeconds,
+        //         "dischargingTime" to dischargingTimeSeconds
+        //     )
+        // }
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -167,8 +173,9 @@ class BleScanService : Service() {
     
     private var pendingConnectAddress: String? = null
     
-    // Charge limit timer
-    private var chargeLimitRunnable: Runnable? = null
+    // TODO: Charge Limit feature - commented out for now
+    // // Charge limit timer
+    // private var chargeLimitRunnable: Runnable? = null
     private var timeTrackingRunnable: Runnable? = null
     private var lastChargingState: Boolean? = null
     
@@ -180,10 +187,11 @@ class BleScanService : Service() {
     private var measureRunnable: Runnable? = null
     private val MEASURE_INTERVAL_MS = 1000L // Send measure command every 1 second
     
-    // Battery health calculation
-    private var healthCalculationRunnable: Runnable? = null
-    private var lastHealthSampleTime: Long = 0
-    private val HEALTH_SAMPLE_INTERVAL_MS = 1000L // Sample every 1 second
+    // TODO: Battery Health feature - commented out for now
+    // // Battery health calculation
+    // private var healthCalculationRunnable: Runnable? = null
+    // private var lastHealthSampleTime: Long = 0
+    // private val HEALTH_SAMPLE_INTERVAL_MS = 1000L // Sample every 1 second
     
     // Firebase logging
     private val logger: FirebaseLoggingService by lazy { FirebaseLoggingService.getInstance() }
@@ -211,28 +219,31 @@ class BleScanService : Service() {
                     if (chargingStateChanged) {
                         if (isCharging) {
                             chargingTimeSeconds = 0
-                            // Auto-restart health calculation if it was in progress
-                            if (healthCalculationWasActive) {
-                                healthCalculationWasActive = false
-                                startHealthCalculation()
-                                logger.logInfo("Battery health calculation auto-restarted - charger reconnected")
-                            }
+                            // TODO: Battery Health feature - commented out for now
+                            // // Auto-restart health calculation if it was in progress
+                            // if (healthCalculationWasActive) {
+                            //     healthCalculationWasActive = false
+                            //     startHealthCalculation()
+                            //     logger.logInfo("Battery health calculation auto-restarted - charger reconnected")
+                            // }
                         } else {
                             dischargingTimeSeconds = 0
-                            // Stop and reset health calculation if unplugged
-                            if (healthCalculationInProgress) {
-                                healthCalculationWasActive = true
-                                stopHealthCalculation()
-                                logger.logInfo("Battery health calculation stopped - charger disconnected")
-                            }
+                            // TODO: Battery Health feature - commented out for now
+                            // // Stop and reset health calculation if unplugged
+                            // if (healthCalculationInProgress) {
+                            //     healthCalculationWasActive = true
+                            //     stopHealthCalculation()
+                            //     logger.logInfo("Battery health calculation stopped - charger disconnected")
+                            // }
                         }
                         lastChargingState = isCharging
                     }
                     
-                    // Check if health calculation is complete
-                    if (healthCalculationInProgress && levelChanged) {
-                        checkHealthCalculationProgress()
-                    }
+                    // TODO: Battery Health feature - commented out for now
+                    // // Check if health calculation is complete
+                    // if (healthCalculationInProgress && levelChanged) {
+                    //     checkHealthCalculationProgress()
+                    // }
                     
                     // Notify Flutter about battery change
                     MainActivity.sendBatteryUpdate(phoneBatteryLevel, isPhoneCharging)
@@ -240,10 +251,11 @@ class BleScanService : Service() {
                     // Update notification with battery info
                     updateNotificationWithBattery()
                     
-                    // Send charge limit command on battery change
-                    if (levelChanged && isUartReady && connectionState == STATE_CONNECTED) {
-                        sendChargeLimitCommand()
-                    }
+                    // TODO: Charge Limit feature - commented out for now
+                    // // Send charge limit command on battery change
+                    // if (levelChanged && isUartReady && connectionState == STATE_CONNECTED) {
+                    //     sendChargeLimitCommand()
+                    // }
                 }
             }
         }
@@ -310,10 +322,11 @@ class BleScanService : Service() {
                         isUartReady = false
                         txCharacteristic = null
                         rxCharacteristic = null
-                        chargeLimitConfirmed = false
+                        // TODO: Charge Limit feature - commented out for now
+                        // chargeLimitConfirmed = false
                         
-                        // Stop charge limit timer
-                        stopChargeLimitTimer()
+                        // // Stop charge limit timer
+                        // stopChargeLimitTimer()
                         stopMeasureTimer()
                         
                         closeGatt()
@@ -397,15 +410,17 @@ class BleScanService : Service() {
                     isUartReady = true
                     MainActivity.sendUartReady(true)
                     
-                    // Start charge limit timer and send initial command
-                    startChargeLimitTimer()
+                    // TODO: Charge Limit feature - commented out for now
+                    // // Start charge limit timer and send initial command
+                    // startChargeLimitTimer()
                     startTimeTracking()
                     startMeasureTimer()
                     
-                    // Send initial charge limit command
-                    handler.postDelayed({
-                        sendChargeLimitCommand()
-                    }, 500)
+                    // TODO: Charge Limit feature - commented out for now
+                    // // Send initial charge limit command
+                    // handler.postDelayed({
+                    //     sendChargeLimitCommand()
+                    // }, 500)
                 }
             }
         }
@@ -414,16 +429,17 @@ class BleScanService : Service() {
     private fun handleReceivedData(data: String) {
         val parts = data.split(" ")
         
-        // Handle charge_limit response
-        if (parts.size >= 4 && parts[2] == "charge_limit") {
-            try {
-                val value = parts[3].toIntOrNull() ?: return
-                chargeLimitConfirmed = value == 1
-                MainActivity.sendChargeLimitConfirmed(chargeLimitConfirmed)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        // TODO: Charge Limit feature - commented out for now
+        // // Handle charge_limit response
+        // if (parts.size >= 4 && parts[2] == "charge_limit") {
+        //     try {
+        //         val value = parts[3].toIntOrNull() ?: return
+        //         chargeLimitConfirmed = value == 1
+        //         MainActivity.sendChargeLimitConfirmed(chargeLimitConfirmed)
+        //     } catch (e: Exception) {
+        //         e.printStackTrace()
+        //     }
+        // }
         
         // Handle measure response: "OK measure voltage current"
         // parts[1] == "measure", parts[2] is voltage, parts[3] is current
@@ -503,76 +519,77 @@ class BleScanService : Service() {
         }
     }
 
-    private fun sendChargeLimitCommand() {
-        if (!isUartReady || connectionState != STATE_CONNECTED) return
-        
-        val limitValue = if (chargeLimitEnabled) chargeLimit else 0
-        val chargingFlag = if (isPhoneCharging) 1 else 0
-        val timeValue = if (isPhoneCharging) chargingTimeSeconds else dischargingTimeSeconds
-        
-        val command = "app_msg limit $limitValue $phoneBatteryLevel $chargingFlag $timeValue"
-        writeCommand(command)
-    }
+    // TODO: Charge Limit feature - commented out for now
+    // private fun sendChargeLimitCommand() {
+    //     if (!isUartReady || connectionState != STATE_CONNECTED) return
+    //     
+    //     val limitValue = if (chargeLimitEnabled) chargeLimit else 0
+    //     val chargingFlag = if (isPhoneCharging) 1 else 0
+    //     val timeValue = if (isPhoneCharging) chargingTimeSeconds else dischargingTimeSeconds
+    //     
+    //     val command = "app_msg limit $limitValue $phoneBatteryLevel $chargingFlag $timeValue"
+    //     writeCommand(command)
+    // }
 
-    private fun updateChargeLimit(limit: Int, enabled: Boolean): Boolean {
-        if (limit < 0 || limit > 100) return false
-        
-        chargeLimit = limit
-        chargeLimitEnabled = enabled
-        
-        logger.logChargeLimit(limit, enabled)
-        
-        // Save to preferences
-        prefs?.edit()?.apply {
-            putInt(KEY_CHARGE_LIMIT, limit)
-            putBoolean(KEY_CHARGE_LIMIT_ENABLED, enabled)
-            apply()
-        }
-        
-        // Send command if connected
-        if (isUartReady && connectionState == STATE_CONNECTED) {
-            sendChargeLimitCommand()
-        }
-        
-        MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
-        updateNotificationWithBattery()
-        return true
-    }
+    // private fun updateChargeLimit(limit: Int, enabled: Boolean): Boolean {
+    //     if (limit < 0 || limit > 100) return false
+    //     
+    //     chargeLimit = limit
+    //     chargeLimitEnabled = enabled
+    //     
+    //     logger.logChargeLimit(limit, enabled)
+    //     
+    //     // Save to preferences
+    //     prefs?.edit()?.apply {
+    //         putInt(KEY_CHARGE_LIMIT, limit)
+    //         putBoolean(KEY_CHARGE_LIMIT_ENABLED, enabled)
+    //         apply()
+    //     }
+    //     
+    //     // Send command if connected
+    //     if (isUartReady && connectionState == STATE_CONNECTED) {
+    //         sendChargeLimitCommand()
+    //     }
+    //     
+    //     MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
+    //     updateNotificationWithBattery()
+    //     return true
+    // }
     
-    private fun updateChargeLimitEnabled(enabled: Boolean): Boolean {
-        chargeLimitEnabled = enabled
-        
-        // Save to preferences
-        prefs?.edit()?.putBoolean(KEY_CHARGE_LIMIT_ENABLED, enabled)?.apply()
-        
-        // Send command if connected - enabled sends chargeLimit, disabled sends 0
-        if (isUartReady && connectionState == STATE_CONNECTED) {
-            sendChargeLimitCommand()
-        }
-        
-        MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
-        updateNotificationWithBattery()
-        return true
-    }
+    // private fun updateChargeLimitEnabled(enabled: Boolean): Boolean {
+    //     chargeLimitEnabled = enabled
+    //     
+    //     // Save to preferences
+    //     prefs?.edit()?.putBoolean(KEY_CHARGE_LIMIT_ENABLED, enabled)?.apply()
+    //     
+    //     // Send command if connected - enabled sends chargeLimit, disabled sends 0
+    //     if (isUartReady && connectionState == STATE_CONNECTED) {
+    //         sendChargeLimitCommand()
+    //     }
+    //     
+    //     MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
+    //     updateNotificationWithBattery()
+    //     return true
+    // }
 
-    private fun startChargeLimitTimer() {
-        stopChargeLimitTimer()
-        
-        chargeLimitRunnable = object : Runnable {
-            override fun run() {
-                if (isUartReady && connectionState == STATE_CONNECTED) {
-                    sendChargeLimitCommand()
-                }
-                handler.postDelayed(this, CHARGE_LIMIT_INTERVAL_MS)
-            }
-        }
-        handler.postDelayed(chargeLimitRunnable!!, CHARGE_LIMIT_INTERVAL_MS)
-    }
+    // private fun startChargeLimitTimer() {
+    //     stopChargeLimitTimer()
+    //     
+    //     chargeLimitRunnable = object : Runnable {
+    //         override fun run() {
+    //             if (isUartReady && connectionState == STATE_CONNECTED) {
+    //                 sendChargeLimitCommand()
+    //             }
+    //             handler.postDelayed(this, CHARGE_LIMIT_INTERVAL_MS)
+    //         }
+    //     }
+    //     handler.postDelayed(chargeLimitRunnable!!, CHARGE_LIMIT_INTERVAL_MS)
+    // }
 
-    private fun stopChargeLimitTimer() {
-        chargeLimitRunnable?.let { handler.removeCallbacks(it) }
-        chargeLimitRunnable = null
-    }
+    // private fun stopChargeLimitTimer() {
+    //     chargeLimitRunnable?.let { handler.removeCallbacks(it) }
+    //     chargeLimitRunnable = null
+    // }
 
     private fun startTimeTracking() {
         stopTimeTracking()
@@ -614,173 +631,174 @@ class BleScanService : Service() {
         measureRunnable = null
     }
     
-    // ==================== Battery Health Calculation ====================
-    
-    private fun getDesignedCapacity(): Int {
-        return try {
-            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            
-            // Try to get designed capacity (in microampere-hours)
-            val capacityMicroAh = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
-            
-            // Some devices report designed capacity via PowerProfile (reflection needed)
-            val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
-            val constructor = powerProfileClass.getConstructor(Context::class.java)
-            val powerProfile = constructor.newInstance(this)
-            val method = powerProfileClass.getMethod("getBatteryCapacity")
-            val capacity = method.invoke(powerProfile) as Double
-            
-            capacity.toInt()
-        } catch (e: Exception) {
-            // Fallback: try to read from system properties or return default
-            try {
-                val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-                // BATTERY_PROPERTY_CAPACITY returns percentage, not useful here
-                // Return 0 to indicate we couldn't get it
-                0
-            } catch (e2: Exception) {
-                0
-            }
-        }
-    }
-    
-    private fun getCurrentNow(): Int {
-        return try {
-            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            // Returns current in microamperes (negative when discharging, positive when charging)
-            batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        } catch (e: Exception) {
-            0
-        }
-    }
-    
-    fun startHealthCalculation(): Boolean {
-        if (!isPhoneCharging) {
-            logger.logWarning("Cannot start health calculation - device not charging")
-            return false
-        }
-        
-        if (phoneBatteryLevel > (100 - HEALTH_CALCULATION_RANGE)) {
-            logger.logWarning("Cannot start health calculation - battery too high (need room for ${HEALTH_CALCULATION_RANGE}% charge)")
-            return false
-        }
-        
-        // Get designed capacity
-        designedCapacityMah = getDesignedCapacity()
-        if (designedCapacityMah <= 0) {
-            logger.logWarning("Could not determine designed battery capacity")
-            // Continue anyway, we can still calculate estimated capacity
-        }
-        
-        // Reset calculation state
-        healthCalculationInProgress = true
-        healthCalculationStartPercent = phoneBatteryLevel
-        healthCalculationEndPercent = phoneBatteryLevel + HEALTH_CALCULATION_RANGE
-        accumulatedCurrentMah = 0.0
-        lastHealthSampleTime = System.currentTimeMillis()
-        
-        logger.logInfo("Battery health calculation started at $phoneBatteryLevel% (target: $healthCalculationEndPercent%)")
-        
-        // Start sampling current
-        startHealthSampling()
-        
-        // Notify Flutter
-        MainActivity.sendBatteryHealthUpdate()
-        
-        return true
-    }
-    
-    fun stopHealthCalculation() {
-        healthCalculationInProgress = false
-        stopHealthSampling()
-        MainActivity.sendBatteryHealthUpdate()
-    }
-    
-    private fun startHealthSampling() {
-        stopHealthSampling()
-        
-        healthCalculationRunnable = object : Runnable {
-            override fun run() {
-                if (healthCalculationInProgress && isPhoneCharging) {
-                    sampleBatteryCurrent()
-                    handler.postDelayed(this, HEALTH_SAMPLE_INTERVAL_MS)
-                }
-            }
-        }
-        handler.postDelayed(healthCalculationRunnable!!, HEALTH_SAMPLE_INTERVAL_MS)
-    }
-    
-    private fun stopHealthSampling() {
-        healthCalculationRunnable?.let { handler.removeCallbacks(it) }
-        healthCalculationRunnable = null
-    }
-    
-    private fun sampleBatteryCurrent() {
-        val currentMicroAmps = getCurrentNow()
-        currentNowMicroAmps = currentMicroAmps
-        
-        val now = System.currentTimeMillis()
-        val elapsedSeconds = (now - lastHealthSampleTime) / 1000.0
-        lastHealthSampleTime = now
-        
-        if (currentMicroAmps > 0 && elapsedSeconds > 0) {
-            // Convert microamps to milliamps and accumulate (current * time = charge)
-            // Current is in microamps, time is in seconds
-            // mAh = (microamps / 1000) * (seconds / 3600) = microamps * seconds / 3,600,000
-            val chargeMah = (currentMicroAmps.toDouble() * elapsedSeconds) / 3600000.0
-            accumulatedCurrentMah += chargeMah
-        }
-    }
-    
-    private fun checkHealthCalculationProgress() {
-        if (!healthCalculationInProgress) return
-        
-        val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
-        
-        if (percentCharged >= HEALTH_CALCULATION_RANGE) {
-            // Calculation complete!
-            calculateBatteryHealth()
-        }
-    }
-    
-    private fun calculateBatteryHealth() {
-        stopHealthSampling()
-        healthCalculationInProgress = false
-        
-        val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
-        
-        if (percentCharged > 0 && accumulatedCurrentMah > 0) {
-            // Estimated capacity = (accumulated mAh / percent charged) * 100
-            estimatedCapacityMah = (accumulatedCurrentMah / percentCharged) * 100
-            
-            // Battery health = (estimated capacity / designed capacity) * 100
-            if (designedCapacityMah > 0) {
-                batteryHealthPercent = (estimatedCapacityMah / designedCapacityMah) * 100
-                // Cap at 100%
-                if (batteryHealthPercent > 100) batteryHealthPercent = 100.0
-            }
-            
-            logger.logInfo("Battery health calculation complete: " +
-                    "Estimated capacity: ${estimatedCapacityMah.toInt()} mAh, " +
-                    "Designed capacity: $designedCapacityMah mAh, " +
-                    "Health: ${batteryHealthPercent.toInt()}%")
-            
-            // Save results to preferences
-            prefs?.edit()?.apply {
-                putFloat("estimated_capacity_mah", estimatedCapacityMah.toFloat())
-                putFloat("battery_health_percent", batteryHealthPercent.toFloat())
-                putLong("health_calculation_time", System.currentTimeMillis())
-                apply()
-            }
-        } else {
-            logger.logWarning("Battery health calculation failed - insufficient data")
-        }
-        
-        // Notify Flutter
-        MainActivity.sendBatteryHealthUpdate()
-    }
-    
-    // ==================== End Battery Health Calculation ====================
+    // TODO: Battery Health feature - commented out for now
+    // // ==================== Battery Health Calculation ====================
+    // 
+    // private fun getDesignedCapacity(): Int {
+    //     return try {
+    //         val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    //         
+    //         // Try to get designed capacity (in microampere-hours)
+    //         val capacityMicroAh = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+    //         
+    //         // Some devices report designed capacity via PowerProfile (reflection needed)
+    //         val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
+    //         val constructor = powerProfileClass.getConstructor(Context::class.java)
+    //         val powerProfile = constructor.newInstance(this)
+    //         val method = powerProfileClass.getMethod("getBatteryCapacity")
+    //         val capacity = method.invoke(powerProfile) as Double
+    //         
+    //         capacity.toInt()
+    //     } catch (e: Exception) {
+    //         // Fallback: try to read from system properties or return default
+    //         try {
+    //             val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    //             // BATTERY_PROPERTY_CAPACITY returns percentage, not useful here
+    //             // Return 0 to indicate we couldn't get it
+    //             0
+    //         } catch (e2: Exception) {
+    //             0
+    //         }
+    //     }
+    // }
+    // 
+    // private fun getCurrentNow(): Int {
+    //     return try {
+    //         val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    //         // Returns current in microamperes (negative when discharging, positive when charging)
+    //         batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+    //     } catch (e: Exception) {
+    //         0
+    //     }
+    // }
+    // 
+    // fun startHealthCalculation(): Boolean {
+    //     if (!isPhoneCharging) {
+    //         logger.logWarning("Cannot start health calculation - device not charging")
+    //         return false
+    //     }
+    //     
+    //     if (phoneBatteryLevel > (100 - HEALTH_CALCULATION_RANGE)) {
+    //         logger.logWarning("Cannot start health calculation - battery too high (need room for ${HEALTH_CALCULATION_RANGE}% charge)")
+    //         return false
+    //     }
+    //     
+    //     // Get designed capacity
+    //     designedCapacityMah = getDesignedCapacity()
+    //     if (designedCapacityMah <= 0) {
+    //         logger.logWarning("Could not determine designed battery capacity")
+    //         // Continue anyway, we can still calculate estimated capacity
+    //     }
+    //     
+    //     // Reset calculation state
+    //     healthCalculationInProgress = true
+    //     healthCalculationStartPercent = phoneBatteryLevel
+    //     healthCalculationEndPercent = phoneBatteryLevel + HEALTH_CALCULATION_RANGE
+    //     accumulatedCurrentMah = 0.0
+    //     lastHealthSampleTime = System.currentTimeMillis()
+    //     
+    //     logger.logInfo("Battery health calculation started at $phoneBatteryLevel% (target: $healthCalculationEndPercent%)")
+    //     
+    //     // Start sampling current
+    //     startHealthSampling()
+    //     
+    //     // Notify Flutter
+    //     MainActivity.sendBatteryHealthUpdate()
+    //     
+    //     return true
+    // }
+    // 
+    // fun stopHealthCalculation() {
+    //     healthCalculationInProgress = false
+    //     stopHealthSampling()
+    //     MainActivity.sendBatteryHealthUpdate()
+    // }
+    // 
+    // private fun startHealthSampling() {
+    //     stopHealthSampling()
+    //     
+    //     healthCalculationRunnable = object : Runnable {
+    //         override fun run() {
+    //             if (healthCalculationInProgress && isPhoneCharging) {
+    //                 sampleBatteryCurrent()
+    //                 handler.postDelayed(this, HEALTH_SAMPLE_INTERVAL_MS)
+    //             }
+    //         }
+    //     }
+    //     handler.postDelayed(healthCalculationRunnable!!, HEALTH_SAMPLE_INTERVAL_MS)
+    // }
+    // 
+    // private fun stopHealthSampling() {
+    //     healthCalculationRunnable?.let { handler.removeCallbacks(it) }
+    //     healthCalculationRunnable = null
+    // }
+    // 
+    // private fun sampleBatteryCurrent() {
+    //     val currentMicroAmps = getCurrentNow()
+    //     currentNowMicroAmps = currentMicroAmps
+    //     
+    //     val now = System.currentTimeMillis()
+    //     val elapsedSeconds = (now - lastHealthSampleTime) / 1000.0
+    //     lastHealthSampleTime = now
+    //     
+    //     if (currentMicroAmps > 0 && elapsedSeconds > 0) {
+    //         // Convert microamps to milliamps and accumulate (current * time = charge)
+    //         // Current is in microamps, time is in seconds
+    //         // mAh = (microamps / 1000) * (seconds / 3600) = microamps * seconds / 3,600,000
+    //         val chargeMah = (currentMicroAmps.toDouble() * elapsedSeconds) / 3600000.0
+    //         accumulatedCurrentMah += chargeMah
+    //     }
+    // }
+    // 
+    // private fun checkHealthCalculationProgress() {
+    //     if (!healthCalculationInProgress) return
+    //     
+    //     val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
+    //     
+    //     if (percentCharged >= HEALTH_CALCULATION_RANGE) {
+    //         // Calculation complete!
+    //         calculateBatteryHealth()
+    //     }
+    // }
+    // 
+    // private fun calculateBatteryHealth() {
+    //     stopHealthSampling()
+    //     healthCalculationInProgress = false
+    //     
+    //     val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
+    //     
+    //     if (percentCharged > 0 && accumulatedCurrentMah > 0) {
+    //         // Estimated capacity = (accumulated mAh / percent charged) * 100
+    //         estimatedCapacityMah = (accumulatedCurrentMah / percentCharged) * 100
+    //         
+    //         // Battery health = (estimated capacity / designed capacity) * 100
+    //         if (designedCapacityMah > 0) {
+    //             batteryHealthPercent = (estimatedCapacityMah / designedCapacityMah) * 100
+    //             // Cap at 100%
+    //             if (batteryHealthPercent > 100) batteryHealthPercent = 100.0
+    //         }
+    //         
+    //         logger.logInfo("Battery health calculation complete: " +
+    //                 "Estimated capacity: ${estimatedCapacityMah.toInt()} mAh, " +
+    //                 "Designed capacity: $designedCapacityMah mAh, " +
+    //                 "Health: ${batteryHealthPercent.toInt()}%")
+    //         
+    //         // Save results to preferences
+    //         prefs?.edit()?.apply {
+    //             putFloat("estimated_capacity_mah", estimatedCapacityMah.toFloat())
+    //             putFloat("battery_health_percent", batteryHealthPercent.toFloat())
+    //             putLong("health_calculation_time", System.currentTimeMillis())
+    //             apply()
+    //         }
+    //     } else {
+    //         logger.logWarning("Battery health calculation failed - insufficient data")
+    //     }
+    //     
+    //     // Notify Flutter
+    //     MainActivity.sendBatteryHealthUpdate()
+    // }
+    // 
+    // // ==================== End Battery Health Calculation ====================
 
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -802,7 +820,8 @@ class BleScanService : Service() {
                         logger.logBleState("Bluetooth turned OFF")
                         stopBleScan()
                         cancelReconnect()
-                        stopChargeLimitTimer()
+                        // TODO: Charge Limit feature - commented out for now
+                        // stopChargeLimitTimer()
                         stopTimeTracking()
                         stopMeasureTimer()
                         closeGatt()
@@ -812,7 +831,7 @@ class BleScanService : Service() {
                         isUartReady = false
                         txCharacteristic = null
                         rxCharacteristic = null
-                        chargeLimitConfirmed = false
+                        // chargeLimitConfirmed = false
                         scannedDevices.clear()
                         MainActivity.sendConnectionUpdate(STATE_DISCONNECTED, null)
                     }
@@ -833,9 +852,10 @@ class BleScanService : Service() {
         // Acquire partial wake lock to keep CPU running
         acquireWakeLock()
         
-        // Load saved charge limit settings
-        chargeLimit = prefs?.getInt(KEY_CHARGE_LIMIT, 90) ?: 90
-        chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
+        // TODO: Charge Limit feature - commented out for now
+        // // Load saved charge limit settings
+        // chargeLimit = prefs?.getInt(KEY_CHARGE_LIMIT, 90) ?: 90
+        // chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
         
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
@@ -997,7 +1017,8 @@ class BleScanService : Service() {
 
     private fun disconnectDevice(userInitiated: Boolean) {
         cancelReconnect()
-        stopChargeLimitTimer()
+        // TODO: Charge Limit feature - commented out for now
+        // stopChargeLimitTimer()
         stopTimeTracking()
         stopMeasureTimer()
         
@@ -1012,7 +1033,7 @@ class BleScanService : Service() {
         isUartReady = false
         txCharacteristic = null
         rxCharacteristic = null
-        chargeLimitConfirmed = false
+        // chargeLimitConfirmed = false
         
         try {
             bluetoothGatt?.disconnect()
@@ -1192,11 +1213,13 @@ class BleScanService : Service() {
             else -> "Scanning..."
         }
         
-        val limitText = if (chargeLimitEnabled && connectionState == STATE_CONNECTED) {
-            " | Limit: $chargeLimit%"
-        } else {
-            ""
-        }
+        // TODO: Charge Limit feature - commented out for now
+        // val limitText = if (chargeLimitEnabled && connectionState == STATE_CONNECTED) {
+        //     " | Limit: $chargeLimit%"
+        // } else {
+        //     ""
+        // }
+        val limitText = ""
         
         val fullText = if (batteryText.isNotEmpty()) {
             "$statusText | $batteryText$limitText"
@@ -1213,7 +1236,8 @@ class BleScanService : Service() {
         logger.logServiceState("Service destroyed")
         stopBleScan()
         cancelReconnect()
-        stopChargeLimitTimer()
+        // TODO: Charge Limit feature - commented out for now
+        // stopChargeLimitTimer()
         stopTimeTracking()
         stopMeasureTimer()
         stopKeepAlive()

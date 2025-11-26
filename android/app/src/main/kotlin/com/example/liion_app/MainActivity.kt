@@ -23,8 +23,9 @@ class MainActivity : FlutterActivity() {
         private const val ADAPTER_STATE_CHANNEL = "com.liion_app/adapter_state"
         private const val DATA_RECEIVED_CHANNEL = "com.liion_app/data_received"
         private const val BATTERY_CHANNEL = "com.liion_app/phone_battery"
-        private const val CHARGE_LIMIT_CHANNEL = "com.liion_app/charge_limit"
-        private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
+        // TODO: Charge Limit and Battery Health features - commented out for now
+        // private const val CHARGE_LIMIT_CHANNEL = "com.liion_app/charge_limit"
+        // private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
         private const val MEASURE_DATA_CHANNEL = "com.liion_app/measure_data"
         private const val REQUEST_ENABLE_BT = 1001
         
@@ -33,8 +34,9 @@ class MainActivity : FlutterActivity() {
         private var adapterStateSink: EventChannel.EventSink? = null
         private var dataReceivedSink: EventChannel.EventSink? = null
         private var batterySink: EventChannel.EventSink? = null
-        private var chargeLimitSink: EventChannel.EventSink? = null
-        private var batteryHealthSink: EventChannel.EventSink? = null
+        // TODO: Charge Limit and Battery Health features - commented out for now
+        // private var chargeLimitSink: EventChannel.EventSink? = null
+        // private var batteryHealthSink: EventChannel.EventSink? = null
         private var measureDataSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
@@ -44,8 +46,8 @@ class MainActivity : FlutterActivity() {
             adapterStateSink = null
             dataReceivedSink = null
             batterySink = null
-            chargeLimitSink = null
-            batteryHealthSink = null
+            // chargeLimitSink = null
+            // batteryHealthSink = null
         }
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -104,37 +106,39 @@ class MainActivity : FlutterActivity() {
             }
         }
         
-        fun sendChargeLimitUpdate(limit: Int, enabled: Boolean) {
-            try {
-                chargeLimitSink?.success(mapOf(
-                    "limit" to limit,
-                    "enabled" to enabled,
-                    "confirmed" to BleScanService.chargeLimitConfirmed
-                ))
-            } catch (e: Exception) {
-                chargeLimitSink = null
-            }
-        }
+        // TODO: Charge Limit feature - commented out for now
+        // fun sendChargeLimitUpdate(limit: Int, enabled: Boolean) {
+        //     try {
+        //         chargeLimitSink?.success(mapOf(
+        //             "limit" to limit,
+        //             "enabled" to enabled,
+        //             "confirmed" to BleScanService.chargeLimitConfirmed
+        //         ))
+        //     } catch (e: Exception) {
+        //         chargeLimitSink = null
+        //     }
+        // }
         
-        fun sendChargeLimitConfirmed(confirmed: Boolean) {
-            try {
-                chargeLimitSink?.success(mapOf(
-                    "limit" to BleScanService.chargeLimit,
-                    "enabled" to BleScanService.chargeLimitEnabled,
-                    "confirmed" to confirmed
-                ))
-            } catch (e: Exception) {
-                chargeLimitSink = null
-            }
-        }
+        // fun sendChargeLimitConfirmed(confirmed: Boolean) {
+        //     try {
+        //         chargeLimitSink?.success(mapOf(
+        //             "limit" to BleScanService.chargeLimit,
+        //             "enabled" to BleScanService.chargeLimitEnabled,
+        //             "confirmed" to confirmed
+        //         ))
+        //     } catch (e: Exception) {
+        //         chargeLimitSink = null
+        //     }
+        // }
         
-        fun sendBatteryHealthUpdate() {
-            try {
-                batteryHealthSink?.success(BleScanService.getBatteryHealthInfo())
-            } catch (e: Exception) {
-                batteryHealthSink = null
-            }
-        }
+        // TODO: Battery Health feature - commented out for now
+        // fun sendBatteryHealthUpdate() {
+        //     try {
+        //         batteryHealthSink?.success(BleScanService.getBatteryHealthInfo())
+        //     } catch (e: Exception) {
+        //         batteryHealthSink = null
+        //     }
+        // }
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -216,28 +220,29 @@ class MainActivity : FlutterActivity() {
                     "getPhoneBattery" -> {
                         result.success(BleScanService.getPhoneBatteryInfo())
                     }
-                    "setChargeLimit" -> {
-                        val limit = call.argument<Int>("limit")
-                        val enabled = call.argument<Boolean>("enabled")
-                        if (limit != null && enabled != null) {
-                            val success = BleScanService.setChargeLimit(limit, enabled)
-                            result.success(success)
-                        } else {
-                            result.error("INVALID_ARGUMENT", "Limit and enabled are required", null)
-                        }
-                    }
-                    "getChargeLimit" -> {
-                        result.success(BleScanService.getChargeLimitInfo())
-                    }
-                    "setChargeLimitEnabled" -> {
-                        val enabled = call.argument<Boolean>("enabled")
-                        if (enabled != null) {
-                            val success = BleScanService.setChargeLimitEnabled(enabled)
-                            result.success(success)
-                        } else {
-                            result.error("INVALID_ARGUMENT", "Enabled is required", null)
-                        }
-                    }
+                    // TODO: Charge Limit feature - commented out for now
+                    // "setChargeLimit" -> {
+                    //     val limit = call.argument<Int>("limit")
+                    //     val enabled = call.argument<Boolean>("enabled")
+                    //     if (limit != null && enabled != null) {
+                    //         val success = BleScanService.setChargeLimit(limit, enabled)
+                    //         result.success(success)
+                    //     } else {
+                    //         result.error("INVALID_ARGUMENT", "Limit and enabled are required", null)
+                    //     }
+                    // }
+                    // "getChargeLimit" -> {
+                    //     result.success(BleScanService.getChargeLimitInfo())
+                    // }
+                    // "setChargeLimitEnabled" -> {
+                    //     val enabled = call.argument<Boolean>("enabled")
+                    //     if (enabled != null) {
+                    //         val success = BleScanService.setChargeLimitEnabled(enabled)
+                    //         result.success(success)
+                    //     } else {
+                    //         result.error("INVALID_ARGUMENT", "Enabled is required", null)
+                    //     }
+                    // }
                     "isBatteryOptimizationDisabled" -> {
                         result.success(isBatteryOptimizationDisabled())
                     }
@@ -245,16 +250,17 @@ class MainActivity : FlutterActivity() {
                         requestDisableBatteryOptimization()
                         result.success(true)
                     }
-                    "getBatteryHealthInfo" -> {
-                        result.success(BleScanService.getBatteryHealthInfo())
-                    }
-                    "startBatteryHealthCalculation" -> {
-                        result.success(BleScanService.startBatteryHealthCalculation())
-                    }
-                    "stopBatteryHealthCalculation" -> {
-                        BleScanService.stopBatteryHealthCalculation()
-                        result.success(true)
-                    }
+                    // TODO: Battery Health feature - commented out for now
+                    // "getBatteryHealthInfo" -> {
+                    //     result.success(BleScanService.getBatteryHealthInfo())
+                    // }
+                    // "startBatteryHealthCalculation" -> {
+                    //     result.success(BleScanService.startBatteryHealthCalculation())
+                    // }
+                    // "stopBatteryHealthCalculation" -> {
+                    //     BleScanService.stopBatteryHealthCalculation()
+                    //     result.success(true)
+                    // }
                     else -> result.notImplemented()
                 }
             }
@@ -323,33 +329,35 @@ class MainActivity : FlutterActivity() {
                 }
             })
         
-        // Event Channel for charge limit updates
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, CHARGE_LIMIT_CHANNEL)
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    chargeLimitSink = events
-                    events?.success(mapOf(
-                        "limit" to BleScanService.chargeLimit,
-                        "enabled" to BleScanService.chargeLimitEnabled,
-                        "confirmed" to BleScanService.chargeLimitConfirmed
-                    ))
-                }
-                override fun onCancel(arguments: Any?) {
-                    chargeLimitSink = null
-                }
-            })
+        // TODO: Charge Limit feature - commented out for now
+        // // Event Channel for charge limit updates
+        // EventChannel(flutterEngine.dartExecutor.binaryMessenger, CHARGE_LIMIT_CHANNEL)
+        //     .setStreamHandler(object : EventChannel.StreamHandler {
+        //         override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        //             chargeLimitSink = events
+        //             events?.success(mapOf(
+        //                 "limit" to BleScanService.chargeLimit,
+        //                 "enabled" to BleScanService.chargeLimitEnabled,
+        //                 "confirmed" to BleScanService.chargeLimitConfirmed
+        //             ))
+        //         }
+        //         override fun onCancel(arguments: Any?) {
+        //             chargeLimitSink = null
+        //         }
+        //     })
         
-        // Event Channel for battery health
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_HEALTH_CHANNEL)
-            .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    batteryHealthSink = events
-                    events?.success(BleScanService.getBatteryHealthInfo())
-                }
-                override fun onCancel(arguments: Any?) {
-                    batteryHealthSink = null
-                }
-            })
+        // TODO: Battery Health feature - commented out for now
+        // // Event Channel for battery health
+        // EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_HEALTH_CHANNEL)
+        //     .setStreamHandler(object : EventChannel.StreamHandler {
+        //         override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        //             batteryHealthSink = events
+        //             events?.success(BleScanService.getBatteryHealthInfo())
+        //         }
+        //         override fun onCancel(arguments: Any?) {
+        //             batteryHealthSink = null
+        //         }
+        //     })
         
         // Event Channel for measure data (voltage/current)
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, MEASURE_DATA_CHANNEL)

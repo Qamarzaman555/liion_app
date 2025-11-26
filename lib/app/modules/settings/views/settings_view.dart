@@ -25,26 +25,27 @@ class SettingsView extends GetView<SettingsController> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            
-            // Battery Section
-            const Text(
-              'Battery',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF888888),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _buildSettingsTile(
-              icon: Icons.battery_charging_full,
-              title: 'Set Charge Limit',
-              subtitle: 'Configure maximum charge percentage',
-              onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
-            ),
-            
-            const SizedBox(height: 24),
-            
+
+            // TODO: Charge Limit feature - commented out for now
+            // // Battery Section
+            // const Text(
+            //   'Battery',
+            //   style: TextStyle(
+            //     fontSize: 14,
+            //     fontWeight: FontWeight.w600,
+            //     color: Color(0xFF888888),
+            //   ),
+            // ),
+            // const SizedBox(height: 8),
+            // _buildSettingsTile(
+            //   icon: Icons.battery_charging_full,
+            //   title: 'Set Charge Limit',
+            //   subtitle: 'Configure maximum charge percentage',
+            //   onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
+            // ),
+            //
+            // const SizedBox(height: 24),
+
             // Advanced Section
             const Text(
               'Advanced',
@@ -67,9 +68,9 @@ class SettingsView extends GetView<SettingsController> {
               subtitle: 'Diagnose and fix issues',
               onTap: () => Get.toNamed(AppRoutes.leoTroubleshoot),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Support Section
             const Text(
               'Support',
@@ -108,9 +109,7 @@ class SettingsView extends GetView<SettingsController> {
       elevation: 0,
       color: AppColors.cardBGColor,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         onTap: onTap,
         leading: Container(
@@ -119,11 +118,7 @@ class SettingsView extends GetView<SettingsController> {
             color: AppColors.primaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
-            icon,
-            color: AppColors.primaryColor,
-            size: 24,
-          ),
+          child: Icon(icon, color: AppColors.primaryColor, size: 24),
         ),
         title: Text(
           title,
@@ -135,19 +130,10 @@ class SettingsView extends GetView<SettingsController> {
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Color(0xFF888888),
-          ),
+          style: const TextStyle(fontSize: 13, color: Color(0xFF888888)),
         ),
-        trailing: const Icon(
-          Icons.chevron_right,
-          color: Color(0xFF888888),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
-        ),
+        trailing: const Icon(Icons.chevron_right, color: Color(0xFF888888)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
     );
   }
