@@ -95,6 +95,20 @@ class BatteryHealthInfo {
   }
 }
 
+class MeasureData {
+  final String voltage;
+  final String current;
+
+  MeasureData({required this.voltage, required this.current});
+
+  factory MeasureData.fromMap(Map<dynamic, dynamic> map) {
+    return MeasureData(
+      voltage: map['voltage'] as String? ?? '',
+      current: map['current'] as String? ?? '',
+    );
+  }
+}
+
 class BleScanService {
   static const MethodChannel _methodChannel = MethodChannel(
     'com.liion_app/ble_service',
@@ -120,6 +134,9 @@ class BleScanService {
   static const EventChannel _batteryHealthChannel = EventChannel(
     'com.liion_app/battery_health',
   );
+  static const EventChannel _measureDataChannel = EventChannel(
+    'com.liion_app/measure_data',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
@@ -128,6 +145,7 @@ class BleScanService {
   static Stream<PhoneBatteryInfo>? _batteryStream;
   static Stream<ChargeLimitInfo>? _chargeLimitStream;
   static Stream<BatteryHealthInfo>? _batteryHealthStream;
+  static Stream<MeasureData>? _measureDataStream;
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -409,6 +427,14 @@ class BleScanService {
       (event) => BatteryHealthInfo.fromMap(event as Map),
     );
     return _batteryHealthStream!;
+  }
+
+  /// Stream of measure data (voltage and current from Leo device)
+  static Stream<MeasureData> get measureDataStream {
+    _measureDataStream ??= _measureDataChannel.receiveBroadcastStream().map(
+      (event) => MeasureData.fromMap(event as Map),
+    );
+    return _measureDataStream!;
   }
 
   /// Get all scanned devices

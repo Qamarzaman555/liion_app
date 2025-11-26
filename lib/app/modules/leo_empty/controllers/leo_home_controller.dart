@@ -15,10 +15,16 @@ class LeoHomeController extends GetxController {
   final lastReceivedData = ''.obs;
   final receivedDataLog = <String>[].obs;
 
+  // Measure data (voltage and current)
+  final measureDataList = <String>[].obs;
+  final voltageValue = ''.obs;
+  final currentValue = ''.obs;
+
   StreamSubscription? _deviceSubscription;
   StreamSubscription? _connectionSubscription;
   StreamSubscription? _adapterStateSubscription;
   StreamSubscription? _dataReceivedSubscription;
+  StreamSubscription? _measureDataSubscription;
 
   @override
   void onInit() {
@@ -27,6 +33,7 @@ class LeoHomeController extends GetxController {
     _listenToDeviceStream();
     _listenToConnectionStream();
     _listenToDataReceived();
+    _listenToMeasureData();
     _loadInitialState();
   }
 
@@ -119,9 +126,19 @@ class LeoHomeController extends GetxController {
     });
   }
 
+  void _listenToMeasureData() {
+    _measureDataSubscription = BleScanService.measureDataStream.listen((data) {
+      voltageValue.value = '${data.voltage}V';
+      currentValue.value = '${data.current}A';
+    });
+  }
+
   void _parseReceivedData(String data) {
     try {
       List<String> parts = data.split(' ');
+      print('Received data parts: $parts');
+
+      // Parse mwh value
       if (parts.length >= 2 && parts[1].toLowerCase() == 'mwh') {
         String value = parts.length > 2 ? parts[2] : parts[0];
         value = value.replaceAll(RegExp(r'[^0-9]'), '');
@@ -129,8 +146,59 @@ class LeoHomeController extends GetxController {
           mwhValue.value = value;
         }
       }
+
+      // Parse measure data - check if any part contains 'measure'
+      if (parts.length >= 5 &&
+          (parts[1] == 'measure' || parts.contains('measure'))) {
+        print('Measure data detected: $parts');
+        bool isValid = _canParseToDouble(parts, 2, 4);
+        print('Is valid: $isValid');
+        if (isValid) {
+          measureDataList.assignAll(parts);
+
+          // Index 4 is current
+          double current = double.parse(parts[4]).abs();
+          currentValue.value = '${current.toStringAsFixed(3)}A';
+          print('Current value set: ${currentValue.value}');
+
+          // Index 2 and 3 are voltages, show the higher one
+          double v1 = double.parse(parts[2]);
+          double v2 = double.parse(parts[3]);
+          double voltage = v1 > v2 ? v1 : v2;
+          voltageValue.value = '${voltage.toStringAsFixed(3)}V';
+          print('Voltage value set: ${voltageValue.value}');
+        }
+      }
+
+      // Also try parsing if we have enough numeric values (fallback)
+      if (parts.length >= 5 && voltageValue.value.isEmpty) {
+        bool hasNumericData = _canParseToDouble(parts, 2, 4);
+        if (hasNumericData) {
+          print('Fallback measure parsing: $parts');
+          measureDataList.assignAll(parts);
+
+          double current = double.parse(parts[4]).abs();
+          currentValue.value = '${current.toStringAsFixed(3)}A';
+
+          double v1 = double.parse(parts[2]);
+          double v2 = double.parse(parts[3]);
+          double voltage = v1 > v2 ? v1 : v2;
+          voltageValue.value = '${voltage.toStringAsFixed(3)}V';
+        }
+      }
     } catch (e) {
       print('Error parsing data: $e');
+    }
+  }
+
+  bool _canParseToDouble(List<String> list, int index1, int index2) {
+    try {
+      if (list.length <= index1 || list.length <= index2) return false;
+      double.parse(list[index1]);
+      double.parse(list[index2]);
+      return true;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -195,6 +263,7 @@ class LeoHomeController extends GetxController {
     _connectionSubscription?.cancel();
     _adapterStateSubscription?.cancel();
     _dataReceivedSubscription?.cancel();
+    _measureDataSubscription?.cancel();
     super.onClose();
   }
 }

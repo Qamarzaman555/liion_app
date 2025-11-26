@@ -25,6 +25,7 @@ class MainActivity : FlutterActivity() {
         private const val BATTERY_CHANNEL = "com.liion_app/phone_battery"
         private const val CHARGE_LIMIT_CHANNEL = "com.liion_app/charge_limit"
         private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
+        private const val MEASURE_DATA_CHANNEL = "com.liion_app/measure_data"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -34,6 +35,7 @@ class MainActivity : FlutterActivity() {
         private var batterySink: EventChannel.EventSink? = null
         private var chargeLimitSink: EventChannel.EventSink? = null
         private var batteryHealthSink: EventChannel.EventSink? = null
+        private var measureDataSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun clearAllSinks() {
@@ -79,6 +81,14 @@ class MainActivity : FlutterActivity() {
                 dataReceivedSink?.success(data)
             } catch (e: Exception) {
                 dataReceivedSink = null
+            }
+        }
+        
+        fun sendMeasureData(voltage: String, current: String) {
+            try {
+                measureDataSink?.success(mapOf("voltage" to voltage, "current" to current))
+            } catch (e: Exception) {
+                measureDataSink = null
             }
         }
         
@@ -338,6 +348,17 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     batteryHealthSink = null
+                }
+            })
+        
+        // Event Channel for measure data (voltage/current)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, MEASURE_DATA_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    measureDataSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    measureDataSink = null
                 }
             })
     }

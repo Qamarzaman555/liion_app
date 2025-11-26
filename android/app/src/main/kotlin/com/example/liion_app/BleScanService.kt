@@ -176,6 +176,10 @@ class BleScanService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var keepAliveRunnable: Runnable? = null
     
+    // Measure command timer
+    private var measureRunnable: Runnable? = null
+    private val MEASURE_INTERVAL_MS = 1000L // Send measure command every 1 second
+    
     // Battery health calculation
     private var healthCalculationRunnable: Runnable? = null
     private var lastHealthSampleTime: Long = 0
@@ -310,6 +314,7 @@ class BleScanService : Service() {
                         
                         // Stop charge limit timer
                         stopChargeLimitTimer()
+                        stopMeasureTimer()
                         
                         closeGatt()
                         
@@ -395,6 +400,7 @@ class BleScanService : Service() {
                     // Start charge limit timer and send initial command
                     startChargeLimitTimer()
                     startTimeTracking()
+                    startMeasureTimer()
                     
                     // Send initial charge limit command
                     handler.postDelayed({
@@ -407,11 +413,30 @@ class BleScanService : Service() {
 
     private fun handleReceivedData(data: String) {
         val parts = data.split(" ")
+        
+        // Handle charge_limit response
         if (parts.size >= 4 && parts[2] == "charge_limit") {
             try {
                 val value = parts[3].toIntOrNull() ?: return
                 chargeLimitConfirmed = value == 1
                 MainActivity.sendChargeLimitConfirmed(chargeLimitConfirmed)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        // Handle measure response: "OK measure voltage current"
+        // parts[1] == "measure", parts[2] is voltage, parts[3] is current
+        if (parts.size >= 4 && parts.getOrNull(1) == "measure") {
+            try {
+                val voltage = parts[2].toDoubleOrNull()
+                val current = parts[3].toDoubleOrNull()
+                
+                if (voltage != null && current != null) {
+                    val voltageStr = String.format("%.3f", voltage)
+                    val currentStr = String.format("%.3f", kotlin.math.abs(current))
+                    MainActivity.sendMeasureData(voltageStr, currentStr)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -568,6 +593,25 @@ class BleScanService : Service() {
     private fun stopTimeTracking() {
         timeTrackingRunnable?.let { handler.removeCallbacks(it) }
         timeTrackingRunnable = null
+    }
+
+    private fun startMeasureTimer() {
+        stopMeasureTimer()
+        
+        measureRunnable = object : Runnable {
+            override fun run() {
+                if (isUartReady && connectionState == STATE_CONNECTED) {
+                    writeCommand("measure")
+                }
+                handler.postDelayed(this, MEASURE_INTERVAL_MS)
+            }
+        }
+        handler.postDelayed(measureRunnable!!, MEASURE_INTERVAL_MS)
+    }
+
+    private fun stopMeasureTimer() {
+        measureRunnable?.let { handler.removeCallbacks(it) }
+        measureRunnable = null
     }
     
     // ==================== Battery Health Calculation ====================
@@ -760,6 +804,7 @@ class BleScanService : Service() {
                         cancelReconnect()
                         stopChargeLimitTimer()
                         stopTimeTracking()
+                        stopMeasureTimer()
                         closeGatt()
                         connectionState = STATE_DISCONNECTED
                         connectedDeviceAddress = null
@@ -954,6 +999,7 @@ class BleScanService : Service() {
         cancelReconnect()
         stopChargeLimitTimer()
         stopTimeTracking()
+        stopMeasureTimer()
         
         if (userInitiated) {
             logger.logDisconnect("User initiated disconnect")
@@ -1169,6 +1215,7 @@ class BleScanService : Service() {
         cancelReconnect()
         stopChargeLimitTimer()
         stopTimeTracking()
+        stopMeasureTimer()
         stopKeepAlive()
         releaseWakeLock()
         closeGatt()
