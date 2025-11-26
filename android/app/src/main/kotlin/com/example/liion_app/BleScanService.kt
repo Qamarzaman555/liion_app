@@ -141,6 +141,9 @@ class BleScanService : Service() {
     // Wake lock and keep-alive
     private var wakeLock: PowerManager.WakeLock? = null
     private var keepAliveRunnable: Runnable? = null
+    
+    // Firebase logging
+    private val logger: FirebaseLoggingService by lazy { FirebaseLoggingService.getInstance() }
 
     // Battery monitoring
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -196,14 +199,18 @@ class BleScanService : Service() {
                 scannedDevices[device.address] = deviceName
                 MainActivity.sendDeviceUpdate(device.address, deviceName)
                 
-                if (isNew && shouldAutoReconnect && connectionState == STATE_DISCONNECTED) {
-                    attemptAutoConnect()
+                if (isNew) {
+                    logger.logScan("Found device: $deviceName (${device.address})")
+                    if (shouldAutoReconnect && connectionState == STATE_DISCONNECTED) {
+                        attemptAutoConnect()
+                    }
                 }
             }
         }
 
         override fun onScanFailed(errorCode: Int) {
             isScanning = false
+            logger.logError("Scan failed with error code: $errorCode")
         }
     }
 
@@ -217,8 +224,11 @@ class BleScanService : Service() {
                         reconnectAttempts = 0
                         pendingConnectAddress = null
                         
-                        saveLastDevice(gatt.device.address, gatt.device.name ?: "Leo Usb")
+                        val deviceName = gatt.device.name ?: "Leo Usb"
+                        saveLastDevice(gatt.device.address, deviceName)
                         shouldAutoReconnect = true
+                        
+                        logger.logConnected(gatt.device.address, deviceName)
                         
                         updateNotificationWithBattery()
                         MainActivity.sendConnectionUpdate(STATE_CONNECTED, connectedDeviceAddress)
@@ -232,6 +242,8 @@ class BleScanService : Service() {
                     BluetoothProfile.STATE_DISCONNECTED -> {
                         val wasConnected = connectionState == STATE_CONNECTED
                         val previousAddress = connectedDeviceAddress ?: pendingConnectAddress
+                        
+                        logger.logDisconnect("Disconnected (status: $status, wasConnected: $wasConnected)")
                         
                         connectionState = STATE_DISCONNECTED
                         connectedDeviceAddress = null
@@ -263,6 +275,7 @@ class BleScanService : Service() {
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             handler.post {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
+                    logger.logInfo("Services discovered")
                     setupUartService(gatt)
                     MainActivity.sendServicesDiscovered(gatt.services.map { it.uuid.toString() })
                 }
@@ -277,6 +290,7 @@ class BleScanService : Service() {
             handler.post {
                 if (characteristic.uuid == RX_CHAR_UUID) {
                     val receivedData = String(value, Charsets.UTF_8).trim()
+                    logger.logCommandResponse(receivedData)
                     handleReceivedData(receivedData)
                     MainActivity.sendDataReceived(receivedData)
                 }
@@ -291,6 +305,7 @@ class BleScanService : Service() {
             handler.post {
                 if (characteristic.uuid == RX_CHAR_UUID) {
                     val receivedData = String(characteristic.value, Charsets.UTF_8).trim()
+                    logger.logCommandResponse(receivedData)
                     handleReceivedData(receivedData)
                     MainActivity.sendDataReceived(receivedData)
                 }
@@ -380,6 +395,8 @@ class BleScanService : Service() {
         val txChar = txCharacteristic ?: return false
         val gatt = bluetoothGatt ?: return false
 
+        logger.logCommand(command)
+        
         return try {
             val commandWithLF = "$command\n"
             val bytes = commandWithLF.toByteArray(Charsets.UTF_8)
@@ -399,6 +416,7 @@ class BleScanService : Service() {
                 gatt.writeCharacteristic(txChar)
             }
         } catch (e: SecurityException) {
+            logger.logError("Write command failed: ${e.message}")
             e.printStackTrace()
             false
         }
@@ -420,6 +438,8 @@ class BleScanService : Service() {
         
         chargeLimit = limit
         chargeLimitEnabled = enabled
+        
+        logger.logChargeLimit(limit, enabled)
         
         // Save to preferences
         prefs?.edit()?.apply {
@@ -502,6 +522,7 @@ class BleScanService : Service() {
                 
                 when (state) {
                     BluetoothAdapter.STATE_ON -> {
+                        logger.logBleState("Bluetooth turned ON")
                         bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
                         startBleScan()
                         
@@ -510,6 +531,7 @@ class BleScanService : Service() {
                         }
                     }
                     BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_TURNING_OFF -> {
+                        logger.logBleState("Bluetooth turned OFF")
                         stopBleScan()
                         cancelReconnect()
                         stopChargeLimitTimer()
@@ -535,6 +557,9 @@ class BleScanService : Service() {
         instance = this
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
+        
+        // Initialize Firebase logging
+        initializeLogging()
         
         // Acquire partial wake lock to keep CPU running
         acquireWakeLock()
@@ -570,6 +595,24 @@ class BleScanService : Service() {
         
         // Start keep-alive mechanism
         startKeepAlive()
+        
+        logger.logServiceState("Service created")
+    }
+    
+    private fun initializeLogging() {
+        try {
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            val versionName = packageInfo.versionName ?: "1.0.0"
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode.toString()
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toString()
+            }
+            logger.initialize(this, versionName, versionCode)
+        } catch (e: Exception) {
+            // Silently fail
+        }
     }
     
     private fun acquireWakeLock() {
@@ -622,6 +665,8 @@ class BleScanService : Service() {
         val notification = createNotification("Scanning for Leo USB devices...")
         startForeground(NOTIFICATION_ID, notification)
         
+        logger.logServiceState("Service started")
+        
         if (bluetoothAdapter?.isEnabled == true) {
             startBleScan()
             
@@ -639,6 +684,7 @@ class BleScanService : Service() {
         if (userInitiated) {
             shouldAutoReconnect = true
             reconnectAttempts = 0
+            logger.logConnect(address, scannedDevices[address] ?: "Leo Usb")
         }
         
         return try {
@@ -655,6 +701,7 @@ class BleScanService : Service() {
             bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
             true
         } catch (e: Exception) {
+            logger.logError("Connection failed: ${e.message}")
             e.printStackTrace()
             connectionState = STATE_DISCONNECTED
             pendingConnectAddress = null
@@ -672,6 +719,7 @@ class BleScanService : Service() {
         stopTimeTracking()
         
         if (userInitiated) {
+            logger.logDisconnect("User initiated disconnect")
             shouldAutoReconnect = false
             reconnectAttempts = 0
             clearSavedDevice()
@@ -710,6 +758,8 @@ class BleScanService : Service() {
         
         val savedAddress = prefs?.getString(KEY_LAST_DEVICE_ADDRESS, null) ?: return
         
+        logger.logAutoConnect(savedAddress)
+        
         if (scannedDevices.containsKey(savedAddress)) {
             connectToDevice(savedAddress, userInitiated = false)
         } else {
@@ -727,6 +777,8 @@ class BleScanService : Service() {
         
         val delay = RECONNECT_DELAY_MS + (reconnectAttempts * RECONNECT_BACKOFF_MS)
         reconnectAttempts++
+        
+        logger.logReconnect(reconnectAttempts, address)
         
         reconnectRunnable = Runnable {
             if (shouldAutoReconnect && connectionState == STATE_DISCONNECTED && bluetoothAdapter?.isEnabled == true) {
@@ -868,6 +920,7 @@ class BleScanService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        logger.logServiceState("Service destroyed")
         stopBleScan()
         cancelReconnect()
         stopChargeLimitTimer()
@@ -882,6 +935,7 @@ class BleScanService : Service() {
     }
     
     override fun onTaskRemoved(rootIntent: Intent?) {
+        logger.logServiceState("App removed from recents - service continuing")
         // Service continues running even when app is removed from recents
         // Re-acquire wake lock if needed
         if (wakeLock?.isHeld != true) {
