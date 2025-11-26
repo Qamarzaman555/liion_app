@@ -24,6 +24,7 @@ class MainActivity : FlutterActivity() {
         private const val DATA_RECEIVED_CHANNEL = "com.liion_app/data_received"
         private const val BATTERY_CHANNEL = "com.liion_app/phone_battery"
         private const val CHARGE_LIMIT_CHANNEL = "com.liion_app/charge_limit"
+        private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -32,6 +33,7 @@ class MainActivity : FlutterActivity() {
         private var dataReceivedSink: EventChannel.EventSink? = null
         private var batterySink: EventChannel.EventSink? = null
         private var chargeLimitSink: EventChannel.EventSink? = null
+        private var batteryHealthSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun clearAllSinks() {
@@ -41,6 +43,7 @@ class MainActivity : FlutterActivity() {
             dataReceivedSink = null
             batterySink = null
             chargeLimitSink = null
+            batteryHealthSink = null
         }
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -112,6 +115,14 @@ class MainActivity : FlutterActivity() {
                 ))
             } catch (e: Exception) {
                 chargeLimitSink = null
+            }
+        }
+        
+        fun sendBatteryHealthUpdate() {
+            try {
+                batteryHealthSink?.success(BleScanService.getBatteryHealthInfo())
+            } catch (e: Exception) {
+                batteryHealthSink = null
             }
         }
     }
@@ -224,6 +235,16 @@ class MainActivity : FlutterActivity() {
                         requestDisableBatteryOptimization()
                         result.success(true)
                     }
+                    "getBatteryHealthInfo" -> {
+                        result.success(BleScanService.getBatteryHealthInfo())
+                    }
+                    "startBatteryHealthCalculation" -> {
+                        result.success(BleScanService.startBatteryHealthCalculation())
+                    }
+                    "stopBatteryHealthCalculation" -> {
+                        BleScanService.stopBatteryHealthCalculation()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -305,6 +326,18 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     chargeLimitSink = null
+                }
+            })
+        
+        // Event Channel for battery health
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_HEALTH_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    batteryHealthSink = events
+                    events?.success(BleScanService.getBatteryHealthInfo())
+                }
+                override fun onCancel(arguments: Any?) {
+                    batteryHealthSink = null
                 }
             })
     }

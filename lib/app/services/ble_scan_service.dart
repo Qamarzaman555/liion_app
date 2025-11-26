@@ -63,6 +63,38 @@ class ChargeLimitInfo {
   }
 }
 
+class BatteryHealthInfo {
+  final int designedCapacityMah;
+  final double estimatedCapacityMah;
+  final double batteryHealthPercent;
+  final bool calculationInProgress;
+  final int calculationStartPercent;
+  final int calculationProgress;
+
+  BatteryHealthInfo({
+    required this.designedCapacityMah,
+    required this.estimatedCapacityMah,
+    required this.batteryHealthPercent,
+    required this.calculationInProgress,
+    required this.calculationStartPercent,
+    required this.calculationProgress,
+  });
+
+  factory BatteryHealthInfo.fromMap(Map<dynamic, dynamic> map) {
+    return BatteryHealthInfo(
+      designedCapacityMah: (map['designedCapacityMah'] as num?)?.toInt() ?? 0,
+      estimatedCapacityMah:
+          (map['estimatedCapacityMah'] as num?)?.toDouble() ?? 0.0,
+      batteryHealthPercent:
+          (map['batteryHealthPercent'] as num?)?.toDouble() ?? -1.0,
+      calculationInProgress: map['calculationInProgress'] as bool? ?? false,
+      calculationStartPercent:
+          (map['calculationStartPercent'] as num?)?.toInt() ?? -1,
+      calculationProgress: (map['calculationProgress'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class BleScanService {
   static const MethodChannel _methodChannel = MethodChannel(
     'com.liion_app/ble_service',
@@ -85,6 +117,9 @@ class BleScanService {
   static const EventChannel _chargeLimitChannel = EventChannel(
     'com.liion_app/charge_limit',
   );
+  static const EventChannel _batteryHealthChannel = EventChannel(
+    'com.liion_app/battery_health',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
@@ -92,6 +127,7 @@ class BleScanService {
   static Stream<String>? _dataReceivedStream;
   static Stream<PhoneBatteryInfo>? _batteryStream;
   static Stream<ChargeLimitInfo>? _chargeLimitStream;
+  static Stream<BatteryHealthInfo>? _batteryHealthStream;
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -313,6 +349,66 @@ class BleScanService {
     } on PlatformException catch (e) {
       print('Failed to request battery optimization disable: ${e.message}');
     }
+  }
+
+  /// Get battery health info
+  static Future<BatteryHealthInfo> getBatteryHealthInfo() async {
+    try {
+      final result = await _methodChannel.invokeMethod<Map>(
+        'getBatteryHealthInfo',
+      );
+      if (result == null) {
+        return BatteryHealthInfo(
+          designedCapacityMah: 0,
+          estimatedCapacityMah: 0,
+          batteryHealthPercent: -1,
+          calculationInProgress: false,
+          calculationStartPercent: -1,
+          calculationProgress: 0,
+        );
+      }
+      return BatteryHealthInfo.fromMap(result);
+    } on PlatformException catch (e) {
+      print('Failed to get battery health info: ${e.message}');
+      return BatteryHealthInfo(
+        designedCapacityMah: 0,
+        estimatedCapacityMah: 0,
+        batteryHealthPercent: -1,
+        calculationInProgress: false,
+        calculationStartPercent: -1,
+        calculationProgress: 0,
+      );
+    }
+  }
+
+  /// Start battery health calculation
+  static Future<bool> startBatteryHealthCalculation() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'startBatteryHealthCalculation',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to start battery health calculation: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Stop battery health calculation
+  static Future<void> stopBatteryHealthCalculation() async {
+    try {
+      await _methodChannel.invokeMethod('stopBatteryHealthCalculation');
+    } on PlatformException catch (e) {
+      print('Failed to stop battery health calculation: ${e.message}');
+    }
+  }
+
+  /// Stream of battery health updates
+  static Stream<BatteryHealthInfo> get batteryHealthStream {
+    _batteryHealthStream ??= _batteryHealthChannel.receiveBroadcastStream().map(
+      (event) => BatteryHealthInfo.fromMap(event as Map),
+    );
+    return _batteryHealthStream!;
   }
 
   /// Get all scanned devices
