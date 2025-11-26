@@ -1,12 +1,17 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'app/routes/app_pages.dart';
 import 'app/services/ble_scan_service.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Request permissions and start service on Android
   if (Platform.isAndroid) {
@@ -29,7 +34,7 @@ Future<void> _requestPermissionsAndStartService() async {
   if (statuses[Permission.bluetoothScan]!.isGranted &&
       statuses[Permission.bluetoothConnect]!.isGranted) {
     await BleScanService.startService();
-    
+
     // Check and request battery optimization exemption
     _checkBatteryOptimization();
   }
@@ -38,7 +43,7 @@ Future<void> _requestPermissionsAndStartService() async {
 Future<void> _checkBatteryOptimization() async {
   // Small delay to ensure service is started
   await Future.delayed(const Duration(seconds: 2));
-  
+
   final isDisabled = await BleScanService.isBatteryOptimizationDisabled();
   if (!isDisabled) {
     // Request user to disable battery optimization
