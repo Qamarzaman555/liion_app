@@ -689,7 +689,20 @@ class BleScanService : Service() {
         
         return try {
             cancelReconnect()
-            closeGatt()
+            
+            // Properly close existing GATT to avoid status 133 errors
+            bluetoothGatt?.let { gatt ->
+                try {
+                    gatt.disconnect()
+                    gatt.close()
+                } catch (e: SecurityException) {
+                    e.printStackTrace()
+                }
+            }
+            bluetoothGatt = null
+            
+            // Small delay to let Bluetooth stack reset after closing GATT
+            Thread.sleep(100)
             
             val device = bluetoothAdapter?.getRemoteDevice(address) ?: return false
             connectionState = STATE_CONNECTING
@@ -769,13 +782,20 @@ class BleScanService : Service() {
 
     private fun scheduleReconnect(address: String) {
         if (!shouldAutoReconnect) return
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts = 0
-        }
         
         cancelReconnect()
         
-        val delay = RECONNECT_DELAY_MS + (reconnectAttempts * RECONNECT_BACKOFF_MS)
+        // After MAX_RECONNECT_ATTEMPTS, add a longer cooldown period
+        val delay = if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts = 0
+            logger.logInfo("Max reconnect attempts reached, waiting 30s before retry")
+            // Restart BLE scan to refresh device cache
+            restartScan()
+            30000L // 30 second cooldown
+        } else {
+            RECONNECT_DELAY_MS + (reconnectAttempts * RECONNECT_BACKOFF_MS)
+        }
+        
         reconnectAttempts++
         
         logger.logReconnect(reconnectAttempts, address)
