@@ -185,7 +185,7 @@ class BleScanService : Service() {
     
     // Measure command timer
     private var measureRunnable: Runnable? = null
-    private val MEASURE_INTERVAL_MS = 1000L // Send measure command every 1 second
+    private val MEASURE_INTERVAL_MS = 30000L // Send measure command every 30 seconds
     
     // TODO: Battery Health feature - commented out for now
     // // Battery health calculation
