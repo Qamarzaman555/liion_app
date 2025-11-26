@@ -293,6 +293,28 @@ class BleScanService {
     }
   }
 
+  /// Check if battery optimization is disabled for this app
+  static Future<bool> isBatteryOptimizationDisabled() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'isBatteryOptimizationDisabled',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to check battery optimization: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Request user to disable battery optimization for this app
+  static Future<void> requestDisableBatteryOptimization() async {
+    try {
+      await _methodChannel.invokeMethod('requestDisableBatteryOptimization');
+    } on PlatformException catch (e) {
+      print('Failed to request battery optimization disable: ${e.message}');
+    }
+  }
+
   /// Get all scanned devices
   static Future<List<Map<String, String>>> getScannedDevices() async {
     try {

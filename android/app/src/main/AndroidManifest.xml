@@ -13,6 +13,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     
+    <!-- Battery Optimization Exemption -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    
+    <!-- Wake Lock for keeping CPU alive -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    
+    <!-- Receive boot completed to restart service after reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
 
     <application
@@ -43,7 +52,20 @@
             android:name=".BleScanService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice"/>
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false"/>
+        
+        <!-- Boot Receiver to restart service after device reboot -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
         
         <meta-data
             android:name="flutterEmbedding"

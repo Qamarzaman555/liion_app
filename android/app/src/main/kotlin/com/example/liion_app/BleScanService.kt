@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import java.util.UUID
 
@@ -47,6 +48,9 @@ class BleScanService : Service() {
         
         // Charge limit timer
         const val CHARGE_LIMIT_INTERVAL_MS = 30000L // 30 seconds
+        
+        // Keep-alive interval (every 5 minutes)
+        const val KEEP_ALIVE_INTERVAL_MS = 300000L
         
         val scannedDevices = mutableMapOf<String, String>()
         var isScanning = false
@@ -133,6 +137,10 @@ class BleScanService : Service() {
     private var chargeLimitRunnable: Runnable? = null
     private var timeTrackingRunnable: Runnable? = null
     private var lastChargingState: Boolean? = null
+    
+    // Wake lock and keep-alive
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var keepAliveRunnable: Runnable? = null
 
     // Battery monitoring
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -528,6 +536,9 @@ class BleScanService : Service() {
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
         
+        // Acquire partial wake lock to keep CPU running
+        acquireWakeLock()
+        
         // Load saved charge limit settings
         chargeLimit = prefs?.getInt(KEY_CHARGE_LIMIT, 90) ?: 90
         chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
@@ -556,6 +567,55 @@ class BleScanService : Service() {
                     status == BatteryManager.BATTERY_STATUS_FULL
             lastChargingState = isPhoneCharging
         }
+        
+        // Start keep-alive mechanism
+        startKeepAlive()
+    }
+    
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "LiionApp::BleServiceWakeLock"
+            )
+            wakeLock?.acquire()
+        }
+    }
+    
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        wakeLock = null
+    }
+    
+    private fun startKeepAlive() {
+        stopKeepAlive()
+        
+        keepAliveRunnable = object : Runnable {
+            override fun run() {
+                // This periodic task keeps the service alive
+                // Update notification to show service is still running
+                updateNotificationWithBattery()
+                
+                // Re-acquire wake lock if needed
+                if (wakeLock?.isHeld != true) {
+                    acquireWakeLock()
+                }
+                
+                // Schedule next keep-alive
+                handler.postDelayed(this, KEEP_ALIVE_INTERVAL_MS)
+            }
+        }
+        handler.postDelayed(keepAliveRunnable!!, KEEP_ALIVE_INTERVAL_MS)
+    }
+    
+    private fun stopKeepAlive() {
+        keepAliveRunnable?.let { handler.removeCallbacks(it) }
+        keepAliveRunnable = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -812,10 +872,21 @@ class BleScanService : Service() {
         cancelReconnect()
         stopChargeLimitTimer()
         stopTimeTracking()
+        stopKeepAlive()
+        releaseWakeLock()
         closeGatt()
         unregisterReceiver(bluetoothStateReceiver)
         unregisterReceiver(batteryReceiver)
         instance = null
         super.onDestroy()
+    }
+    
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Service continues running even when app is removed from recents
+        // Re-acquire wake lock if needed
+        if (wakeLock?.isHeld != true) {
+            acquireWakeLock()
+        }
+        super.onTaskRemoved(rootIntent)
     }
 }
