@@ -62,17 +62,16 @@ class BleScanService : Service() {
         var isPhoneCharging: Boolean = false
         var currentNowMicroAmps: Int = 0
         
-        // TODO: Battery Health feature - commented out for now
-        // // Battery health calculation
-        // var designedCapacityMah: Int = 0
-        // var estimatedCapacityMah: Double = 0.0
-        // var batteryHealthPercent: Double = -1.0
-        // var healthCalculationInProgress: Boolean = false
-        // var healthCalculationWasActive: Boolean = false  // Track if calculation was interrupted
-        // var healthCalculationStartPercent: Int = -1
-        // var healthCalculationEndPercent: Int = -1
-        // var accumulatedCurrentMah: Double = 0.0
-        // const val HEALTH_CALCULATION_RANGE = 60 // Need 60% charge increase
+        // Battery health calculation
+        var designedCapacityMah: Int = 0
+        var estimatedCapacityMah: Double = 0.0
+        var batteryHealthPercent: Double = -1.0
+        var healthCalculationInProgress: Boolean = false
+        var healthCalculationWasActive: Boolean = false  // Track if calculation was interrupted
+        var healthCalculationStartPercent: Int = -1
+        var healthCalculationEndPercent: Int = -1
+        var accumulatedCurrentMah: Double = 0.0
+        const val HEALTH_CALCULATION_RANGE = 60 // Need 60% charge increase
         
         // Charge limit state
         var chargeLimit: Int = 90
@@ -108,27 +107,26 @@ class BleScanService : Service() {
             )
         }
         
-        // TODO: Battery Health feature - commented out for now
-        // fun getBatteryHealthInfo(): Map<String, Any> {
-        //     return mapOf(
-        //         "designedCapacityMah" to designedCapacityMah,
-        //         "estimatedCapacityMah" to estimatedCapacityMah,
-        //         "batteryHealthPercent" to batteryHealthPercent,
-        //         "calculationInProgress" to healthCalculationInProgress,
-        //         "calculationStartPercent" to healthCalculationStartPercent,
-        //         "calculationProgress" to if (healthCalculationInProgress && healthCalculationStartPercent >= 0) {
-        //             ((phoneBatteryLevel - healthCalculationStartPercent).coerceAtLeast(0) * 100 / HEALTH_CALCULATION_RANGE)
-        //         } else 0
-        //     )
-        // }
+        fun getBatteryHealthInfo(): Map<String, Any> {
+            return mapOf(
+                "designedCapacityMah" to designedCapacityMah,
+                "estimatedCapacityMah" to estimatedCapacityMah,
+                "batteryHealthPercent" to batteryHealthPercent,
+                "calculationInProgress" to healthCalculationInProgress,
+                "calculationStartPercent" to healthCalculationStartPercent,
+                "calculationProgress" to if (healthCalculationInProgress && healthCalculationStartPercent >= 0) {
+                    ((phoneBatteryLevel - healthCalculationStartPercent).coerceAtLeast(0) * 100 / HEALTH_CALCULATION_RANGE)
+                } else 0
+            )
+        }
         
-        // fun startBatteryHealthCalculation(): Boolean {
-        //     return instance?.startHealthCalculation() ?: false
-        // }
+        fun startBatteryHealthCalculation(): Boolean {
+            return instance?.startHealthCalculation() ?: false
+        }
         
-        // fun stopBatteryHealthCalculation() {
-        //     instance?.stopHealthCalculation()
-        // }
+        fun stopBatteryHealthCalculation() {
+            instance?.stopHealthCalculation()
+        }
         
         fun setChargeLimit(limit: Int, enabled: Boolean): Boolean {
             return instance?.updateChargeLimit(limit, enabled) ?: false
@@ -182,11 +180,10 @@ class BleScanService : Service() {
     private var measureRunnable: Runnable? = null
     private val MEASURE_INTERVAL_MS = 30000L // Send measure command every 30 seconds
     
-    // TODO: Battery Health feature - commented out for now
-    // // Battery health calculation
-    // private var healthCalculationRunnable: Runnable? = null
-    // private var lastHealthSampleTime: Long = 0
-    // private val HEALTH_SAMPLE_INTERVAL_MS = 1000L // Sample every 1 second
+    // Battery health calculation
+    private var healthCalculationRunnable: Runnable? = null
+    private var lastHealthSampleTime: Long = 0
+    private val HEALTH_SAMPLE_INTERVAL_MS = 1000L // Sample every 1 second
     
     // Firebase logging
     private val logger: FirebaseLoggingService by lazy { FirebaseLoggingService.getInstance() }
@@ -214,31 +211,28 @@ class BleScanService : Service() {
                     if (chargingStateChanged) {
                         if (isCharging) {
                             chargingTimeSeconds = 0
-                            // TODO: Battery Health feature - commented out for now
-                            // // Auto-restart health calculation if it was in progress
-                            // if (healthCalculationWasActive) {
-                            //     healthCalculationWasActive = false
-                            //     startHealthCalculation()
-                            //     logger.logInfo("Battery health calculation auto-restarted - charger reconnected")
-                            // }
+                            // Auto-start fresh health calculation when charger is connected
+                            resetHealthCalculation()
+                            if (phoneBatteryLevel <= (100 - HEALTH_CALCULATION_RANGE)) {
+                                startHealthCalculation()
+                                logger.logInfo("Battery health calculation auto-started - charger connected")
+                            }
                         } else {
                             dischargingTimeSeconds = 0
-                            // TODO: Battery Health feature - commented out for now
-                            // // Stop and reset health calculation if unplugged
-                            // if (healthCalculationInProgress) {
-                            //     healthCalculationWasActive = true
-                            //     stopHealthCalculation()
-                            //     logger.logInfo("Battery health calculation stopped - charger disconnected")
-                            // }
+                            // Stop and reset health calculation if unplugged
+                            if (healthCalculationInProgress) {
+                                stopHealthCalculation()
+                                resetHealthCalculation()
+                                logger.logInfo("Battery health calculation stopped and reset - charger disconnected")
+                            }
                         }
                         lastChargingState = isCharging
                     }
                     
-                    // TODO: Battery Health feature - commented out for now
-                    // // Check if health calculation is complete
-                    // if (healthCalculationInProgress && levelChanged) {
-                    //     checkHealthCalculationProgress()
-                    // }
+                    // Check if health calculation is complete
+                    if (healthCalculationInProgress && levelChanged) {
+                        checkHealthCalculationProgress()
+                    }
                     
                     // Notify Flutter about battery change
                     MainActivity.sendBatteryUpdate(phoneBatteryLevel, isPhoneCharging)
@@ -632,174 +626,183 @@ class BleScanService : Service() {
         measureRunnable = null
     }
     
-    // TODO: Battery Health feature - commented out for now
-    // // ==================== Battery Health Calculation ====================
-    // 
-    // private fun getDesignedCapacity(): Int {
-    //     return try {
-    //         val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-    //         
-    //         // Try to get designed capacity (in microampere-hours)
-    //         val capacityMicroAh = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
-    //         
-    //         // Some devices report designed capacity via PowerProfile (reflection needed)
-    //         val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
-    //         val constructor = powerProfileClass.getConstructor(Context::class.java)
-    //         val powerProfile = constructor.newInstance(this)
-    //         val method = powerProfileClass.getMethod("getBatteryCapacity")
-    //         val capacity = method.invoke(powerProfile) as Double
-    //         
-    //         capacity.toInt()
-    //     } catch (e: Exception) {
-    //         // Fallback: try to read from system properties or return default
-    //         try {
-    //             val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-    //             // BATTERY_PROPERTY_CAPACITY returns percentage, not useful here
-    //             // Return 0 to indicate we couldn't get it
-    //             0
-    //         } catch (e2: Exception) {
-    //             0
-    //         }
-    //     }
-    // }
-    // 
-    // private fun getCurrentNow(): Int {
-    //     return try {
-    //         val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-    //         // Returns current in microamperes (negative when discharging, positive when charging)
-    //         batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-    //     } catch (e: Exception) {
-    //         0
-    //     }
-    // }
-    // 
-    // fun startHealthCalculation(): Boolean {
-    //     if (!isPhoneCharging) {
-    //         logger.logWarning("Cannot start health calculation - device not charging")
-    //         return false
-    //     }
-    //     
-    //     if (phoneBatteryLevel > (100 - HEALTH_CALCULATION_RANGE)) {
-    //         logger.logWarning("Cannot start health calculation - battery too high (need room for ${HEALTH_CALCULATION_RANGE}% charge)")
-    //         return false
-    //     }
-    //     
-    //     // Get designed capacity
-    //     designedCapacityMah = getDesignedCapacity()
-    //     if (designedCapacityMah <= 0) {
-    //         logger.logWarning("Could not determine designed battery capacity")
-    //         // Continue anyway, we can still calculate estimated capacity
-    //     }
-    //     
-    //     // Reset calculation state
-    //     healthCalculationInProgress = true
-    //     healthCalculationStartPercent = phoneBatteryLevel
-    //     healthCalculationEndPercent = phoneBatteryLevel + HEALTH_CALCULATION_RANGE
-    //     accumulatedCurrentMah = 0.0
-    //     lastHealthSampleTime = System.currentTimeMillis()
-    //     
-    //     logger.logInfo("Battery health calculation started at $phoneBatteryLevel% (target: $healthCalculationEndPercent%)")
-    //     
-    //     // Start sampling current
-    //     startHealthSampling()
-    //     
-    //     // Notify Flutter
-    //     MainActivity.sendBatteryHealthUpdate()
-    //     
-    //     return true
-    // }
-    // 
-    // fun stopHealthCalculation() {
-    //     healthCalculationInProgress = false
-    //     stopHealthSampling()
-    //     MainActivity.sendBatteryHealthUpdate()
-    // }
-    // 
-    // private fun startHealthSampling() {
-    //     stopHealthSampling()
-    //     
-    //     healthCalculationRunnable = object : Runnable {
-    //         override fun run() {
-    //             if (healthCalculationInProgress && isPhoneCharging) {
-    //                 sampleBatteryCurrent()
-    //                 handler.postDelayed(this, HEALTH_SAMPLE_INTERVAL_MS)
-    //             }
-    //         }
-    //     }
-    //     handler.postDelayed(healthCalculationRunnable!!, HEALTH_SAMPLE_INTERVAL_MS)
-    // }
-    // 
-    // private fun stopHealthSampling() {
-    //     healthCalculationRunnable?.let { handler.removeCallbacks(it) }
-    //     healthCalculationRunnable = null
-    // }
-    // 
-    // private fun sampleBatteryCurrent() {
-    //     val currentMicroAmps = getCurrentNow()
-    //     currentNowMicroAmps = currentMicroAmps
-    //     
-    //     val now = System.currentTimeMillis()
-    //     val elapsedSeconds = (now - lastHealthSampleTime) / 1000.0
-    //     lastHealthSampleTime = now
-    //     
-    //     if (currentMicroAmps > 0 && elapsedSeconds > 0) {
-    //         // Convert microamps to milliamps and accumulate (current * time = charge)
-    //         // Current is in microamps, time is in seconds
-    //         // mAh = (microamps / 1000) * (seconds / 3600) = microamps * seconds / 3,600,000
-    //         val chargeMah = (currentMicroAmps.toDouble() * elapsedSeconds) / 3600000.0
-    //         accumulatedCurrentMah += chargeMah
-    //     }
-    // }
-    // 
-    // private fun checkHealthCalculationProgress() {
-    //     if (!healthCalculationInProgress) return
-    //     
-    //     val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
-    //     
-    //     if (percentCharged >= HEALTH_CALCULATION_RANGE) {
-    //         // Calculation complete!
-    //         calculateBatteryHealth()
-    //     }
-    // }
-    // 
-    // private fun calculateBatteryHealth() {
-    //     stopHealthSampling()
-    //     healthCalculationInProgress = false
-    //     
-    //     val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
-    //     
-    //     if (percentCharged > 0 && accumulatedCurrentMah > 0) {
-    //         // Estimated capacity = (accumulated mAh / percent charged) * 100
-    //         estimatedCapacityMah = (accumulatedCurrentMah / percentCharged) * 100
-    //         
-    //         // Battery health = (estimated capacity / designed capacity) * 100
-    //         if (designedCapacityMah > 0) {
-    //             batteryHealthPercent = (estimatedCapacityMah / designedCapacityMah) * 100
-    //             // Cap at 100%
-    //             if (batteryHealthPercent > 100) batteryHealthPercent = 100.0
-    //         }
-    //         
-    //         logger.logInfo("Battery health calculation complete: " +
-    //                 "Estimated capacity: ${estimatedCapacityMah.toInt()} mAh, " +
-    //                 "Designed capacity: $designedCapacityMah mAh, " +
-    //                 "Health: ${batteryHealthPercent.toInt()}%")
-    //         
-    //         // Save results to preferences
-    //         prefs?.edit()?.apply {
-    //             putFloat("estimated_capacity_mah", estimatedCapacityMah.toFloat())
-    //             putFloat("battery_health_percent", batteryHealthPercent.toFloat())
-    //             putLong("health_calculation_time", System.currentTimeMillis())
-    //             apply()
-    //         }
-    //     } else {
-    //         logger.logWarning("Battery health calculation failed - insufficient data")
-    //     }
-    //     
-    //     // Notify Flutter
-    //     MainActivity.sendBatteryHealthUpdate()
-    // }
-    // 
-    // // ==================== End Battery Health Calculation ====================
+    // ==================== Battery Health Calculation ====================
+    
+    private fun getDesignedCapacity(): Int {
+        return try {
+            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            
+            // Try to get designed capacity (in microampere-hours)
+            val capacityMicroAh = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+            
+            // Some devices report designed capacity via PowerProfile (reflection needed)
+            val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
+            val constructor = powerProfileClass.getConstructor(Context::class.java)
+            val powerProfile = constructor.newInstance(this)
+            val method = powerProfileClass.getMethod("getBatteryCapacity")
+            val capacity = method.invoke(powerProfile) as Double
+            
+            capacity.toInt()
+        } catch (e: Exception) {
+            // Fallback: try to read from system properties or return default
+            try {
+                val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                // BATTERY_PROPERTY_CAPACITY returns percentage, not useful here
+                // Return 0 to indicate we couldn't get it
+                0
+            } catch (e2: Exception) {
+                0
+            }
+        }
+    }
+    
+    private fun getCurrentNow(): Int {
+        return try {
+            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            // Returns current in microamperes (negative when discharging, positive when charging)
+            batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        } catch (e: Exception) {
+            0
+        }
+    }
+    
+    fun startHealthCalculation(): Boolean {
+        if (!isPhoneCharging) {
+            logger.logWarning("Cannot start health calculation - device not charging")
+            return false
+        }
+        
+        if (phoneBatteryLevel > (100 - HEALTH_CALCULATION_RANGE)) {
+            logger.logWarning("Cannot start health calculation - battery too high (need room for ${HEALTH_CALCULATION_RANGE}% charge)")
+            return false
+        }
+        
+        // Get designed capacity
+        designedCapacityMah = getDesignedCapacity()
+        if (designedCapacityMah <= 0) {
+            logger.logWarning("Could not determine designed battery capacity")
+            // Continue anyway, we can still calculate estimated capacity
+        }
+        
+        // Reset calculation state
+        healthCalculationInProgress = true
+        healthCalculationStartPercent = phoneBatteryLevel
+        healthCalculationEndPercent = phoneBatteryLevel + HEALTH_CALCULATION_RANGE
+        accumulatedCurrentMah = 0.0
+        lastHealthSampleTime = System.currentTimeMillis()
+        
+        logger.logInfo("Battery health calculation started at $phoneBatteryLevel% (target: $healthCalculationEndPercent%)")
+        
+        // Start sampling current
+        startHealthSampling()
+        
+        // Notify Flutter
+        MainActivity.sendBatteryHealthUpdate()
+        
+        return true
+    }
+    
+    fun stopHealthCalculation() {
+        healthCalculationInProgress = false
+        stopHealthSampling()
+        MainActivity.sendBatteryHealthUpdate()
+    }
+    
+    private fun resetHealthCalculation() {
+        healthCalculationInProgress = false
+        healthCalculationWasActive = false
+        healthCalculationStartPercent = -1
+        healthCalculationEndPercent = -1
+        accumulatedCurrentMah = 0.0
+        lastHealthSampleTime = 0
+        stopHealthSampling()
+    }
+    
+    private fun startHealthSampling() {
+        stopHealthSampling()
+        
+        healthCalculationRunnable = object : Runnable {
+            override fun run() {
+                if (healthCalculationInProgress && isPhoneCharging) {
+                    sampleBatteryCurrent()
+                    handler.postDelayed(this, HEALTH_SAMPLE_INTERVAL_MS)
+                }
+            }
+        }
+        handler.postDelayed(healthCalculationRunnable!!, HEALTH_SAMPLE_INTERVAL_MS)
+    }
+    
+    private fun stopHealthSampling() {
+        healthCalculationRunnable?.let { handler.removeCallbacks(it) }
+        healthCalculationRunnable = null
+    }
+    
+    private fun sampleBatteryCurrent() {
+        val currentMicroAmps = getCurrentNow()
+        currentNowMicroAmps = currentMicroAmps
+        
+        val now = System.currentTimeMillis()
+        val elapsedSeconds = (now - lastHealthSampleTime) / 1000.0
+        lastHealthSampleTime = now
+        
+        if (currentMicroAmps > 0 && elapsedSeconds > 0) {
+            // Convert microamps to milliamps and accumulate (current * time = charge)
+            // Current is in microamps, time is in seconds
+            // mAh = (microamps / 1000) * (seconds / 3600) = microamps * seconds / 3,600,000
+            val chargeMah = (currentMicroAmps.toDouble() * elapsedSeconds) / 3600000.0
+            accumulatedCurrentMah += chargeMah
+        }
+    }
+    
+    private fun checkHealthCalculationProgress() {
+        if (!healthCalculationInProgress) return
+        
+        val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
+        
+        if (percentCharged >= HEALTH_CALCULATION_RANGE) {
+            // Calculation complete!
+            calculateBatteryHealth()
+        }
+    }
+    
+    private fun calculateBatteryHealth() {
+        stopHealthSampling()
+        healthCalculationInProgress = false
+        
+        val percentCharged = phoneBatteryLevel - healthCalculationStartPercent
+        
+        if (percentCharged > 0 && accumulatedCurrentMah > 0) {
+            // Estimated capacity = (accumulated mAh / percent charged) * 100
+            estimatedCapacityMah = (accumulatedCurrentMah / percentCharged) * 100
+            
+            // Battery health = (estimated capacity / designed capacity) * 100
+            if (designedCapacityMah > 0) {
+                batteryHealthPercent = (estimatedCapacityMah / designedCapacityMah) * 100
+                // Cap at 100%
+                if (batteryHealthPercent > 100) batteryHealthPercent = 100.0
+            }
+            
+            logger.logInfo("Battery health calculation complete: " +
+                    "Estimated capacity: ${estimatedCapacityMah.toInt()} mAh, " +
+                    "Designed capacity: $designedCapacityMah mAh, " +
+                    "Health: ${batteryHealthPercent.toInt()}%")
+            
+            // Save results to preferences
+            prefs?.edit()?.apply {
+                putFloat("estimated_capacity_mah", estimatedCapacityMah.toFloat())
+                putFloat("battery_health_percent", batteryHealthPercent.toFloat())
+                putLong("health_calculation_time", System.currentTimeMillis())
+                apply()
+            }
+        } else {
+            logger.logWarning("Battery health calculation failed - insufficient data")
+        }
+        
+        // Notify Flutter
+        MainActivity.sendBatteryHealthUpdate()
+    }
+    
+    // ==================== End Battery Health Calculation ====================
 
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {

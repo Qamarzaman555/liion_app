@@ -24,8 +24,7 @@ class MainActivity : FlutterActivity() {
         private const val DATA_RECEIVED_CHANNEL = "com.liion_app/data_received"
         private const val BATTERY_CHANNEL = "com.liion_app/phone_battery"
         private const val CHARGE_LIMIT_CHANNEL = "com.liion_app/charge_limit"
-        // TODO: Battery Health feature - commented out for now
-        // private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
+        private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
         private const val MEASURE_DATA_CHANNEL = "com.liion_app/measure_data"
         private const val REQUEST_ENABLE_BT = 1001
         
@@ -35,8 +34,7 @@ class MainActivity : FlutterActivity() {
         private var dataReceivedSink: EventChannel.EventSink? = null
         private var batterySink: EventChannel.EventSink? = null
         private var chargeLimitSink: EventChannel.EventSink? = null
-        // TODO: Battery Health feature - commented out for now
-        // private var batteryHealthSink: EventChannel.EventSink? = null
+        private var batteryHealthSink: EventChannel.EventSink? = null
         private var measureDataSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
@@ -47,7 +45,7 @@ class MainActivity : FlutterActivity() {
             dataReceivedSink = null
             batterySink = null
             chargeLimitSink = null
-            // batteryHealthSink = null
+            batteryHealthSink = null
         }
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -130,14 +128,13 @@ class MainActivity : FlutterActivity() {
             }
         }
         
-        // TODO: Battery Health feature - commented out for now
-        // fun sendBatteryHealthUpdate() {
-        //     try {
-        //         batteryHealthSink?.success(BleScanService.getBatteryHealthInfo())
-        //     } catch (e: Exception) {
-        //         batteryHealthSink = null
-        //     }
-        // }
+        fun sendBatteryHealthUpdate() {
+            try {
+                batteryHealthSink?.success(BleScanService.getBatteryHealthInfo())
+            } catch (e: Exception) {
+                batteryHealthSink = null
+            }
+        }
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -248,17 +245,16 @@ class MainActivity : FlutterActivity() {
                         requestDisableBatteryOptimization()
                         result.success(true)
                     }
-                    // TODO: Battery Health feature - commented out for now
-                    // "getBatteryHealthInfo" -> {
-                    //     result.success(BleScanService.getBatteryHealthInfo())
-                    // }
-                    // "startBatteryHealthCalculation" -> {
-                    //     result.success(BleScanService.startBatteryHealthCalculation())
-                    // }
-                    // "stopBatteryHealthCalculation" -> {
-                    //     BleScanService.stopBatteryHealthCalculation()
-                    //     result.success(true)
-                    // }
+                    "getBatteryHealthInfo" -> {
+                        result.success(BleScanService.getBatteryHealthInfo())
+                    }
+                    "startBatteryHealthCalculation" -> {
+                        result.success(BleScanService.startBatteryHealthCalculation())
+                    }
+                    "stopBatteryHealthCalculation" -> {
+                        BleScanService.stopBatteryHealthCalculation()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -343,18 +339,17 @@ class MainActivity : FlutterActivity() {
                 }
             })
         
-        // TODO: Battery Health feature - commented out for now
-        // // Event Channel for battery health
-        // EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_HEALTH_CHANNEL)
-        //     .setStreamHandler(object : EventChannel.StreamHandler {
-        //         override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-        //             batteryHealthSink = events
-        //             events?.success(BleScanService.getBatteryHealthInfo())
-        //         }
-        //         override fun onCancel(arguments: Any?) {
-        //             batteryHealthSink = null
-        //         }
-        //     })
+        // Event Channel for battery health
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_HEALTH_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    batteryHealthSink = events
+                    events?.success(BleScanService.getBatteryHealthInfo())
+                }
+                override fun onCancel(arguments: Any?) {
+                    batteryHealthSink = null
+                }
+            })
         
         // Event Channel for measure data (voltage/current)
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, MEASURE_DATA_CHANNEL)
