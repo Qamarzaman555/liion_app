@@ -481,7 +481,7 @@ class BatteryView extends GetView<BatteryController> {
                 border: Border.all(color: Colors.grey.withOpacity(0.2)),
               ),
               child: Text(
-                'Health reading based on $healthReadingsCount charge cycles ($healthReadingsCount × 60% charged) ${totalEstimatedValues.toInt()} mAh total',
+                'Health reading based on $healthReadingsCount charge cycles (${healthReadingsCount * 60}% charged) ${totalEstimatedValues.toInt()} mAh total',
                 style: TextStyle(
                   color: Colors.grey[700],
                   fontFamily: 'Inter',
