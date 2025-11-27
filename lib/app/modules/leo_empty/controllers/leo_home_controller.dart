@@ -19,6 +19,7 @@ class LeoHomeController extends GetxController {
   final measureDataList = <String>[].obs;
   final voltageValue = ''.obs;
   final currentValue = ''.obs;
+  final powerValue = ''.obs;
 
   StreamSubscription? _deviceSubscription;
   StreamSubscription? _connectionSubscription;
@@ -128,8 +129,17 @@ class LeoHomeController extends GetxController {
 
   void _listenToMeasureData() {
     _measureDataSubscription = BleScanService.measureDataStream.listen((data) {
-      voltageValue.value = '${data.voltage}V';
-      currentValue.value = '${data.current}A';
+      final voltage = double.tryParse(data.voltage);
+      final current = double.tryParse(data.current);
+
+      voltageValue.value = voltage != null
+          ? '${voltage.toStringAsFixed(3)}V'
+          : data.voltage;
+      currentValue.value = current != null
+          ? '${current.toStringAsFixed(3)}A'
+          : data.current;
+
+      _updatePower(voltage, current);
     });
   }
 
@@ -167,6 +177,7 @@ class LeoHomeController extends GetxController {
           double voltage = v1 > v2 ? v1 : v2;
           voltageValue.value = '${voltage.toStringAsFixed(3)}V';
           print('Voltage value set: ${voltageValue.value}');
+          _updatePower(voltage, current);
         }
       }
 
@@ -184,6 +195,7 @@ class LeoHomeController extends GetxController {
           double v2 = double.parse(parts[3]);
           double voltage = v1 > v2 ? v1 : v2;
           voltageValue.value = '${voltage.toStringAsFixed(3)}V';
+          _updatePower(voltage, current);
         }
       }
     } catch (e) {
@@ -200,6 +212,12 @@ class LeoHomeController extends GetxController {
     } catch (e) {
       return false;
     }
+  }
+
+  void _updatePower(double? voltage, double? current) {
+    if (voltage == null || current == null) return;
+    final power = (voltage * current).abs();
+    powerValue.value = '${power.toStringAsFixed(3)}W';
   }
 
   /// Request mWh value from Leo

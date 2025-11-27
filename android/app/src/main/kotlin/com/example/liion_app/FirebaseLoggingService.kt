@@ -47,62 +47,62 @@ class FirebaseLoggingService private constructor() {
         
         scope.launch {
             try {
-                // Check network connectivity
-                if (!hasNetworkConnection()) {
-                    return@launch
-                }
+                // // Check network connectivity
+                // if (!hasNetworkConnection()) {
+                //     return@launch
+                // }
                 
-                // Initialize Firebase if not already done
-                if (FirebaseApp.getApps(context).isEmpty()) {
-                    FirebaseApp.initializeApp(context)
-                }
+                // // Initialize Firebase if not already done
+                // if (FirebaseApp.getApps(context).isEmpty()) {
+                //     FirebaseApp.initializeApp(context)
+                // }
                 
-                firestore = FirebaseFirestore.getInstance()
+                // firestore = FirebaseFirestore.getInstance()
                 
-                // Get device label
-                deviceKey = getDeviceLabel()
+                // // Get device label
+                // deviceKey = getDeviceLabel()
                 
-                // Get next session ID
-                val baseCollectionPath = "logs/app-logs/$deviceKey"
+                // // Get next session ID
+                // val baseCollectionPath = "logs/app-logs/$deviceKey"
                 
-                firestore?.collection(baseCollectionPath)?.get()
-                    ?.addOnSuccessListener { snapshot ->
-                        var maxKey = 0
-                        for (doc in snapshot.documents) {
-                            val id = doc.id.trim()
-                            val parsed = id.toIntOrNull()
-                            if (parsed != null && parsed > maxKey) {
-                                maxKey = parsed
-                            }
-                        }
+                // firestore?.collection(baseCollectionPath)?.get()
+                //     ?.addOnSuccessListener { snapshot ->
+                //         var maxKey = 0
+                //         for (doc in snapshot.documents) {
+                //             val id = doc.id.trim()
+                //             val parsed = id.toIntOrNull()
+                //             if (parsed != null && parsed > maxKey) {
+                //                 maxKey = parsed
+                //             }
+                //         }
                         
-                        val nextKey = (maxKey + 1).toString()
-                        sessionId = nextKey
-                        sessionDocPath = "$baseCollectionPath/$nextKey"
+                //         val nextKey = (maxKey + 1).toString()
+                //         sessionId = nextKey
+                //         sessionDocPath = "$baseCollectionPath/$nextKey"
                         
-                        // Create session document
-                        val sessionData = hashMapOf(
-                            "createdAt" to FieldValue.serverTimestamp(),
-                            "device" to deviceKey,
-                            "platform" to "android",
-                            "appVersion" to appVersion,
-                            "buildNumber" to buildNumber,
-                            "logs" to listOf<Map<String, Any>>()
-                        )
+                //         // Create session document
+                //         val sessionData = hashMapOf(
+                //             "createdAt" to FieldValue.serverTimestamp(),
+                //             "device" to deviceKey,
+                //             "platform" to "android",
+                //             "appVersion" to appVersion,
+                //             "buildNumber" to buildNumber,
+                //             "logs" to listOf<Map<String, Any>>()
+                //         )
                         
-                        firestore?.document(sessionDocPath!!)
-                            ?.set(sessionData, SetOptions.merge())
-                            ?.addOnSuccessListener {
-                                isInitialized = true
-                                log("INFO", "Logging session initialized")
-                            }
-                            ?.addOnFailureListener { e ->
-                                // Silently fail
-                            }
-                    }
-                    ?.addOnFailureListener { e ->
-                        // Silently fail
-                    }
+                //         firestore?.document(sessionDocPath!!)
+                //             ?.set(sessionData, SetOptions.merge())
+                //             ?.addOnSuccessListener {
+                //                 isInitialized = true
+                //                 log("INFO", "Logging session initialized")
+                //             }
+                //             ?.addOnFailureListener { e ->
+                //                 // Silently fail
+                //             }
+                //     }
+                //     ?.addOnFailureListener { e ->
+                //         // Silently fail
+                //     }
                 
             } catch (e: Exception) {
                 // Swallow errors

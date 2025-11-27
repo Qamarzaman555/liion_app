@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/widgets/custom_button.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 import '../controllers/leo_home_controller.dart';
 
@@ -12,257 +13,275 @@ class LeoHomeView extends GetView<LeoHomeController> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
+      resizeToAvoidBottomInset: false,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(130),
+        child: AppBar(
+          scrolledUnderElevation: 0.0,
+          automaticallyImplyLeading: false,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          flexibleSpace: Center(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(50, 50, 50, 0),
+              child: Image.asset(
+                PngAssets.leoMainLogo,
+                height: 60,
+                fit: BoxFit.fitWidth,
+              ),
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 40, 20, 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Leo",
-                    style: TextStyle(
-                      color: Color(0xFF282828),
-                      fontFamily: 'Inter',
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Obx(
-                    () => controller.isScanning.value
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ],
-              ),
-            ),
-            // Bluetooth & Connection Status Bar
-            Obx(() => _buildStatusBar()),
-            // mWh Value Card (shown when connected)
-            Obx(() {
-              if (controller.connectionState.value ==
-                  BleConnectionState.connected) {
-                return _buildMwhCard();
-              }
-              return const SizedBox.shrink();
-            }),
-            Expanded(
-              child: Obx(() {
-                if (controller.connectionState.value ==
-                    BleConnectionState.connected) {
-                  return _buildDataLog();
-                }
-                if (controller.scannedDevices.isEmpty) {
-                  return _buildEmptyState();
-                }
-                return _buildDeviceList();
-              }),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusBar() {
-    final isBluetoothOn = controller.isBluetoothOn;
-    final isConnected =
-        controller.connectionState.value == BleConnectionState.connected;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isBluetoothOn ? Icons.bluetooth : Icons.bluetooth_disabled,
-            size: 20,
-            color: isBluetoothOn ? Colors.blue : Colors.grey,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'BT: ${controller.adapterStateName}',
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isBluetoothOn ? Colors.blue : Colors.grey,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Container(width: 1, height: 20, color: Colors.grey.shade300),
-          const SizedBox(width: 16),
-          Icon(
-            isConnected ? Icons.link : Icons.link_off,
-            size: 20,
-            color: isConnected ? Colors.green : Colors.grey,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              isConnected
-                  ? 'Connected'
-                  : controller.connectionState.value ==
-                        BleConnectionState.connecting
-                  ? 'Connecting...'
-                  : 'Disconnected',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: isConnected ? Colors.green : Colors.grey,
-              ),
-            ),
-          ),
-          if (!isBluetoothOn)
-            GestureDetector(
-              onTap: () => BleScanService.requestEnableBluetooth(),
-              child: Text(
-                'Enable',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primaryColor,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMwhCard() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primaryColor,
-            AppColors.primaryColor.withOpacity(0.8),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryColor.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Leo Measurements',
-            style: TextStyle(
-              color: Colors.white70,
-              fontFamily: 'Inter',
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Obx(
-            () => Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Voltage
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Voltage',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      controller.voltageValue.value.isEmpty
-                          ? '--'
-                          : controller.voltageValue.value,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'Inter',
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+                // Padding(
+                //   padding: const EdgeInsets.fromLTRB(20, 40, 20, 10),
+                //   child: Row(
+                //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                //     children: [
+                //       const Text(
+                //         "Leo",
+                //         style: TextStyle(
+                //           color: Color(0xFF282828),
+                //           fontFamily: 'Inter',
+                //           fontSize: 24,
+                //           fontWeight: FontWeight.w700,
+                //         ),
+                //       ),
+                //       Obx(
+                //         () => controller.isScanning.value
+                //             ? const SizedBox(
+                //                 width: 20,
+                //                 height: 20,
+                //                 child: CircularProgressIndicator(strokeWidth: 2),
+                //               )
+                //             : const SizedBox.shrink(),
+                //       ),
+                //     ],
+                //   ),
+                // ),
+                Obx(
+                  () => CustomButton(
+                    height: 70,
+                    backgroundColor:
+                        controller.connectionState.value ==
+                            BleConnectionState.connected
+                        ? AppColors.primaryColor
+                        : AppColors.primaryInvertColor,
+                    text:
+                        controller.connectionState.value ==
+                            BleConnectionState.connected
+                        ? 'Connected'
+                        : controller.connectionState.value ==
+                              BleConnectionState.connecting
+                        ? 'Connecting...'
+                        : 'Disconnected',
+                    onPressed: () {
+                      if (controller.isBluetoothOn) {
+                        controller.connectionState.value ==
+                                BleConnectionState.connected
+                            ? controller.disconnectDevice()
+                            : controller.connectToDevice(
+                                controller.scannedDevices[0]['address'] ?? '',
+                              );
+                      } else {
+                        BleScanService.requestEnableBluetooth();
+                      }
+                    },
+                  ),
                 ),
-                // Current
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text(
-                      'Current',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      controller.currentValue.value.isEmpty
-                          ? '--'
-                          : controller.currentValue.value,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'Inter',
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 10),
+                Obx(
+                  () => CustomButton(
+                    height: 70,
+                    backgroundColor:
+                        controller.connectionState.value ==
+                            BleConnectionState.disconnected
+                        ? AppColors.primaryColor
+                        : AppColors.primaryInvertColor,
+                    text:
+                        controller.connectionState.value ==
+                            BleConnectionState.connected
+                        ? 'Leo is up-to-date'
+                        : 'Update Leo',
+                    onPressed: () {
+                      if (controller.isBluetoothOn) {
+                        controller.connectionState.value ==
+                                BleConnectionState.connected
+                            ? controller.disconnectDevice()
+                            : controller.connectToDevice(
+                                controller.scannedDevices[0]['address'] ?? '',
+                              );
+                      } else {
+                        BleScanService.requestEnableBluetooth();
+                      }
+                    },
+                  ),
                 ),
+
+                SizedBox(height: 20),
+
+                Card(
+                  color: AppColors.whiteColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.bolt,
+                                  color: AppColors.secondaryColor,
+                                  size: 22,
+                                ),
+                                Text("Current"),
+                                SizedBox(width: 12),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF4DAEA7),
+                                    borderRadius: BorderRadius.all(
+                                      Radius.circular(8),
+                                    ),
+                                  ),
+
+                                  child: Obx(
+                                    () => Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
+                                      child: Text(
+                                        controller.currentValue.value,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Spacer(),
+                            Row(
+                              children: [
+                                Text("Voltage"),
+                                SizedBox(width: 12),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF4DAEA7),
+                                    borderRadius: BorderRadius.all(
+                                      Radius.circular(8),
+                                    ),
+                                  ),
+                                  child: Obx(
+                                    () => Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
+                                      child: Text(
+                                        controller.voltageValue.value,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text("Power"),
+                            SizedBox(width: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4DAEA7),
+                                borderRadius: BorderRadius.all(
+                                  Radius.circular(8),
+                                ),
+                              ),
+                              child: Obx(
+                                () => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  child: Text(controller.powerValue.value),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 12),
+                Card(
+                  color: AppColors.whiteColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        const Icon(
+                          Icons.bolt,
+                          color: AppColors.secondaryColor,
+                          size: 22,
+                        ),
+                        Text("Total Charges"),
+                        SizedBox(width: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4DAEA7),
+                            borderRadius: BorderRadius.all(Radius.circular(8)),
+                          ),
+
+                          child: Obx(
+                            () => Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              child: Text(controller.mwhValue.value),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Expanded(
+                //   child: Obx(() {
+                //     if (controller.connectionState.value ==
+                //         BleConnectionState.connected) {
+                //       return _buildDataLog();
+                //     }
+                //     if (controller.scannedDevices.isEmpty) {
+                //       return _buildEmptyState();
+                //     }
+                //     return _buildDeviceList();
+                //   }),
+                // ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          // Disconnect button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => controller.disconnectDevice(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text(
-                'Disconnect',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
