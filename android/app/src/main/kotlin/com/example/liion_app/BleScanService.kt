@@ -860,6 +860,10 @@ class BleScanService : Service() {
         chargeLimit = prefs?.getInt(KEY_CHARGE_LIMIT, 90) ?: 90
         chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
         
+        // Load saved battery health values
+        estimatedCapacityMah = prefs?.getFloat("estimated_capacity_mah", 0f)?.toDouble() ?: 0.0
+        batteryHealthPercent = prefs?.getFloat("battery_health_percent", -1f)?.toDouble() ?: -1.0
+        
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
         bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
