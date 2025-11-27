@@ -117,7 +117,7 @@ class LeoHomeController extends GetxController {
       );
 
       // Keep only last 50 entries
-      if (receivedDataLog.length > 50) {
+      if (receivedDataLog.length > 10) {
         receivedDataLog.removeLast();
       }
 
