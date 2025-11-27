@@ -625,10 +625,12 @@ class BleScanService : Service() {
                 } else {
                     dischargingTimeSeconds++
                 }
+                // Schedule next update after 1 second
                 handler.postDelayed(this, 1000)
             }
         }
-        handler.postDelayed(timeTrackingRunnable!!, 1000)
+        // Start immediately to get first increment right away
+        handler.post(timeTrackingRunnable!!)
     }
 
     private fun stopTimeTracking() {
@@ -1015,6 +1017,9 @@ class BleScanService : Service() {
         // Start battery metrics polling (every 1 second)
         startBatteryMetricsPolling()
         
+        // Start time tracking (tracks charging/discharging time)
+        startTimeTracking()
+        
         logger.logServiceState("Service created")
     }
     
@@ -1143,7 +1148,9 @@ class BleScanService : Service() {
                 batteryCurrentMa,
                 batteryVoltageV,
                 batteryTemperatureC,
-                metricsAccumulatedMah
+                metricsAccumulatedMah,
+                chargingTimeSeconds,
+                dischargingTimeSeconds
             )
         } catch (e: Exception) {
             // Silently fail

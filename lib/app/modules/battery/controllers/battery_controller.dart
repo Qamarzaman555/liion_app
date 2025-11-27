@@ -11,6 +11,8 @@ class BatteryController extends GetxController {
   final batteryVoltage = 0.0.obs; // V
   final batteryTemperature = 0.0.obs; // °C
   final accumulatedMah = 0.0.obs; // mAh - resets on charging state change
+  final chargingTimeSeconds = 0.obs; // seconds - time spent charging
+  final dischargingTimeSeconds = 0.obs; // seconds - time spent discharging
 
   // Battery health
   final designedCapacityMah = 0.obs;
@@ -68,6 +70,8 @@ class BatteryController extends GetxController {
       batteryVoltage.value = metrics.voltage;
       batteryTemperature.value = metrics.temperature;
       accumulatedMah.value = metrics.accumulatedMah;
+      chargingTimeSeconds.value = metrics.chargingTimeSeconds;
+      dischargingTimeSeconds.value = metrics.dischargingTimeSeconds;
     });
   }
 

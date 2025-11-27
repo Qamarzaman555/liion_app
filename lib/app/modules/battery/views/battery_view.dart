@@ -145,13 +145,24 @@ class BatteryView extends GetView<BatteryController> {
                       ),
                       SizedBox(height: 12),
 
-                      Obx(
-                        () => _buildStateRow(
+                      Obx(() {
+                        final timeSeconds = controller.isPhoneCharging.value
+                            ? controller.chargingTimeSeconds.value
+                            : controller.dischargingTimeSeconds.value;
+                        final hours = timeSeconds ~/ 3600;
+                        final minutes = (timeSeconds % 3600) ~/ 60;
+                        final seconds = timeSeconds % 60;
+                        final timeString = hours > 0
+                            ? "${hours}h ${minutes}m ${seconds}s"
+                            : minutes > 0
+                            ? "${minutes}m ${seconds}s"
+                            : "${seconds}s";
+                        return _buildStateRow(
                           "Time ${controller.isPhoneCharging.value ? "charged" : "discharged"}",
-                          "0.0002A",
+                          timeString,
                           screenHeight,
-                        ),
-                      ),
+                        );
+                      }),
 
                       const SizedBox(height: 30),
                       // Actual Current Row
@@ -249,10 +260,8 @@ class BatteryView extends GetView<BatteryController> {
                         const SizedBox(height: 20),
 
                       _capacityRow(
-                        "Designated Capacity",
-                        controller.designedCapacityMah.value < 1
-                            ? "--"
-                            : "${controller.designedCapacityMah.value} mAh",
+                        "Designed Capacity",
+                        '${controller.designedCapacityMah.value} mAh',
                       ),
                       _capacityRow(
                         "Estimated Capacity",

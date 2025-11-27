@@ -121,12 +121,16 @@ class BatteryMetrics {
   final double voltage; // V
   final double temperature; // °C
   final double accumulatedMah; // mAh - resets on charging state change
+  final int chargingTimeSeconds; // seconds - time spent charging
+  final int dischargingTimeSeconds; // seconds - time spent discharging
 
   BatteryMetrics({
     required this.current,
     required this.voltage,
     required this.temperature,
     required this.accumulatedMah,
+    required this.chargingTimeSeconds,
+    required this.dischargingTimeSeconds,
   });
 
   factory BatteryMetrics.fromMap(Map<dynamic, dynamic> map) {
@@ -135,6 +139,9 @@ class BatteryMetrics {
       voltage: (map['voltage'] as num?)?.toDouble() ?? 0.0,
       temperature: (map['temperature'] as num?)?.toDouble() ?? 0.0,
       accumulatedMah: (map['accumulatedMah'] as num?)?.toDouble() ?? 0.0,
+      chargingTimeSeconds: (map['chargingTimeSeconds'] as num?)?.toInt() ?? 0,
+      dischargingTimeSeconds:
+          (map['dischargingTimeSeconds'] as num?)?.toInt() ?? 0,
     );
   }
 }

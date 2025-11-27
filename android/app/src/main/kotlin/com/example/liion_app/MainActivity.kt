@@ -139,13 +139,15 @@ class MainActivity : FlutterActivity() {
             }
         }
         
-        fun sendBatteryMetricsUpdate(current: Double, voltage: Double, temperature: Double, accumulatedMah: Double) {
+        fun sendBatteryMetricsUpdate(current: Double, voltage: Double, temperature: Double, accumulatedMah: Double, chargingTimeSeconds: Long, dischargingTimeSeconds: Long) {
             try {
                 batteryMetricsSink?.success(mapOf(
                     "current" to current,
                     "voltage" to voltage,
                     "temperature" to temperature,
-                    "accumulatedMah" to accumulatedMah
+                    "accumulatedMah" to accumulatedMah,
+                    "chargingTimeSeconds" to chargingTimeSeconds,
+                    "dischargingTimeSeconds" to dischargingTimeSeconds
                 ))
             } catch (e: Exception) {
                 batteryMetricsSink = null
