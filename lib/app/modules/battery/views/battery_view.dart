@@ -110,18 +110,36 @@ class BatteryView extends GetView<BatteryController> {
                       ),
                       SizedBox(height: 12),
 
-                      _buildStateRow("Current", "0.0002A", screenHeight),
+                      Obx(
+                        () => _buildStateRow(
+                          "Current",
+                          "${(controller.batteryCurrent.value / 1000).toStringAsFixed(4)} A",
+                          screenHeight,
+                        ),
+                      ),
                       SizedBox(height: 12),
-                      _buildStateRow("Voltage", "0.0002A", screenHeight),
+                      Obx(
+                        () => _buildStateRow(
+                          "Voltage",
+                          "${controller.batteryVoltage.value} V",
+                          screenHeight,
+                        ),
+                      ),
                       SizedBox(height: 12),
 
-                      _buildStateRow("Temprature", "0.0002A", screenHeight),
+                      Obx(
+                        () => _buildStateRow(
+                          "Temprature",
+                          "${controller.batteryTemperature.value}",
+                          screenHeight,
+                        ),
+                      ),
                       SizedBox(height: 12),
 
                       Obx(
                         () => _buildStateRow(
                           "maH ${controller.isPhoneCharging.value ? "charging" : "discharging"}",
-                          "0.0002A",
+                          "${controller.accumulatedMah.value.toStringAsFixed(2)} mAh",
                           screenHeight,
                         ),
                       ),
@@ -234,13 +252,13 @@ class BatteryView extends GetView<BatteryController> {
                         "Designated Capacity",
                         controller.designedCapacityMah.value < 1
                             ? "--"
-                            : controller.designedCapacityMah.value.toString(),
+                            : "${controller.designedCapacityMah.value} mAh",
                       ),
                       _capacityRow(
                         "Estimated Capacity",
                         controller.estimatedCapacityMah.value < 1
                             ? "--"
-                            : controller.estimatedCapacityMah.value.toString(),
+                            : "${controller.estimatedCapacityMah.value.toStringAsFixed(2)} mAh",
                       ),
                     ],
                   ),

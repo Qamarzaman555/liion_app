@@ -116,6 +116,29 @@ class MeasureData {
   }
 }
 
+class BatteryMetrics {
+  final double current; // mA
+  final double voltage; // V
+  final double temperature; // °C
+  final double accumulatedMah; // mAh - resets on charging state change
+
+  BatteryMetrics({
+    required this.current,
+    required this.voltage,
+    required this.temperature,
+    required this.accumulatedMah,
+  });
+
+  factory BatteryMetrics.fromMap(Map<dynamic, dynamic> map) {
+    return BatteryMetrics(
+      current: (map['current'] as num?)?.toDouble() ?? 0.0,
+      voltage: (map['voltage'] as num?)?.toDouble() ?? 0.0,
+      temperature: (map['temperature'] as num?)?.toDouble() ?? 0.0,
+      accumulatedMah: (map['accumulatedMah'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
 class BleScanService {
   static const MethodChannel _methodChannel = MethodChannel(
     'com.liion_app/ble_service',
@@ -144,6 +167,9 @@ class BleScanService {
   static const EventChannel _measureDataChannel = EventChannel(
     'com.liion_app/measure_data',
   );
+  static const EventChannel _batteryMetricsChannel = EventChannel(
+    'com.liion_app/battery_metrics',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
@@ -153,6 +179,7 @@ class BleScanService {
   static Stream<ChargeLimitInfo>? _chargeLimitStream;
   static Stream<BatteryHealthInfo>? _batteryHealthStream;
   static Stream<MeasureData>? _measureDataStream;
+  static Stream<BatteryMetrics>? _batteryMetricsStream;
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -446,6 +473,15 @@ class BleScanService {
       (event) => MeasureData.fromMap(event as Map),
     );
     return _measureDataStream!;
+  }
+
+  /// Stream of battery metrics (current, voltage, temperature, accumulated mAh)
+  /// Updated every second from foreground service
+  static Stream<BatteryMetrics> get batteryMetricsStream {
+    _batteryMetricsStream ??= _batteryMetricsChannel
+        .receiveBroadcastStream()
+        .map((event) => BatteryMetrics.fromMap(event as Map));
+    return _batteryMetricsStream!;
   }
 
   /// Get all scanned devices

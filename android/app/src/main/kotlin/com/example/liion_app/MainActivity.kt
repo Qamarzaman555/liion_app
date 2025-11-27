@@ -26,6 +26,7 @@ class MainActivity : FlutterActivity() {
         private const val CHARGE_LIMIT_CHANNEL = "com.liion_app/charge_limit"
         private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
         private const val MEASURE_DATA_CHANNEL = "com.liion_app/measure_data"
+        private const val BATTERY_METRICS_CHANNEL = "com.liion_app/battery_metrics"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -36,6 +37,7 @@ class MainActivity : FlutterActivity() {
         private var chargeLimitSink: EventChannel.EventSink? = null
         private var batteryHealthSink: EventChannel.EventSink? = null
         private var measureDataSink: EventChannel.EventSink? = null
+        private var batteryMetricsSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun clearAllSinks() {
@@ -46,6 +48,7 @@ class MainActivity : FlutterActivity() {
             batterySink = null
             chargeLimitSink = null
             batteryHealthSink = null
+            batteryMetricsSink = null
         }
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -133,6 +136,19 @@ class MainActivity : FlutterActivity() {
                 batteryHealthSink?.success(BleScanService.getBatteryHealthInfo())
             } catch (e: Exception) {
                 batteryHealthSink = null
+            }
+        }
+        
+        fun sendBatteryMetricsUpdate(current: Double, voltage: Double, temperature: Double, accumulatedMah: Double) {
+            try {
+                batteryMetricsSink?.success(mapOf(
+                    "current" to current,
+                    "voltage" to voltage,
+                    "temperature" to temperature,
+                    "accumulatedMah" to accumulatedMah
+                ))
+            } catch (e: Exception) {
+                batteryMetricsSink = null
             }
         }
     }
@@ -359,6 +375,17 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     measureDataSink = null
+                }
+            })
+        
+        // Event Channel for battery metrics (current, voltage, temperature, accumulated mAh)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_METRICS_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    batteryMetricsSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    batteryMetricsSink = null
                 }
             })
     }

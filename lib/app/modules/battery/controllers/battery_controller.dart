@@ -6,6 +6,12 @@ class BatteryController extends GetxController {
   final phoneBatteryLevel = (-1).obs;
   final isPhoneCharging = false.obs;
 
+  // Real-time battery metrics from foreground service
+  final batteryCurrent = 0.0.obs; // mA
+  final batteryVoltage = 0.0.obs; // V
+  final batteryTemperature = 0.0.obs; // °C
+  final accumulatedMah = 0.0.obs; // mAh - resets on charging state change
+
   // Battery health
   final designedCapacityMah = 0.obs;
   final estimatedCapacityMah = 0.0.obs;
@@ -17,6 +23,8 @@ class BatteryController extends GetxController {
 
   StreamSubscription? _batterySubscription;
   StreamSubscription? _healthSubscription;
+  StreamSubscription? _batteryMetricsSubscription;
+  bool? _lastChargingState;
 
   @override
   void onInit() {
@@ -25,6 +33,7 @@ class BatteryController extends GetxController {
     _loadInitialHealth();
     _listenToBatteryUpdates();
     _listenToHealthUpdates();
+    _listenToBatteryMetrics();
   }
 
   Future<void> _loadInitialBattery() async {
@@ -40,8 +49,25 @@ class BatteryController extends GetxController {
 
   void _listenToBatteryUpdates() {
     _batterySubscription = BleScanService.phoneBatteryStream.listen((info) {
+      // Check if charging state changed - reset accumulated mAh
+      if (_lastChargingState != null && _lastChargingState != info.isCharging) {
+        accumulatedMah.value = 0.0;
+      }
+      _lastChargingState = info.isCharging;
+
       phoneBatteryLevel.value = info.level;
       isPhoneCharging.value = info.isCharging;
+    });
+  }
+
+  void _listenToBatteryMetrics() {
+    _batteryMetricsSubscription = BleScanService.batteryMetricsStream.listen((
+      metrics,
+    ) {
+      batteryCurrent.value = metrics.current;
+      batteryVoltage.value = metrics.voltage;
+      batteryTemperature.value = metrics.temperature;
+      accumulatedMah.value = metrics.accumulatedMah;
     });
   }
 
@@ -80,6 +106,7 @@ class BatteryController extends GetxController {
   void onClose() {
     _batterySubscription?.cancel();
     _healthSubscription?.cancel();
+    _batteryMetricsSubscription?.cancel();
     super.onClose();
   }
 }

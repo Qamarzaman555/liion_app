@@ -62,6 +62,12 @@ class BleScanService : Service() {
         var isPhoneCharging: Boolean = false
         var currentNowMicroAmps: Int = 0
         
+        // Battery metrics (updated every second)
+        var batteryCurrentMa: Double = 0.0
+        var batteryVoltageV: Double = 0.0
+        var batteryTemperatureC: Double = 0.0
+        var metricsAccumulatedMah: Double = 0.0 // Resets on charging state change
+        
         // Battery health calculation
         var designedCapacityMah: Int = 0
         var estimatedCapacityMah: Double = 0.0
@@ -193,6 +199,12 @@ class BleScanService : Service() {
     private var measureRunnable: Runnable? = null
     private val MEASURE_INTERVAL_MS = 30000L // Send measure command every 30 seconds
     private val MEASURE_INITIAL_DELAY_MS = 25000L // Initial delay before first measure command
+    
+    // Battery metrics timer (1 second polling)
+    private var batteryMetricsRunnable: Runnable? = null
+    private val BATTERY_METRICS_INTERVAL_MS = 1000L
+    private var lastMetricsChargingState: Boolean? = null
+    private var lastMetricsSampleTime: Long = 0
     
     // Health readings history (last 5 readings)
     private val healthReadings = mutableListOf<Companion.HealthReading>()
@@ -1000,6 +1012,9 @@ class BleScanService : Service() {
         // Start keep-alive mechanism
         startKeepAlive()
         
+        // Start battery metrics polling (every 1 second)
+        startBatteryMetricsPolling()
+        
         logger.logServiceState("Service created")
     }
     
@@ -1063,6 +1078,76 @@ class BleScanService : Service() {
     private fun stopKeepAlive() {
         keepAliveRunnable?.let { handler.removeCallbacks(it) }
         keepAliveRunnable = null
+    }
+    
+    private fun startBatteryMetricsPolling() {
+        stopBatteryMetricsPolling()
+        lastMetricsSampleTime = System.currentTimeMillis()
+        lastMetricsChargingState = isPhoneCharging
+        
+        batteryMetricsRunnable = object : Runnable {
+            override fun run() {
+                sampleBatteryMetrics()
+                handler.postDelayed(this, BATTERY_METRICS_INTERVAL_MS)
+            }
+        }
+        handler.post(batteryMetricsRunnable!!)
+    }
+    
+    private fun stopBatteryMetricsPolling() {
+        batteryMetricsRunnable?.let { handler.removeCallbacks(it) }
+        batteryMetricsRunnable = null
+    }
+    
+    private fun sampleBatteryMetrics() {
+        try {
+            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            
+            // Get current (in microamperes, convert to mA)
+            // Some devices report in mA directly, others in µA - check magnitude
+            val currentRaw = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+            batteryCurrentMa = if (kotlin.math.abs(currentRaw) > 100000) {
+                // Value is in microamperes (µA), convert to mA
+                currentRaw / 1000.0
+            } else {
+                // Value is already in milliamperes (mA)
+                currentRaw.toDouble()
+            }
+            
+            // Get voltage from battery intent (in millivolts, convert to V)
+            val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            batteryIntent?.let {
+                val voltageMv = it.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
+                batteryVoltageV = voltageMv / 1000.0
+                
+                // Get temperature (in tenths of degree Celsius)
+                val tempTenths = it.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+                batteryTemperatureC = tempTenths / 10.0
+            }
+            
+            // Check if charging state changed - reset accumulated mAh
+            if (lastMetricsChargingState != null && lastMetricsChargingState != isPhoneCharging) {
+                metricsAccumulatedMah = 0.0
+                lastMetricsSampleTime = System.currentTimeMillis()
+            }
+            lastMetricsChargingState = isPhoneCharging
+            
+            // Accumulate mAh (current in mA * time in hours)
+            val now = System.currentTimeMillis()
+            val elapsedHours = (now - lastMetricsSampleTime) / 3600000.0
+            metricsAccumulatedMah += kotlin.math.abs(batteryCurrentMa) * elapsedHours
+            lastMetricsSampleTime = now
+            
+            // Send update to Flutter
+            MainActivity.sendBatteryMetricsUpdate(
+                batteryCurrentMa,
+                batteryVoltageV,
+                batteryTemperatureC,
+                metricsAccumulatedMah
+            )
+        } catch (e: Exception) {
+            // Silently fail
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -1352,6 +1437,7 @@ class BleScanService : Service() {
         stopTimeTracking()
         stopMeasureTimer()
         stopKeepAlive()
+        stopBatteryMetricsPolling()
         releaseWakeLock()
         closeGatt()
         unregisterReceiver(bluetoothStateReceiver)
