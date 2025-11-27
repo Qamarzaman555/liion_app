@@ -15,4 +15,5 @@ class AppColors {
   static const Color secondaryColor = Color(0xFF66A399);
   static const Color cardBGColor = Color(0xFFEAEAEA);
   static const Color primaryInvertColor = Color(0xFFCCCCCC);
+  static const Color yellowColor = Color(0xFFFFBC00);
 }

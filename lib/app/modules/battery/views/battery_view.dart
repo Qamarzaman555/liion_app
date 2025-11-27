@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
+import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/widgets/custom_button.dart';
 import '../controllers/battery_controller.dart';
 
 class BatteryView extends GetView<BatteryController> {
@@ -8,6 +11,8 @@ class BatteryView extends GetView<BatteryController> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
       body: SafeArea(
@@ -15,18 +20,233 @@ class BatteryView extends GetView<BatteryController> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(20, 40, 20, 20),
-                child: Text(
-                  "Phone",
-                  style: TextStyle(
-                    color: Color(0xFF282828),
-                    fontFamily: 'Inter',
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Battery",
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.rectangle,
+                        color: AppColors.yellowColor,
+                        borderRadius: BorderRadius.circular(20.0),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                          left: 10,
+                          right: 10,
+                          top: 1,
+                          bottom: 1,
+                        ),
+                        child: Obx(
+                          () => Text(
+                            "${controller.phoneBatteryLevel.value}%",
+                            style: const TextStyle(
+                              color: Color(0xFFFFFFFF),
+                              fontFamily: 'Inter',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: 12),
+              Padding(
+                padding: EdgeInsetsGeometry.symmetric(horizontal: 16),
+                child: CustomButton(
+                  height: 70,
+
+                  text: "Set Charge Limit ",
+                  onPressed: () {},
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 32,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black12, width: 0.7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            "This Device Battery",
+                            style: TextStyle(
+                              color: Color(0xFF282828),
+                              fontFamily: 'Inter',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 0, 0, 0),
+                            child: SvgPicture.asset(
+                              SvgAssets.leoChargingIcon,
+                              height: 20,
+                              width: 20,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12),
+
+                      _buildStateRow("Current", "0.0002A", screenHeight),
+                      SizedBox(height: 12),
+                      _buildStateRow("Voltage", "0.0002A", screenHeight),
+                      SizedBox(height: 12),
+
+                      _buildStateRow("Temprature", "0.0002A", screenHeight),
+                      SizedBox(height: 12),
+
+                      Obx(
+                        () => _buildStateRow(
+                          "maH ${controller.isPhoneCharging.value ? "charging" : "discharging"}",
+                          "0.0002A",
+                          screenHeight,
+                        ),
+                      ),
+                      SizedBox(height: 12),
+
+                      Obx(
+                        () => _buildStateRow(
+                          "Time ${controller.isPhoneCharging.value ? "charged" : "discharged"}",
+                          "0.0002A",
+                          screenHeight,
+                        ),
+                      ),
+
+                      const SizedBox(height: 30),
+                      // Actual Current Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(left: 0, right: 8),
+                                child: Text(
+                                  "Battery Health",
+                                  style: TextStyle(
+                                    color: Color(0xFF282828),
+                                    fontFamily: 'Inter',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              // Removing left padding to eliminate the gap
+                              Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  SvgPicture.asset(
+                                    SvgAssets.greenEllipse,
+                                    width: 22,
+                                    height: 22,
+                                  ),
+                                  SvgPicture.asset(
+                                    SvgAssets.mdiBattery,
+                                    width: 22,
+                                    height: 20,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Obx(
+                            () => Padding(
+                              padding: const EdgeInsets.only(left: 0),
+                              child: Text(
+                                controller.healthReadingsCount.value < 1
+                                    ? "--"
+                                    : "${(controller.healthReadingsCount.value > 100 ? 100 : controller.healthReadingsCount.value.toStringAsFixed(2))}%",
+                                style: const TextStyle(
+                                  color: Color(0xFF282828),
+                                  fontFamily: 'Inter',
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      SizedBox(height: 16),
+                      Obx(
+                        () => LinearProgressIndicator(
+                          value: (controller.healthReadingsCount.value < 1
+                              ? 0
+                              : controller.healthReadingsCount.value / 100),
+                          backgroundColor: Colors.grey.withOpacity(0.3),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(0xFF97CF43),
+                          ),
+                        ),
+                      ),
+                      // Health Readings Info
+                      if (controller.healthReadingsCount.value > 0)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F5F5),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.grey.withOpacity(0.2),
+                            ),
+                          ),
+                          child: Text(
+                            'Health reading based on ${controller.healthReadingsCount.value} charge cycles (${controller.healthReadingsCount.value * 60}% charged) ${controller.totalEstimatedValues.value.toInt()} mAh total',
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+
+                      if (controller.healthReadingsCount.value > 0)
+                        const SizedBox(height: 20),
+
+                      _capacityRow(
+                        "Designated Capacity",
+                        controller.designedCapacityMah.value < 1
+                            ? "--"
+                            : controller.designedCapacityMah.value.toString(),
+                      ),
+                      _capacityRow(
+                        "Estimated Capacity",
+                        controller.estimatedCapacityMah.value < 1
+                            ? "--"
+                            : controller.estimatedCapacityMah.value.toString(),
+                      ),
+                    ],
                   ),
                 ),
               ),
+
               // Battery Card
               Obx(() => _buildBatteryCard()),
               const SizedBox(height: 20),
@@ -39,6 +259,69 @@ class BatteryView extends GetView<BatteryController> {
           ),
         ),
       ),
+    );
+  }
+
+  Row _capacityRow(label, value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: 15.0),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Color(0xFF282828),
+              fontFamily: 'Inter',
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+
+        Padding(padding: const EdgeInsets.only(top: 15.0), child: Text(value)),
+      ],
+    );
+  }
+
+  Row _buildStateRow(title, value, screenHeight) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: Color(0xFF282828),
+            fontFamily: 'Inter',
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Container(
+          width: 150,
+          height: screenHeight * 0.06,
+          decoration: BoxDecoration(
+            shape: BoxShape.rectangle,
+            color: AppColors.secondaryColor,
+            borderRadius: BorderRadius.circular(10.0),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(1),
+            child: Center(
+              child: Text(
+                value,
+                style: const TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontFamily: 'Inter',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

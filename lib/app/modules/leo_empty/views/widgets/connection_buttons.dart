@@ -24,17 +24,17 @@ class LeoConnectionButtons extends StatelessWidget {
         Obx(
           () => CustomButton(
             height: 70,
-            backgroundColor: controller.connectionState.value ==
-                    BleConnectionState.connected
+            backgroundColor:
+                controller.connectionState.value == BleConnectionState.connected
                 ? AppColors.primaryColor
                 : AppColors.primaryInvertColor,
-            text: controller.connectionState.value ==
-                    BleConnectionState.connected
+            text:
+                controller.connectionState.value == BleConnectionState.connected
                 ? 'Connected'
                 : controller.connectionState.value ==
-                        BleConnectionState.connecting
-                    ? 'Connecting...'
-                    : 'Disconnected',
+                      BleConnectionState.connecting
+                ? 'Connecting...'
+                : 'Disconnected',
             onPressed: onConnectionButtonPressed,
           ),
         ),
@@ -42,12 +42,13 @@ class LeoConnectionButtons extends StatelessWidget {
         Obx(
           () => CustomButton(
             height: 70,
-            backgroundColor: controller.connectionState.value ==
+            backgroundColor:
+                controller.connectionState.value ==
                     BleConnectionState.disconnected
                 ? AppColors.primaryColor
                 : AppColors.primaryInvertColor,
-            text: controller.connectionState.value ==
-                    BleConnectionState.connected
+            text:
+                controller.connectionState.value == BleConnectionState.connected
                 ? 'Leo is up-to-date'
                 : 'Update Leo',
             onPressed: () {
@@ -71,4 +72,3 @@ class LeoConnectionButtons extends StatelessWidget {
     );
   }
 }
-
