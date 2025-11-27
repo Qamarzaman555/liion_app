@@ -73,6 +73,14 @@ class BleScanService : Service() {
         var accumulatedCurrentMah: Double = 0.0
         const val HEALTH_CALCULATION_RANGE = 60 // Need 60% charge increase
         
+        // Health readings history (last 5 readings)
+        data class HealthReading(
+            val estimatedCapacityMah: Double,
+            val batteryHealthPercent: Double,
+            val timestamp: Long
+        )
+        const val MAX_HEALTH_READINGS = 5
+        
         // Charge limit state
         var chargeLimit: Int = 90
         var chargeLimitEnabled: Boolean = false
@@ -108,6 +116,9 @@ class BleScanService : Service() {
         }
         
         fun getBatteryHealthInfo(): Map<String, Any> {
+            val readingsCount = instance?.healthReadings?.size ?: 0
+            val totalEstimated = instance?.healthReadings?.sumOf { it.estimatedCapacityMah } ?: 0.0
+            
             return mapOf(
                 "designedCapacityMah" to designedCapacityMah,
                 "estimatedCapacityMah" to estimatedCapacityMah,
@@ -116,7 +127,9 @@ class BleScanService : Service() {
                 "calculationStartPercent" to healthCalculationStartPercent,
                 "calculationProgress" to if (healthCalculationInProgress && healthCalculationStartPercent >= 0) {
                     ((phoneBatteryLevel - healthCalculationStartPercent).coerceAtLeast(0) * 100 / HEALTH_CALCULATION_RANGE)
-                } else 0
+                } else 0,
+                "healthReadingsCount" to readingsCount,
+                "totalEstimatedValues" to totalEstimated
             )
         }
         
@@ -180,6 +193,9 @@ class BleScanService : Service() {
     private var measureRunnable: Runnable? = null
     private val MEASURE_INTERVAL_MS = 30000L // Send measure command every 30 seconds
     private val MEASURE_INITIAL_DELAY_MS = 25000L // Initial delay before first measure command
+    
+    // Health readings history (last 5 readings)
+    private val healthReadings = mutableListOf<Companion.HealthReading>()
     
     // Battery health calculation
     private var healthCalculationRunnable: Runnable? = null
@@ -683,6 +699,12 @@ class BleScanService : Service() {
         if (designedCapacityMah <= 0) {
             logger.logWarning("Could not determine designed battery capacity")
             // Continue anyway, we can still calculate estimated capacity
+        } else {
+            // Save designed capacity to preferences
+            prefs?.edit()?.apply {
+                putInt("designed_capacity_mah", designedCapacityMah)
+                apply()
+            }
         }
         
         // Reset calculation state
@@ -774,24 +796,36 @@ class BleScanService : Service() {
         
         if (percentCharged > 0 && accumulatedCurrentMah > 0) {
             // Estimated capacity = (accumulated mAh / percent charged) * 100
-            estimatedCapacityMah = (accumulatedCurrentMah / percentCharged) * 100
+            val newEstimatedCapacity = (accumulatedCurrentMah / percentCharged) * 100
             
             // Battery health = (estimated capacity / designed capacity) * 100
+            var newHealthPercent = -1.0
             if (designedCapacityMah > 0) {
-                batteryHealthPercent = (estimatedCapacityMah / designedCapacityMah) * 100
+                newHealthPercent = (newEstimatedCapacity / designedCapacityMah) * 100
                 // Cap at 100%
-                if (batteryHealthPercent > 100) batteryHealthPercent = 100.0
+                if (newHealthPercent > 100) newHealthPercent = 100.0
             }
             
+            // Add new reading to history
+            addHealthReading(newEstimatedCapacity, newHealthPercent)
+            
+            // Calculate averages from last 5 readings
+            calculateAveragedHealth()
+            
             logger.logInfo("Battery health calculation complete: " +
-                    "Estimated capacity: ${estimatedCapacityMah.toInt()} mAh, " +
+                    "Estimated capacity: ${newEstimatedCapacity.toInt()} mAh, " +
                     "Designed capacity: $designedCapacityMah mAh, " +
+                    "Health: ${newHealthPercent.toInt()}%, " +
+                    "Averaged (${healthReadings.size} readings): " +
+                    "Est: ${estimatedCapacityMah.toInt()} mAh, " +
                     "Health: ${batteryHealthPercent.toInt()}%")
             
             // Save results to preferences
+            saveHealthReadings()
             prefs?.edit()?.apply {
                 putFloat("estimated_capacity_mah", estimatedCapacityMah.toFloat())
                 putFloat("battery_health_percent", batteryHealthPercent.toFloat())
+                putInt("designed_capacity_mah", designedCapacityMah)
                 putLong("health_calculation_time", System.currentTimeMillis())
                 apply()
             }
@@ -801,6 +835,74 @@ class BleScanService : Service() {
         
         // Notify Flutter
         MainActivity.sendBatteryHealthUpdate()
+    }
+    
+    private fun addHealthReading(estimatedCapacity: Double, healthPercent: Double) {
+        val reading = HealthReading(estimatedCapacity, healthPercent, System.currentTimeMillis())
+        healthReadings.add(reading)
+        
+        // Keep only last MAX_HEALTH_READINGS readings
+        if (healthReadings.size > MAX_HEALTH_READINGS) {
+            healthReadings.removeAt(0)
+        }
+    }
+    
+    private fun calculateAveragedHealth() {
+        if (healthReadings.isEmpty()) {
+            estimatedCapacityMah = 0.0
+            batteryHealthPercent = -1.0
+            return
+        }
+        
+        // Calculate average estimated capacity
+        val validReadings = healthReadings.filter { it.estimatedCapacityMah > 0 }
+        if (validReadings.isNotEmpty()) {
+            estimatedCapacityMah = validReadings.map { it.estimatedCapacityMah }.average()
+        } else {
+            estimatedCapacityMah = 0.0
+        }
+        
+        // Calculate average health percent (only from readings with valid health)
+        val validHealthReadings = healthReadings.filter { it.batteryHealthPercent >= 0 }
+        if (validHealthReadings.isNotEmpty()) {
+            batteryHealthPercent = validHealthReadings.map { it.batteryHealthPercent }.average()
+            // Cap at 100%
+            if (batteryHealthPercent > 100) batteryHealthPercent = 100.0
+        } else {
+            batteryHealthPercent = -1.0
+        }
+    }
+    
+    private fun saveHealthReadings() {
+        prefs?.edit()?.apply {
+            putInt("health_readings_count", healthReadings.size)
+            healthReadings.forEachIndexed { index, reading ->
+                putFloat("health_reading_${index}_estimated", reading.estimatedCapacityMah.toFloat())
+                putFloat("health_reading_${index}_health", reading.batteryHealthPercent.toFloat())
+                putLong("health_reading_${index}_timestamp", reading.timestamp)
+            }
+            apply()
+        }
+    }
+    
+    private fun loadHealthReadings() {
+        val count = prefs?.getInt("health_readings_count", 0) ?: 0
+        healthReadings.clear()
+        
+        for (i in 0 until count.coerceAtMost(MAX_HEALTH_READINGS)) {
+            val estimated = prefs?.getFloat("health_reading_${i}_estimated", 0f)?.toDouble() ?: 0.0
+            val health = prefs?.getFloat("health_reading_${i}_health", -1f)?.toDouble() ?: -1.0
+            val timestamp = prefs?.getLong("health_reading_${i}_timestamp", 0L) ?: 0L
+            
+            if (estimated > 0 || health >= 0) {
+                healthReadings.add(HealthReading(estimated, health, timestamp))
+            }
+        }
+        
+        // Calculate averages from loaded readings
+        if (healthReadings.isNotEmpty()) {
+            calculateAveragedHealth()
+        }
     }
     
     // ==================== End Battery Health Calculation ====================
@@ -861,8 +963,14 @@ class BleScanService : Service() {
         chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
         
         // Load saved battery health values
-        estimatedCapacityMah = prefs?.getFloat("estimated_capacity_mah", 0f)?.toDouble() ?: 0.0
-        batteryHealthPercent = prefs?.getFloat("battery_health_percent", -1f)?.toDouble() ?: -1.0
+        designedCapacityMah = prefs?.getInt("designed_capacity_mah", 0) ?: 0
+        // Load health readings history and calculate averages
+        loadHealthReadings()
+        // Fallback to single values if no readings loaded
+        if (healthReadings.isEmpty()) {
+            estimatedCapacityMah = prefs?.getFloat("estimated_capacity_mah", 0f)?.toDouble() ?: 0.0
+            batteryHealthPercent = prefs?.getFloat("battery_health_percent", -1f)?.toDouble() ?: -1.0
+        }
         
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter

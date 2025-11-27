@@ -12,6 +12,8 @@ class BatteryController extends GetxController {
   final batteryHealthPercent = (-1.0).obs;
   final healthCalculationInProgress = false.obs;
   final healthCalculationProgress = 0.obs;
+  final healthReadingsCount = 0.obs;
+  final totalEstimatedValues = 0.0.obs;
 
   StreamSubscription? _batterySubscription;
   StreamSubscription? _healthSubscription;
@@ -55,6 +57,8 @@ class BatteryController extends GetxController {
     batteryHealthPercent.value = info.batteryHealthPercent;
     healthCalculationInProgress.value = info.calculationInProgress;
     healthCalculationProgress.value = info.calculationProgress;
+    healthReadingsCount.value = info.healthReadingsCount;
+    totalEstimatedValues.value = info.totalEstimatedValues;
   }
 
   Future<void> startHealthCalculation() async {

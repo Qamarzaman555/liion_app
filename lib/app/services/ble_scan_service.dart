@@ -70,6 +70,8 @@ class BatteryHealthInfo {
   final bool calculationInProgress;
   final int calculationStartPercent;
   final int calculationProgress;
+  final int healthReadingsCount;
+  final double totalEstimatedValues;
 
   BatteryHealthInfo({
     required this.designedCapacityMah,
@@ -78,6 +80,8 @@ class BatteryHealthInfo {
     required this.calculationInProgress,
     required this.calculationStartPercent,
     required this.calculationProgress,
+    required this.healthReadingsCount,
+    required this.totalEstimatedValues,
   });
 
   factory BatteryHealthInfo.fromMap(Map<dynamic, dynamic> map) {
@@ -91,6 +95,9 @@ class BatteryHealthInfo {
       calculationStartPercent:
           (map['calculationStartPercent'] as num?)?.toInt() ?? -1,
       calculationProgress: (map['calculationProgress'] as num?)?.toInt() ?? 0,
+      healthReadingsCount: (map['healthReadingsCount'] as num?)?.toInt() ?? 0,
+      totalEstimatedValues:
+          (map['totalEstimatedValues'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -383,6 +390,8 @@ class BleScanService {
           calculationInProgress: false,
           calculationStartPercent: -1,
           calculationProgress: 0,
+          healthReadingsCount: 0,
+          totalEstimatedValues: 0,
         );
       }
       return BatteryHealthInfo.fromMap(result);
@@ -395,6 +404,8 @@ class BleScanService {
         calculationInProgress: false,
         calculationStartPercent: -1,
         calculationProgress: 0,
+        healthReadingsCount: 0,
+        totalEstimatedValues: 0,
       );
     }
   }

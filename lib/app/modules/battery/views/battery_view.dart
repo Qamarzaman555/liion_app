@@ -319,6 +319,8 @@ class BatteryView extends GetView<BatteryController> {
     final progress = controller.healthCalculationProgress.value;
     final isCharging = controller.isPhoneCharging.value;
     final batteryLevel = controller.phoneBatteryLevel.value;
+    final healthReadingsCount = controller.healthReadingsCount.value;
+    final totalEstimatedValues = controller.totalEstimatedValues.value;
 
     Color healthColor;
     String healthStatus;
@@ -468,6 +470,29 @@ class BatteryView extends GetView<BatteryController> {
           ),
 
           const SizedBox(height: 20),
+
+          // Health Readings Info
+          if (healthReadingsCount > 0)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.withOpacity(0.2)),
+              ),
+              child: Text(
+                'Health reading based on $healthReadingsCount charge cycles ($healthReadingsCount × 60% charged) ${totalEstimatedValues.toInt()} mAh total',
+                style: TextStyle(
+                  color: Colors.grey[700],
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+          if (healthReadingsCount > 0) const SizedBox(height: 20),
 
           // Start/Stop Button
           SizedBox(
