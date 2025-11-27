@@ -50,19 +50,20 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCn0YhfTm_QeSIX2gCyrQCTPjHu6IHoZA8',
-    appId: '1:637728398248:android:1fbc40ca4dff6e1d11db9d',
-    messagingSenderId: '637728398248',
-    projectId: 'flutter-174b7',
-    storageBucket: 'flutter-174b7.firebasestorage.app',
+    apiKey: 'AIzaSyBej3BCx9HwJsw-XS92Pne3i3qplRITWFA',
+    appId: '1:575356527960:android:8651210c2d1ae42440f12d',
+    messagingSenderId: '575356527960',
+    projectId: 'liion-power-227c6',
+    storageBucket: 'liion-power-227c6.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyD2K3iy55HiJEfqD6h4kmlz8M0SKPaHOMI',
-    appId: '1:637728398248:ios:63d75bfcedf37bbe11db9d',
-    messagingSenderId: '637728398248',
-    projectId: 'flutter-174b7',
-    storageBucket: 'flutter-174b7.firebasestorage.app',
+    apiKey: 'AIzaSyCMMz9NO-pNey4PbDClwLVbKTTH5RhaZuI',
+    appId: '1:575356527960:ios:d80311765b49a64540f12d',
+    messagingSenderId: '575356527960',
+    projectId: 'liion-power-227c6',
+    storageBucket: 'liion-power-227c6.firebasestorage.app',
     iosBundleId: 'com.example.liionApp',
   );
+
 }

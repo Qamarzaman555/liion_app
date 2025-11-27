@@ -10,6 +10,8 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.Date
 
 class FirebaseLoggingService private constructor() {
@@ -33,6 +35,10 @@ class FirebaseLoggingService private constructor() {
     private var context: Context? = null
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val bufferMutex = Mutex()
+    private val logBuffer = mutableListOf<Map<String, Any>>()
+    private val batchSize = 10
+    private var outageStart: Date? = null
     
     val initialized: Boolean get() = isInitialized
     
@@ -109,25 +115,75 @@ class FirebaseLoggingService private constructor() {
         
         scope.launch {
             try {
-                // Check network before logging
-                if (!hasNetworkConnection()) return@launch
+                if (!hasNetworkConnection()) {
+                    registerNetworkLoss()
+                    return@launch
+                } else {
+                    registerNetworkRecovery()
+                }
                 
                 val logEntry = hashMapOf(
                     "ts" to Timestamp(Date()),
                     "level" to level,
                     "message" to message
                 )
-                
-                firestore?.document(sessionDocPath!!)
-                    ?.update("logs", FieldValue.arrayUnion(logEntry))
-                    ?.addOnFailureListener { 
-                        // Silently fail
-                    }
-                
+                enqueueLog(logEntry)
             } catch (e: Exception) {
                 // Ignore errors
             }
         }
+    }
+    
+    private suspend fun enqueueLog(entry: Map<String, Any>) {
+        var batchToFlush: List<Map<String, Any>>? = null
+        bufferMutex.withLock {
+            logBuffer.add(entry)
+            if (logBuffer.size >= batchSize) {
+                batchToFlush = ArrayList(logBuffer)
+                logBuffer.clear()
+            }
+        }
+        batchToFlush?.let { flushLogs(it) }
+    }
+    
+    private suspend fun flushLogs(batch: List<Map<String, Any>>) {
+        if (batch.isEmpty()) return
+        val docPath = sessionDocPath ?: return
+        val document = firestore?.document(docPath) ?: return
+        
+        document.update("logs", FieldValue.arrayUnion(*batch.toTypedArray()))
+    }
+    
+    private fun registerNetworkLoss() {
+        scope.launch {
+            bufferMutex.withLock {
+                logBuffer.clear()
+            }
+        }
+        if (outageStart == null) {
+            outageStart = Date()
+        }
+    }
+    
+    private fun registerNetworkRecovery() {
+        val start = outageStart ?: return
+        val end = Date()
+        outageStart = null
+        
+        val outageEntry = hashMapOf(
+            "ts" to Timestamp(start),
+            "level" to "NETWORK_OUTAGE",
+            "message" to "Network unavailable until $end."
+        )
+        val endEntry = hashMapOf(
+            "ts" to Timestamp(end),
+            "level" to "NETWORK_OUTAGE_END",
+            "message" to "Connectivity restored."
+        )
+        
+        val docPath = sessionDocPath ?: return
+        firestore?.document(docPath)
+            ?.update("logs", FieldValue.arrayUnion(outageEntry, endEntry))
     }
     
     // Convenience methods for different log levels
@@ -174,4 +230,3 @@ class FirebaseLoggingService private constructor() {
         )
     }
 }
-
