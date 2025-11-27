@@ -1,32 +1,13 @@
 {
   "project_info": {
-    "project_number": "637728398248",
-    "project_id": "flutter-174b7",
-    "storage_bucket": "flutter-174b7.firebasestorage.app"
+    "project_number": "575356527960",
+    "project_id": "liion-power-227c6",
+    "storage_bucket": "liion-power-227c6.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:637728398248:android:c5859eed7db8ba5e11db9d",
-        "android_client_info": {
-          "package_name": "com.example.flutter_firebase"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyCn0YhfTm_QeSIX2gCyrQCTPjHu6IHoZA8"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:637728398248:android:1fbc40ca4dff6e1d11db9d",
+        "mobilesdk_app_id": "1:575356527960:android:8651210c2d1ae42440f12d",
         "android_client_info": {
           "package_name": "com.example.liion_app"
         }
@@ -34,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCn0YhfTm_QeSIX2gCyrQCTPjHu6IHoZA8"
+          "current_key": "AIzaSyBej3BCx9HwJsw-XS92Pne3i3qplRITWFA"
         }
       ],
       "services": {
