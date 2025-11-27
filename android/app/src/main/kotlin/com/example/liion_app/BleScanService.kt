@@ -179,6 +179,7 @@ class BleScanService : Service() {
     // Measure command timer
     private var measureRunnable: Runnable? = null
     private val MEASURE_INTERVAL_MS = 30000L // Send measure command every 30 seconds
+    private val MEASURE_INITIAL_DELAY_MS = 25000L // Initial delay before first measure command
     
     // Battery health calculation
     private var healthCalculationRunnable: Runnable? = null
@@ -618,7 +619,7 @@ class BleScanService : Service() {
                 handler.postDelayed(this, MEASURE_INTERVAL_MS)
             }
         }
-        handler.postDelayed(measureRunnable!!, MEASURE_INTERVAL_MS)
+        handler.postDelayed(measureRunnable!!, MEASURE_INITIAL_DELAY_MS)
     }
 
     private fun stopMeasureTimer() {
