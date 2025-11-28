@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
@@ -13,6 +14,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Date
+import kotlin.math.min
+import kotlin.math.pow
 
 class FirebaseLoggingService private constructor() {
     
@@ -37,81 +40,124 @@ class FirebaseLoggingService private constructor() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val bufferMutex = Mutex()
     private val logBuffer = mutableListOf<Map<String, Any>>()
+    private val failedLogsBuffer = mutableListOf<Map<String, Any>>()
     private val batchSize = 10
     private var outageStart: Date? = null
+    private var retryJob: Job? = null
+    private var isSamsungDevice = false
     
     val initialized: Boolean get() = isInitialized
     
     fun initialize(context: Context, appVersion: String, buildNumber: String) {
         this.context = context.applicationContext
         
+        // Detect Samsung devices
+        isSamsungDevice = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+        if (isSamsungDevice) {
+            Log.d("FirebaseLogging", "Samsung device detected - applying Samsung-specific workarounds")
+        }
+        
         scope.launch {
             try {
                 // Check network connectivity
                 if (!hasNetworkConnection()) {
+                    Log.w("FirebaseLogging", "No network connection available for Firebase logging")
                     return@launch
                 }
                 
                 // Initialize Firebase if not already done
                 if (FirebaseApp.getApps(context).isEmpty()) {
-                    FirebaseApp.initializeApp(context)
+                    try {
+                        FirebaseApp.initializeApp(context)
+                        Log.d("FirebaseLogging", "Firebase initialized")
+                    } catch (e: Exception) {
+                        Log.e("FirebaseLogging", "Failed to initialize Firebase", e)
+                        return@launch
+                    }
                 }
                 
                 firestore = FirebaseFirestore.getInstance()
+                if (firestore == null) {
+                    Log.e("FirebaseLogging", "Failed to get Firestore instance")
+                    return@launch
+                }
                 
                 // Get device label
                 deviceKey = getDeviceLabel()
+                Log.d("FirebaseLogging", "Device key: $deviceKey")
                 
                 // Get next session ID
                 val baseCollectionPath = "logs/app-logs/$deviceKey"
                 
                 firestore?.collection(baseCollectionPath)?.get()
                     ?.addOnSuccessListener { snapshot ->
-                        var maxKey = 0
-                        for (doc in snapshot.documents) {
-                            val id = doc.id.trim()
-                            val parsed = id.toIntOrNull()
-                            if (parsed != null && parsed > maxKey) {
-                                maxKey = parsed
+                        try {
+                            var maxKey = 0
+                            for (doc in snapshot.documents) {
+                                val id = doc.id.trim()
+                                val parsed = id.toIntOrNull()
+                                if (parsed != null && parsed > maxKey) {
+                                    maxKey = parsed
+                                }
                             }
+                            
+                            val nextKey = (maxKey + 1).toString()
+                            sessionId = nextKey
+                            sessionDocPath = "$baseCollectionPath/$nextKey"
+                            
+                            Log.d("FirebaseLogging", "Session path: $sessionDocPath")
+                            
+                            // Create session document
+                            val sessionData = hashMapOf(
+                                "createdAt" to FieldValue.serverTimestamp(),
+                                "device" to deviceKey,
+                                "platform" to "android",
+                                "appVersion" to appVersion,
+                                "buildNumber" to buildNumber,
+                                "logs" to listOf<Map<String, Any>>()
+                            )
+                            
+                            firestore?.document(sessionDocPath!!)
+                                ?.set(sessionData, SetOptions.merge())
+                                ?.addOnSuccessListener {
+                                    isInitialized = true
+                                    Log.d("FirebaseLogging", "Logging session initialized successfully")
+                                    log("INFO", "Logging session initialized")
+                                    
+                                    // Start retry mechanism for Samsung devices
+                                    if (isSamsungDevice) {
+                                        startRetryMechanism()
+                                    }
+                                }
+                                ?.addOnFailureListener { e ->
+                                    Log.e("FirebaseLogging", "Failed to create session document", e)
+                                    // Retry initialization for Samsung devices
+                                    if (isSamsungDevice) {
+                                        scope.launch {
+                                            delay(5000) // Wait 5 seconds before retry
+                                            initialize(context, appVersion, buildNumber)
+                                        }
+                                    }
+                                }
+                        } catch (e: Exception) {
+                            Log.e("FirebaseLogging", "Error processing snapshot", e)
                         }
-                        
-                        val nextKey = (maxKey + 1).toString()
-                        sessionId = nextKey
-                        sessionDocPath = "$baseCollectionPath/$nextKey"
-                        
-                        // Create session document
-                        val sessionData = hashMapOf(
-                            "createdAt" to FieldValue.serverTimestamp(),
-                            "device" to deviceKey,
-                            "platform" to "android",
-                            "appVersion" to appVersion,
-                            "buildNumber" to buildNumber,
-                            "logs" to listOf<Map<String, Any>>()
-                        )
-                        
-                        firestore?.document(sessionDocPath!!)
-                            ?.set(sessionData, SetOptions.merge())
-                            ?.addOnSuccessListener {
-                                isInitialized = true
-                                log("INFO", "Logging session initialized")
-                            }
-                            ?.addOnFailureListener { e ->
-                                // Silently fail
-                            }
                     }
                     ?.addOnFailureListener { e ->
-                        // Silently fail
+                        Log.e("FirebaseLogging", "Failed to get collection snapshot", e)
                     }
                 
             } catch (e: Exception) {
-                // Swallow errors
+                Log.e("FirebaseLogging", "Error in initialize", e)
             }
         }
     }
     
     fun log(level: String, message: String) {
-        if (!isInitialized || sessionDocPath == null) return
+        if (!isInitialized || sessionDocPath == null) {
+            Log.d("FirebaseLogging", "Logging skipped - not initialized. Level: $level, Message: $message")
+            return
+        }
         
         scope.launch {
             try {
@@ -129,7 +175,7 @@ class FirebaseLoggingService private constructor() {
                 )
                 enqueueLog(logEntry)
             } catch (e: Exception) {
-                // Ignore errors
+                Log.e("FirebaseLogging", "Error in log method", e)
             }
         }
     }
@@ -151,7 +197,70 @@ class FirebaseLoggingService private constructor() {
         val docPath = sessionDocPath ?: return
         val document = firestore?.document(docPath) ?: return
         
-        document.update("logs", FieldValue.arrayUnion(*batch.toTypedArray()))
+        try {
+            // For Samsung devices, check network more thoroughly
+            if (isSamsungDevice && !hasNetworkConnection()) {
+                Log.w("FirebaseLogging", "Samsung device: Network not available, buffering logs")
+                scope.launch {
+                    bufferMutex.withLock {
+                        failedLogsBuffer.addAll(batch)
+                    }
+                }
+                return
+            }
+            
+            document.update("logs", FieldValue.arrayUnion(*batch.toTypedArray()))
+                .addOnSuccessListener {
+                    Log.d("FirebaseLogging", "Successfully flushed ${batch.size} logs")
+                }
+                .addOnFailureListener { e ->
+                    Log.e("FirebaseLogging", "Failed to flush logs", e)
+                    // For Samsung devices, retry failed logs
+                    if (isSamsungDevice) {
+                        scope.launch {
+                            bufferMutex.withLock {
+                                failedLogsBuffer.addAll(batch)
+                            }
+                            Log.d("FirebaseLogging", "Buffered ${batch.size} failed logs for retry (Samsung device)")
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e("FirebaseLogging", "Exception flushing logs", e)
+            if (isSamsungDevice) {
+                scope.launch {
+                    bufferMutex.withLock {
+                        failedLogsBuffer.addAll(batch)
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun startRetryMechanism() {
+        retryJob?.cancel()
+        retryJob = scope.launch {
+            while (isActive && isInitialized) {
+                delay(30000) // Retry every 30 seconds for Samsung devices
+                
+                if (hasNetworkConnection()) {
+                    val logsToRetry = bufferMutex.withLock {
+                        if (failedLogsBuffer.isEmpty()) {
+                            emptyList()
+                        } else {
+                            val batch = ArrayList(failedLogsBuffer)
+                            failedLogsBuffer.clear()
+                            batch
+                        }
+                    }
+                    
+                    if (logsToRetry.isNotEmpty()) {
+                        Log.d("FirebaseLogging", "Retrying ${logsToRetry.size} failed logs (Samsung device)")
+                        flushLogs(logsToRetry)
+                    }
+                }
+            }
+        }
     }
     
     private fun registerNetworkLoss() {
@@ -213,8 +322,20 @@ class FirebaseLoggingService private constructor() {
         val network = connectivityManager.activeNetwork ?: return false
         val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
         
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val isValidated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        
+        // For Samsung devices, be more lenient - sometimes VALIDATED might be false
+        // but network is still usable (Samsung's aggressive optimization)
+        if (isSamsungDevice) {
+            return hasInternet && (
+                isValidated || 
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+            )
+        }
+        
+        return hasInternet && isValidated
     }
     
     private fun getDeviceLabel(): String {

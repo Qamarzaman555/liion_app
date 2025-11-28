@@ -489,7 +489,6 @@ class BleScanService : Service() {
             val versionValue = parts[2].trim()
             if (versionValue.isNotEmpty()) {
                 firmwareVersion = versionValue
-                updateNotificationWithBattery()
             }
         }
     }
@@ -1069,8 +1068,9 @@ class BleScanService : Service() {
                 packageInfo.versionCode.toString()
             }
             logger.initialize(this, versionName, versionCode)
+            android.util.Log.d("BleScanService", "Firebase logging initialization requested: v$versionName ($versionCode)")
         } catch (e: Exception) {
-            // Silently fail
+            android.util.Log.e("BleScanService", "Failed to initialize Firebase logging", e)
         }
     }
     
@@ -1463,16 +1463,11 @@ class BleScanService : Service() {
         } else {
             ""
         }
-        val versionText = if (firmwareVersion.isNotEmpty() && connectionState == STATE_CONNECTED) {
-            " | FW: $firmwareVersion"
-        } else {
-            ""
-        }
         
         val fullText = if (batteryText.isNotEmpty()) {
-            "$statusText | $batteryText$limitText$versionText"
+            "$statusText | $batteryText$limitText"
         } else {
-            statusText + versionText
+            statusText
         }
         
         updateNotification(fullText)

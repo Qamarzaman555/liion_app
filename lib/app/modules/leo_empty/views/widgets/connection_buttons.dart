@@ -25,8 +25,8 @@ class LeoConnectionButtons extends StatelessWidget {
           () => CustomButton(
             backgroundColor:
                 controller.connectionState.value == BleConnectionState.connected
-                ? AppColors.primaryColor
-                : AppColors.primaryInvertColor,
+                ? AppColors.primaryInvertColor
+                : AppColors.primaryColor,
             text:
                 controller.connectionState.value == BleConnectionState.connected
                 ? 'Connected'
