@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/widgets/custom_button.dart';
 import 'package:liion_app/app/routes/app_routes.dart';
 import '../controllers/settings_controller.dart';
 
@@ -11,88 +12,102 @@ class SettingsView extends GetView<SettingsController> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
-      appBar: AppBar(
-        title: const Text('Settings'),
-        centerTitle: true,
-        backgroundColor: AppColors.primaryColor,
-        foregroundColor: AppColors.whiteColor,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-
-            // Battery Section
-            const Text(
-              'Battery',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF888888),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(8, 40, 8, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Settings',
+                style: TextStyle(
+                  color: Color(0xFF282828),
+                  fontFamily: 'Inter',
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            _buildSettingsTile(
-              icon: Icons.battery_charging_full,
-              title: 'Set Charge Limit',
-              subtitle: 'Configure maximum charge percentage',
-              onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
-            ),
+              const SizedBox(height: 20),
 
-            const SizedBox(height: 24),
-
-            // Advanced Section
-            const Text(
-              'Advanced',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF888888),
+              CustomButton(
+                text: "Manual",
+                onPressed: () {
+                  Get.toNamed(AppRoutes.leoManual);
+                },
               ),
-            ),
-            const SizedBox(height: 8),
-            _buildSettingsTile(
-              icon: Icons.settings_applications,
-              title: 'Advanced Settings',
-              subtitle: 'Configure advanced options',
-              onTap: () => Get.toNamed(AppRoutes.advanceSettings),
-            ),
-            _buildSettingsTile(
-              icon: Icons.build_circle_outlined,
-              title: 'Troubleshoot',
-              subtitle: 'Diagnose and fix issues',
-              onTap: () => Get.toNamed(AppRoutes.leoTroubleshoot),
-            ),
+              const SizedBox(height: 12),
 
-            const SizedBox(height: 24),
+              CustomButton(text: "Leo Troubleshoot", onPressed: () {}),
+              const SizedBox(height: 12),
 
-            // Support Section
-            const Text(
-              'Support',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF888888),
+              CustomButton(text: "Feedback", onPressed: () {}),
+              const SizedBox(height: 12),
+
+              CustomButton(text: "About", onPressed: () {}),
+              const SizedBox(height: 12),
+
+              CustomButton(text: "Advanced Settings", onPressed: () {}),
+
+              const SizedBox(height: 8),
+              _buildSettingsTile(
+                icon: Icons.battery_charging_full,
+                title: 'Set Charge Limit',
+                subtitle: 'Configure maximum charge percentage',
+                onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
               ),
-            ),
-            const SizedBox(height: 8),
-            _buildSettingsTile(
-              icon: Icons.feedback_outlined,
-              title: 'Feedback',
-              subtitle: 'Send us your feedback',
-              onTap: () => Get.toNamed(AppRoutes.feedbackView),
-            ),
-            _buildSettingsTile(
-              icon: Icons.info_outline,
-              title: 'About',
-              subtitle: 'App version and information',
-              onTap: () => Get.toNamed(AppRoutes.aboutView),
-            ),
-          ],
+
+              const SizedBox(height: 24),
+
+              // Advanced Section
+              const Text(
+                'Advanced',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF888888),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildSettingsTile(
+                icon: Icons.settings_applications,
+                title: 'Advanced Settings',
+                subtitle: 'Configure advanced options',
+                onTap: () => Get.toNamed(AppRoutes.advanceSettings),
+              ),
+              _buildSettingsTile(
+                icon: Icons.build_circle_outlined,
+                title: 'Troubleshoot',
+                subtitle: 'Diagnose and fix issues',
+                onTap: () => Get.toNamed(AppRoutes.leoTroubleshoot),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Support Section
+              const Text(
+                'Support',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF888888),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildSettingsTile(
+                icon: Icons.feedback_outlined,
+                title: 'Feedback',
+                subtitle: 'Send us your feedback',
+                onTap: () => Get.toNamed(AppRoutes.feedbackView),
+              ),
+              _buildSettingsTile(
+                icon: Icons.info_outline,
+                title: 'About',
+                subtitle: 'App version and information',
+                onTap: () => Get.toNamed(AppRoutes.aboutView),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -18,7 +18,7 @@ class CustomButton extends StatefulWidget {
     this.backgroundColor,
     this.textColor,
     this.width,
-    this.height = 50,
+    this.height = 70,
     this.borderRadius = 8,
     this.isLoading = false,
   });

@@ -6,5 +6,5 @@ abstract class AppRoutes {
   static const aboutView = '/about';
   static const advanceSettings = '/advance-settings';
   static const leoTroubleshoot = '/leo-troubleshoot';
+  static const leoManual = '/leo-manual';
 }
-

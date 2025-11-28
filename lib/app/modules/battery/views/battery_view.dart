@@ -40,11 +40,7 @@ class BatteryView extends GetView<BatteryController> {
   Widget _buildChargeLimitButton() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: CustomButton(
-        height: 70,
-        text: "Set Charge Limit",
-        onPressed: () {},
-      ),
+      child: CustomButton(text: "Set Charge Limit", onPressed: () {}),
     );
   }
 }

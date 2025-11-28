@@ -14,6 +14,8 @@ import '../modules/advanced_settings/views/advanced_settings_view.dart';
 import '../modules/advanced_settings/bindings/advanced_settings_binding.dart';
 import '../modules/leo_troubleshoot/views/leo_troubleshoot_view.dart';
 import '../modules/leo_troubleshoot/bindings/leo_troubleshoot_binding.dart';
+import '../modules/manual/views/manual_view.dart';
+import '../modules/manual/bindings/manual_binding.dart';
 
 class AppPages {
   static const initial = AppRoutes.splash;
@@ -53,6 +55,11 @@ class AppPages {
       name: AppRoutes.leoTroubleshoot,
       page: () => const LeoTroubleshootView(),
       binding: LeoTroubleshootBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.leoManual,
+      page: () => const ManualView(),
+      binding: ManualBinding(),
     ),
   ];
 }
