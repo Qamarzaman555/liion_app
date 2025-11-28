@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:get/get.dart';
+import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class LeoHomeController extends GetxController {
@@ -21,15 +23,30 @@ class LeoHomeController extends GetxController {
   final currentValue = ''.obs;
   final powerValue = ''.obs;
 
+  // Graph data
+  final currentGraphPoints = <GraphPoint>[].obs;
+  final lastChargeGraphPoints = <GraphPoint>[].obs;
+  final currentGraphXAxisMinLimit = 0.0.obs;
+  final lastGraphXAxisMinLimit = 0.0.obs;
+  final currentGraphXAxisLimit = 60.0.obs;
+  final lastGraphXAxisLimit = 60.0.obs;
+  final currentGraphXAxisInterval = 10.0.obs;
+  final lastGraphXAxisInterval = 10.0.obs;
+  final currentGraphStartTime = Rxn<DateTime>();
+  final lastGraphStartTime = Rxn<DateTime>();
+
   StreamSubscription? _deviceSubscription;
   StreamSubscription? _connectionSubscription;
   StreamSubscription? _adapterStateSubscription;
   StreamSubscription? _dataReceivedSubscription;
   StreamSubscription? _measureDataSubscription;
+  Timer? _graphInactivityTimer;
+  static const Duration _graphInactivityTimeout = Duration(seconds: 30);
 
   @override
   void onInit() {
     super.onInit();
+    clearCurrentGraph();
     _listenToAdapterState();
     _listenToDeviceStream();
     _listenToConnectionStream();
@@ -178,6 +195,9 @@ class LeoHomeController extends GetxController {
           voltageValue.value = '${voltage.toStringAsFixed(3)}V';
           print('Voltage value set: ${voltageValue.value}');
           _updatePower(voltage, current);
+
+          // Add to graph using the same value shown in UI
+          _addGraphSample(current);
         }
       }
 
@@ -196,6 +216,9 @@ class LeoHomeController extends GetxController {
           double voltage = v1 > v2 ? v1 : v2;
           voltageValue.value = '${voltage.toStringAsFixed(3)}V';
           _updatePower(voltage, current);
+
+          // Add to graph using the same value shown in UI
+          _addGraphSample(current);
         }
       }
     } catch (e) {
@@ -219,6 +242,122 @@ class LeoHomeController extends GetxController {
     final power = (voltage * current).abs();
     powerValue.value = '${power.toStringAsFixed(3)}W';
   }
+
+  void _addGraphSample(double current) {
+    final now = DateTime.now();
+    currentGraphStartTime.value ??= now;
+    final elapsedSeconds = now
+        .difference(currentGraphStartTime.value!)
+        .inSeconds
+        .toDouble();
+    currentGraphPoints.add(
+      GraphPoint(seconds: elapsedSeconds, current: current.toDouble()),
+    );
+    _updateCurrentGraphAxis(elapsedSeconds);
+    _restartGraphInactivityTimer();
+  }
+
+  void _updateCurrentGraphAxis(double elapsedSeconds) {
+    final adjustedMax = max(60.0, elapsedSeconds);
+    currentGraphXAxisLimit.value = adjustedMax;
+    currentGraphXAxisInterval.value = _computeXAxisInterval(adjustedMax);
+  }
+
+  double _computeXAxisInterval(double maxRangeSeconds) {
+    if (maxRangeSeconds <= 60) return 10;
+    if (maxRangeSeconds <= 5 * 60) return 60;
+    if (maxRangeSeconds <= 15 * 60) return 120;
+    if (maxRangeSeconds <= 60 * 60) return 600;
+    return 1800;
+  }
+
+  void _restartGraphInactivityTimer() {
+    _graphInactivityTimer?.cancel();
+    _graphInactivityTimer = Timer(
+      _graphInactivityTimeout,
+      finalizeCurrentGraphSession,
+    );
+  }
+
+  void finalizeCurrentGraphSession() {
+    _graphInactivityTimer?.cancel();
+    if (currentGraphPoints.isEmpty) return;
+
+    final durationSeconds = currentGraphPoints.last.seconds;
+    final hasOnlyTinyCurrents = currentGraphPoints.every(
+      (point) => point.current < 0.2,
+    );
+
+    if (durationSeconds < 240 || hasOnlyTinyCurrents) {
+      clearCurrentGraph();
+      return;
+    }
+
+    lastChargeGraphPoints.assignAll(currentGraphPoints);
+    lastGraphXAxisLimit.value = currentGraphXAxisLimit.value;
+    lastGraphXAxisInterval.value = currentGraphXAxisInterval.value;
+    lastGraphStartTime.value = currentGraphStartTime.value;
+
+    clearCurrentGraph();
+  }
+
+  void clearCurrentGraph() {
+    currentGraphPoints.clear();
+    currentGraphStartTime.value = null;
+    currentGraphXAxisMinLimit.value = 0.0;
+    currentGraphXAxisLimit.value = 60.0;
+    currentGraphXAxisInterval.value = 10.0;
+  }
+
+  String formatDurationLabel(double value) {
+    final totalSeconds = value.round();
+    if (totalSeconds <= 0) return '0s';
+    final duration = Duration(seconds: totalSeconds);
+    if (duration.inHours >= 1) {
+      final minutes = duration.inMinutes
+          .remainder(60)
+          .toString()
+          .padLeft(2, '0');
+      return '${duration.inHours}h${minutes}m';
+    }
+    if (duration.inMinutes >= 1) {
+      final seconds = duration.inSeconds
+          .remainder(60)
+          .toString()
+          .padLeft(2, '0');
+      return '${duration.inMinutes}m${seconds}s';
+    }
+    return '${duration.inSeconds}s';
+  }
+
+  double resolveYAxisMax(List<GraphPoint> points) {
+    if (points.isEmpty) {
+      return 2.0;
+    }
+    final maxValue = points.fold<double>(
+      0,
+      (previous, element) =>
+          element.current > previous ? element.current : previous,
+    );
+    final base = max(maxValue, 2.0);
+    return (base / 0.5).ceil() * 0.5;
+  }
+
+  double resolveYAxisInterval(double maxY) {
+    if (maxY <= 1) return 0.1;
+    if (maxY <= 5) return 0.5;
+    if (maxY <= 10) return 1.0;
+    return 2.0;
+  }
+
+  List<double> get currentTimeValues =>
+      currentGraphPoints.map((point) => point.seconds).toList();
+
+  List<double> get lastTimeValues =>
+      lastChargeGraphPoints.map((point) => point.seconds).toList();
+
+  String formatTimeForBottomGraph(double seconds) =>
+      formatDurationLabel(seconds);
 
   /// Request mWh value from Leo
   Future<void> requestMwhValue() async {
@@ -282,6 +421,7 @@ class LeoHomeController extends GetxController {
     _adapterStateSubscription?.cancel();
     _dataReceivedSubscription?.cancel();
     _measureDataSubscription?.cancel();
+    _graphInactivityTimer?.cancel();
     super.onClose();
   }
 }

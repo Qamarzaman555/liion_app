@@ -197,8 +197,8 @@ class BleScanService : Service() {
     
     // Measure command timer
     private var measureRunnable: Runnable? = null
-    private val MEASURE_INTERVAL_MS = 30000L // Send measure command every 30 seconds
-    private val MEASURE_INITIAL_DELAY_MS = 25000L // Initial delay before first measure command
+    private val MEASURE_INTERVAL_MS = 1000L // Send measure command every 30 seconds
+    private val MEASURE_INITIAL_DELAY_MS = 1000L // Initial delay before first measure command
     
     // Battery metrics timer (1 second polling)
     private var batteryMetricsRunnable: Runnable? = null

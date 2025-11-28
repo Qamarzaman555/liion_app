@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
-
+import 'package:liion_app/app/modules/leo_empty/graphs/charge_graph_widget.dart';
 import '../../controllers/leo_home_controller.dart';
 
 class LeoMetricsSummary extends StatelessWidget {
@@ -49,6 +49,8 @@ class LeoMetricsSummary extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                const ChargeGraphWidget(isCurrentCharge: true),
               ],
             ),
           ),
@@ -61,17 +63,25 @@ class LeoMetricsSummary extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.all(10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            child: Column(
               children: [
-                const Icon(
-                  Icons.bolt,
-                  color: AppColors.secondaryColor,
-                  size: 22,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    const Icon(
+                      Icons.bolt,
+                      color: AppColors.secondaryColor,
+                      size: 22,
+                    ),
+                    const Text('Total Charges'),
+                    const SizedBox(width: 12),
+                    Obx(
+                      () => _MetricValueChip(value: controller.mwhValue.value),
+                    ),
+                  ],
                 ),
-                const Text('Total Charges'),
-                const SizedBox(width: 12),
-                Obx(() => _MetricValueChip(value: controller.mwhValue.value)),
+                const SizedBox(height: 16),
+                const ChargeGraphWidget(isCurrentCharge: false),
               ],
             ),
           ),

@@ -23,7 +23,6 @@ class LeoConnectionButtons extends StatelessWidget {
       children: [
         Obx(
           () => CustomButton(
-            height: 70,
             backgroundColor:
                 controller.connectionState.value == BleConnectionState.connected
                 ? AppColors.primaryColor
@@ -35,37 +34,47 @@ class LeoConnectionButtons extends StatelessWidget {
                       BleConnectionState.connecting
                 ? 'Connecting...'
                 : 'Disconnected',
+
             onPressed: onConnectionButtonPressed,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  controller.connectionState.value ==
+                          BleConnectionState.connected
+                      ? 'Connected'
+                      : controller.connectionState.value ==
+                            BleConnectionState.connecting
+                      ? 'Connecting...'
+                      : 'Disconnected',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.whiteColor,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 10),
-        Obx(
-          () => CustomButton(
-            height: 70,
-            backgroundColor:
-                controller.connectionState.value ==
-                    BleConnectionState.disconnected
-                ? AppColors.primaryColor
-                : AppColors.primaryInvertColor,
-            text:
-                controller.connectionState.value == BleConnectionState.connected
-                ? 'Leo is up-to-date'
-                : 'Update Leo',
-            onPressed: () {
-              if (!controller.isBluetoothOn) {
-                BleScanService.requestEnableBluetooth();
-                return;
-              }
+        CustomButton(
+          backgroundColor: AppColors.primaryInvertColor,
+          text: "Leo is up-to-date",
 
-              if (controller.connectionState.value ==
-                  BleConnectionState.connected) {
-                controller.disconnectDevice();
-              } else if (controller.scannedDevices.isNotEmpty) {
-                controller.connectToDevice(
-                  controller.scannedDevices.first['address'] ?? '',
-                );
-              }
-            },
+          onPressed: onConnectionButtonPressed,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                "Leo is up-to-date",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.whiteColor,
+                ),
+              ),
+            ],
           ),
         ),
       ],
