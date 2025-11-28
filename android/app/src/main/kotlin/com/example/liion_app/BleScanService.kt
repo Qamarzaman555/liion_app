@@ -687,14 +687,38 @@ class BleScanService : Service() {
         }
     }
     
-    private fun getCurrentNow(): Int {
+    /**
+     * Get battery current in microamperes (µA).
+     * Handles device-specific reporting differences (some devices return mA instead of µA).
+     * Always returns value in microamperes for consistent calculations.
+     */
+    private fun getCurrentNowMicroAmps(): Int {
         return try {
             val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            // Returns current in microamperes (negative when discharging, positive when charging)
-            batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+            val currentRaw = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+            val absCurrent = kotlin.math.abs(currentRaw)
+            val stringLength = absCurrent.toString().length
+            
+            // Detection logic: Use string length to determine unit (same as in sampleBatteryMetrics)
+            // - If length <= 4: value is in mA, convert to µA by multiplying by 1000
+            // - If length > 4: value is already in µA
+            if (stringLength <= 4) {
+                // Value is in milliamperes (mA), convert to microamperes (µA)
+                currentRaw * 1000
+            } else {
+                // Value is already in microamperes (µA)
+                currentRaw
+            }
         } catch (e: Exception) {
             0
         }
+    }
+    
+    /**
+     * @deprecated Use getCurrentNowMicroAmps() instead for proper unit detection
+     */
+    private fun getCurrentNow(): Int {
+        return getCurrentNowMicroAmps()
     }
     
     fun startHealthCalculation(): Boolean {
@@ -775,7 +799,8 @@ class BleScanService : Service() {
     }
     
     private fun sampleBatteryCurrent() {
-        val currentMicroAmps = getCurrentNow()
+        // Get current in microamperes (with proper unit detection)
+        val currentMicroAmps = getCurrentNowMicroAmps()
         currentNowMicroAmps = currentMicroAmps
         
         val now = System.currentTimeMillis()
@@ -1108,15 +1133,19 @@ class BleScanService : Service() {
         try {
             val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
             
-            // Get current (in microamperes, convert to mA)
-            // Some devices report in mA directly, others in µA - check magnitude
-            val currentRaw = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-            batteryCurrentMa = if (kotlin.math.abs(currentRaw) > 100000) {
-                // Value is in microamperes (µA), convert to mA
-                currentRaw / 1000.0
-            } else {
-                // Value is already in milliamperes (mA)
-                currentRaw.toDouble()
+            // Get current in microamperes (with proper unit detection)
+            val currentMicroAmps = getCurrentNowMicroAmps()
+            
+            // Convert from microamperes (µA) to milliamperes (mA) for display
+            batteryCurrentMa = currentMicroAmps / 1000.0
+            
+            // Sanity check: clamp to reasonable range (0-10A = 0-10000 mA)
+            // This prevents display of impossible values due to device reporting errors
+            if (kotlin.math.abs(batteryCurrentMa) > 10000) {
+                android.util.Log.w("BatteryMetrics", 
+                    "Unusually high current detected: ${batteryCurrentMa}mA (raw µA: $currentMicroAmps). " +
+                    "This may indicate a device reporting error. Clamping to reasonable range.")
+                batteryCurrentMa = if (batteryCurrentMa > 0) 10000.0 else -10000.0
             }
             
             // Get voltage from battery intent (in millivolts, convert to V)
