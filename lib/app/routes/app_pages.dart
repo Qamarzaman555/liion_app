@@ -4,8 +4,8 @@ import '../modules/splash/views/splash_view.dart';
 import '../modules/splash/bindings/splash_binding.dart';
 import '../modules/bottom_nav_bar/views/bottom_nav_bar_view.dart';
 import '../modules/bottom_nav_bar/bindings/bottom_nav_bar_binding.dart';
-import '../modules/set_charge_limit/views/set_charge_limit_view.dart';
-import '../modules/set_charge_limit/bindings/set_charge_limit_binding.dart';
+import '../modules/battery/charge_limit/views/charge_limit_view.dart';
+import '../modules/battery/charge_limit/charge_limit_binding.dart';
 import '../modules/feedback/views/feedback_view.dart';
 import '../modules/feedback/bindings/feedback_binding.dart';
 import '../modules/about/views/about_view.dart';
@@ -33,8 +33,8 @@ class AppPages {
     ),
     GetPage(
       name: AppRoutes.setChargeLimitView,
-      page: () => const SetChargeLimitView(),
-      binding: SetChargeLimitBinding(),
+      page: () => const ChargeLimitView(),
+      binding: ChargeLimitBinding(),
     ),
     GetPage(
       name: AppRoutes.feedbackView,

@@ -1,15 +1,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
-class SetChargeLimitController extends GetxController {
+class ChargeLimitController extends GetxController {
   final chargeLimit = 90.obs;
   final chargeLimitEnabled = false.obs;
   final chargeLimitConfirmed = false.obs;
   final isConnected = false.obs;
 
   final TextEditingController limitTextController = TextEditingController();
+  final sliderValue = 0.0.obs;
   final formKey = GlobalKey<FormState>();
 
   StreamSubscription? _chargeLimitSubscription;
@@ -29,6 +31,7 @@ class SetChargeLimitController extends GetxController {
     chargeLimitEnabled.value = info.enabled;
     chargeLimitConfirmed.value = info.confirmed;
     limitTextController.text = info.limit.toString();
+    sliderValue.value = info.limit.toDouble();
 
     final connectionState = await BleScanService.getConnectionState();
     isConnected.value = connectionState == BleConnectionState.connected;
@@ -63,6 +66,18 @@ class SetChargeLimitController extends GetxController {
     return null;
   }
 
+  void updateSlider(double value) {
+    final clampedValue = value.clamp(0, 100).toDouble();
+    sliderValue.value = clampedValue;
+    limitTextController.text = clampedValue.toInt().toString();
+  }
+
+  void updateFromText(String value) {
+    final parsed = int.tryParse(value);
+    if (parsed == null) return;
+    sliderValue.value = parsed.clamp(0, 100).toDouble();
+  }
+
   Future<bool> saveChargeLimit() async {
     if (!formKey.currentState!.validate()) {
       return false;
@@ -78,7 +93,7 @@ class SetChargeLimitController extends GetxController {
         'Success',
         'Charge limit set to $limit%',
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
+        backgroundColor: AppColors.transparentColor,
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
       );
@@ -87,7 +102,7 @@ class SetChargeLimitController extends GetxController {
         'Error',
         'Failed to set charge limit',
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
+        backgroundColor: AppColors.transparentColor,
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
       );
@@ -96,9 +111,6 @@ class SetChargeLimitController extends GetxController {
     return success;
   }
 
-  /// Toggle charge limit on/off - saves to SharedPrefs and sends command immediately
-  /// When enabled: sends the saved charge limit value
-  /// When disabled: sends 0 (no limit)
   Future<void> toggleChargeLimit(bool enabled) async {
     final success = await BleScanService.setChargeLimitEnabled(enabled);
     if (success) {
@@ -107,10 +119,10 @@ class SetChargeLimitController extends GetxController {
         enabled ? 'Charge Limit Enabled' : 'Charge Limit Disabled',
         enabled
             ? 'Limit set to ${chargeLimit.value}%'
-            : 'Charging will continue to 100%',
+            : 'Leo will use default charge limit',
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: enabled ? Colors.green : Colors.orange,
-        colorText: Colors.white,
+        backgroundColor: AppColors.transparentColor,
+        colorText: AppColors.blackColor,
         duration: const Duration(seconds: 2),
       );
     }

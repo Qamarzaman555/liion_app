@@ -7,10 +7,11 @@ class CustomButton extends StatefulWidget {
   final Color? backgroundColor;
   final Color? textColor;
   final double? width;
+  final EdgeInsets? padding;
   final double height;
   final double borderRadius;
   final bool isLoading;
-
+  final Widget? child;
   const CustomButton({
     super.key,
     required this.text,
@@ -18,9 +19,11 @@ class CustomButton extends StatefulWidget {
     this.backgroundColor,
     this.textColor,
     this.width,
+    this.padding,
     this.height = 70,
     this.borderRadius = 8,
     this.isLoading = false,
+    this.child,
   });
 
   @override
@@ -82,24 +85,31 @@ class _CustomButtonState extends State<CustomButton>
             color: widget.backgroundColor ?? AppColors.primaryColor,
             borderRadius: BorderRadius.circular(widget.borderRadius),
           ),
-          alignment: Alignment.center,
-          child: widget.isLoading
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    color: AppColors.whiteColor,
-                    strokeWidth: 2,
-                  ),
-                )
-              : Text(
-                  widget.text,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: widget.textColor ?? AppColors.whiteColor,
-                  ),
-                ),
+          padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: 16),
+
+          child:
+              widget.child ??
+              Row(
+                children: [
+                  widget.isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: AppColors.whiteColor,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          widget.text,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: widget.textColor ?? AppColors.whiteColor,
+                          ),
+                        ),
+                ],
+              ),
         ),
       ),
     );
