@@ -60,64 +60,64 @@ class SettingsView extends GetView<SettingsController> {
                   Get.toNamed(AppRoutes.aboutView);
                 },
               ),
-              const SizedBox(height: 12),
-              const SizedBox(height: 8),
-              _buildSettingsTile(
-                icon: Icons.battery_charging_full,
-                title: 'Set Charge Limit',
-                subtitle: 'Configure maximum charge percentage',
-                onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
-              ),
+              // const SizedBox(height: 12),
+              // const SizedBox(height: 8),
+              // _buildSettingsTile(
+              //   icon: Icons.battery_charging_full,
+              //   title: 'Set Charge Limit',
+              //   subtitle: 'Configure maximum charge percentage',
+              //   onTap: () => Get.toNamed(AppRoutes.setChargeLimitView),
+              // ),
 
-              const SizedBox(height: 24),
+              // const SizedBox(height: 24),
 
-              // Advanced Section
-              const Text(
-                'Advanced',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF888888),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildSettingsTile(
-                icon: Icons.settings_applications,
-                title: 'Advanced Settings',
-                subtitle: 'Configure advanced options',
-                onTap: () => Get.toNamed(AppRoutes.advanceSettings),
-              ),
-              _buildSettingsTile(
-                icon: Icons.build_circle_outlined,
-                title: 'Troubleshoot',
-                subtitle: 'Diagnose and fix issues',
-                onTap: () => Get.toNamed(AppRoutes.leoTroubleshoot),
-              ),
+              // // Advanced Section
+              // const Text(
+              //   'Advanced',
+              //   style: TextStyle(
+              //     fontSize: 14,
+              //     fontWeight: FontWeight.w600,
+              //     color: Color(0xFF888888),
+              //   ),
+              // ),
+              // const SizedBox(height: 8),
+              // _buildSettingsTile(
+              //   icon: Icons.settings_applications,
+              //   title: 'Advanced Settings',
+              //   subtitle: 'Configure advanced options',
+              //   onTap: () => Get.toNamed(AppRoutes.advanceSettings),
+              // ),
+              // _buildSettingsTile(
+              //   icon: Icons.build_circle_outlined,
+              //   title: 'Troubleshoot',
+              //   subtitle: 'Diagnose and fix issues',
+              //   onTap: () => Get.toNamed(AppRoutes.leoTroubleshoot),
+              // ),
 
-              const SizedBox(height: 24),
+              // const SizedBox(height: 24),
 
-              // Support Section
-              const Text(
-                'Support',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF888888),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildSettingsTile(
-                icon: Icons.feedback_outlined,
-                title: 'Feedback',
-                subtitle: 'Send us your feedback',
-                onTap: () => Get.toNamed(AppRoutes.feedbackView),
-              ),
-              _buildSettingsTile(
-                icon: Icons.info_outline,
-                title: 'About',
-                subtitle: 'App version and information',
-                onTap: () => Get.toNamed(AppRoutes.aboutView),
-              ),
+              // // Support Section
+              // const Text(
+              //   'Support',
+              //   style: TextStyle(
+              //     fontSize: 14,
+              //     fontWeight: FontWeight.w600,
+              //     color: Color(0xFF888888),
+              //   ),
+              // ),
+              // const SizedBox(height: 8),
+              // _buildSettingsTile(
+              //   icon: Icons.feedback_outlined,
+              //   title: 'Feedback',
+              //   subtitle: 'Send us your feedback',
+              //   onTap: () => Get.toNamed(AppRoutes.feedbackView),
+              // ),
+              // _buildSettingsTile(
+              //   icon: Icons.info_outline,
+              //   title: 'About',
+              //   subtitle: 'App version and information',
+              //   onTap: () => Get.toNamed(AppRoutes.aboutView),
+              // ),
             ],
           ),
         ),

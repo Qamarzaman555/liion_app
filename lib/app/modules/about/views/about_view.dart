@@ -78,7 +78,7 @@ class AboutView extends GetView<AboutController> {
                     icon: SvgAssets.leoVersionInfoIcon,
                   ),
                 const SizedBox(height: 40),
-                _buildFooter(),
+                // _buildFooter(),
               ],
             ),
           ),

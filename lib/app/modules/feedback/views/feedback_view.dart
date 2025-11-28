@@ -28,85 +28,86 @@ class FeedbackView extends GetView<FeedbackController> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 20),
-            const Text(
-              'We\'d love to hear from you!',
-              style: TextStyle(
-                color: Color(0xFF282828),
-                fontFamily: 'Inter',
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Please share your thoughts, suggestions, or report any issues you\'ve encountered.',
-              style: TextStyle(
-                color: Color(0xFF888888),
-                fontFamily: 'Inter',
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'Your Feedback',
-              style: TextStyle(
-                color: Color(0xFF282828),
-                fontFamily: 'Inter',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
+      body: Center(child: Text("Feedback")),
+      // body: SingleChildScrollView(
+      //   padding: const EdgeInsets.all(20),
+      //   child: Column(
+      //     crossAxisAlignment: CrossAxisAlignment.start,
+      //     children: [
+      //       const SizedBox(height: 20),
+      //       const Text(
+      //         'We\'d love to hear from you!',
+      //         style: TextStyle(
+      //           color: Color(0xFF282828),
+      //           fontFamily: 'Inter',
+      //           fontSize: 18,
+      //           fontWeight: FontWeight.w600,
+      //         ),
+      //       ),
+      //       const SizedBox(height: 8),
+      //       const Text(
+      //         'Please share your thoughts, suggestions, or report any issues you\'ve encountered.',
+      //         style: TextStyle(
+      //           color: Color(0xFF888888),
+      //           fontFamily: 'Inter',
+      //           fontSize: 14,
+      //         ),
+      //       ),
+      //       const SizedBox(height: 32),
+      //       const Text(
+      //         'Your Feedback',
+      //         style: TextStyle(
+      //           color: Color(0xFF282828),
+      //           fontFamily: 'Inter',
+      //           fontSize: 16,
+      //           fontWeight: FontWeight.w600,
+      //         ),
+      //       ),
+      //       const SizedBox(height: 12),
 
-            TextField(
-              maxLines: 8,
-              decoration: InputDecoration(
-                hintText: 'Enter your feedback here...',
-                hintStyle: const TextStyle(
-                  color: Color(0xFF888888),
-                  fontFamily: 'Inter',
-                ),
-                filled: true,
-                fillColor: AppColors.cardBGColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.all(16),
-              ),
-              style: const TextStyle(
-                color: Color(0xFF282828),
-                fontFamily: 'Inter',
-                fontSize: 14,
-              ),
-              onChanged: (value) => controller.setFeedback(value),
-            ),
+      //       TextField(
+      //         maxLines: 8,
+      //         decoration: InputDecoration(
+      //           hintText: 'Enter your feedback here...',
+      //           hintStyle: const TextStyle(
+      //             color: Color(0xFF888888),
+      //             fontFamily: 'Inter',
+      //           ),
+      //           filled: true,
+      //           fillColor: AppColors.cardBGColor,
+      //           border: OutlineInputBorder(
+      //             borderRadius: BorderRadius.circular(12),
+      //             borderSide: BorderSide.none,
+      //           ),
+      //           contentPadding: const EdgeInsets.all(16),
+      //         ),
+      //         style: const TextStyle(
+      //           color: Color(0xFF282828),
+      //           fontFamily: 'Inter',
+      //           fontSize: 14,
+      //         ),
+      //         onChanged: (value) => controller.setFeedback(value),
+      //       ),
 
-            const SizedBox(height: 32),
-            Obx(
-              () => CustomButton(
-                text: 'Submit Feedback',
-                onPressed: () {
-                  if (controller.feedbackText.value.trim().isNotEmpty) {
-                    _submitFeedback(context);
-                  }
-                },
-                backgroundColor: controller.feedbackText.value.trim().isEmpty
-                    ? AppColors.greyColor
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildContactInfo(),
-          ],
-        ),
-      ),
+      //       const SizedBox(height: 32),
+      //       Obx(
+      //         () => CustomButton(
+      //           text: 'Submit Feedback',
+      //           onPressed: () {
+      //             if (controller.feedbackText.value.trim().isNotEmpty) {
+      //               _submitFeedback(context);
+      //             }
+      //           },
+      //           backgroundColor: controller.feedbackText.value.trim().isEmpty
+      //               ? AppColors.greyColor
+      //               : null,
+      //         ),
+      //       ),
+      //       const SizedBox(height: 20),
+      //       _buildContactInfo(),
+      //     ],
+      //   ),
+      // ),
     );
   }
 

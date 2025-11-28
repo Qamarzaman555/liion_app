@@ -50,6 +50,21 @@ class LeoMetricsSummary extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('Firmware'),
+                    const SizedBox(width: 12),
+                    Obx(
+                      () => _MetricValueChip(
+                        value: controller.binFileFromLeoName.value.isEmpty
+                            ? 'N/A'
+                            : controller.binFileFromLeoName.value,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 const ChargeGraphWidget(isCurrentCharge: true),
               ],
             ),

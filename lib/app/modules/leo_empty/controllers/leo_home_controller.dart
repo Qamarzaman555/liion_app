@@ -14,6 +14,7 @@ class LeoHomeController extends GetxController {
 
   // Data from Leo
   final mwhValue = ''.obs;
+  final binFileFromLeoName = ''.obs;
   final lastReceivedData = ''.obs;
   final receivedDataLog = <String>[].obs;
 
@@ -115,6 +116,9 @@ class LeoHomeController extends GetxController {
         Future.delayed(const Duration(seconds: 1), () {
           requestMwhValue();
         });
+        Future.delayed(const Duration(seconds: 2), () {
+          requestLeoFirmwareVersion();
+        });
       } else if (newState == BleConnectionState.connecting) {
         connectingDeviceAddress.value = address;
       } else if (newState == BleConnectionState.disconnected) {
@@ -174,8 +178,14 @@ class LeoHomeController extends GetxController {
         }
       }
 
+      // Parse swversion value
+      if (parts.length >= 2 && parts[1].toLowerCase() == 'swversion') {
+        String value = parts.length > 2 ? parts[2] : parts[0];
+        binFileFromLeoName.value = value.trim();
+      }
+
       // Parse measure data - check if any part contains 'measure'
-      if (parts.length >= 5 &&
+      if (parts.length >= 1 &&
           (parts[1] == 'measure' || parts.contains('measure'))) {
         print('Measure data detected: $parts');
         bool isValid = _canParseToDouble(parts, 2, 4);
@@ -254,7 +264,7 @@ class LeoHomeController extends GetxController {
       GraphPoint(seconds: elapsedSeconds, current: current.toDouble()),
     );
     _updateCurrentGraphAxis(elapsedSeconds);
-    _restartGraphInactivityTimer();
+    // _restartGraphInactivityTimer();
   }
 
   void _updateCurrentGraphAxis(double elapsedSeconds) {
@@ -363,6 +373,12 @@ class LeoHomeController extends GetxController {
   Future<void> requestMwhValue() async {
     if (connectionState.value == BleConnectionState.connected) {
       await BleScanService.sendCommand('mwh');
+    }
+  }
+
+  Future<void> requestLeoFirmwareVersion() async {
+    if (connectionState.value == BleConnectionState.connected) {
+      await BleScanService.sendCommand('swversion');
     }
   }
 

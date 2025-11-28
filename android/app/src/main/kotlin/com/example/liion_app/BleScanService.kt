@@ -93,6 +93,7 @@ class BleScanService : Service() {
         var chargeLimitConfirmed: Boolean = false
         var chargingTimeSeconds: Long = 0
         var dischargingTimeSeconds: Long = 0
+        var firmwareVersion: String = ""
         
         private var instance: BleScanService? = null
         
@@ -197,8 +198,8 @@ class BleScanService : Service() {
     
     // Measure command timer
     private var measureRunnable: Runnable? = null
-    private val MEASURE_INTERVAL_MS = 1000L // Send measure command every 30 seconds
-    private val MEASURE_INITIAL_DELAY_MS = 1000L // Initial delay before first measure command
+    private val MEASURE_INTERVAL_MS = 30000L // Send measure command every 30 seconds
+    private val MEASURE_INITIAL_DELAY_MS = 25000L // Initial delay before first measure command
     
     // Battery metrics timer (1 second polling)
     private var batteryMetricsRunnable: Runnable? = null
@@ -480,6 +481,15 @@ class BleScanService : Service() {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+        
+        // Handle swversion response
+        if (parts.size >= 3 && parts.getOrNull(1)?.equals("swversion", ignoreCase = true) == true) {
+            val versionValue = parts[2].trim()
+            if (versionValue.isNotEmpty()) {
+                firmwareVersion = versionValue
+                updateNotificationWithBattery()
             }
         }
     }
@@ -1453,11 +1463,16 @@ class BleScanService : Service() {
         } else {
             ""
         }
+        val versionText = if (firmwareVersion.isNotEmpty() && connectionState == STATE_CONNECTED) {
+            " | FW: $firmwareVersion"
+        } else {
+            ""
+        }
         
         val fullText = if (batteryText.isNotEmpty()) {
-            "$statusText | $batteryText$limitText"
+            "$statusText | $batteryText$limitText$versionText"
         } else {
-            statusText
+            statusText + versionText
         }
         
         updateNotification(fullText)
