@@ -38,17 +38,29 @@ class SettingsView extends GetView<SettingsController> {
               ),
               const SizedBox(height: 12),
 
-              CustomButton(text: "Leo Troubleshoot", onPressed: () {}),
+              CustomButton(
+                text: "Leo Troubleshoot",
+                onPressed: () {
+                  Get.toNamed(AppRoutes.leoTroubleshoot);
+                },
+              ),
               const SizedBox(height: 12),
 
-              CustomButton(text: "Feedback", onPressed: () {}),
+              CustomButton(
+                text: "Feedback",
+                onPressed: () {
+                  Get.toNamed(AppRoutes.feedbackView);
+                },
+              ),
               const SizedBox(height: 12),
 
-              CustomButton(text: "About", onPressed: () {}),
+              CustomButton(
+                text: "About",
+                onPressed: () {
+                  Get.toNamed(AppRoutes.aboutView);
+                },
+              ),
               const SizedBox(height: 12),
-
-              CustomButton(text: "Advanced Settings", onPressed: () {}),
-
               const SizedBox(height: 8),
               _buildSettingsTile(
                 icon: Icons.battery_charging_full,
