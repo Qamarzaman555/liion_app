@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
@@ -5,6 +6,7 @@ import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/modules/leo_empty/graphs/charge_graph_widget.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
+import 'package:liion_app/app/modules/leo_empty/utils/graph_hive_storage_service.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 import '../../controllers/leo_home_controller.dart';
 
@@ -147,7 +149,46 @@ class LeoMetricsSummary extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                const ChargeGraphWidget(isCurrentCharge: false),
+                Obx(() {
+                  if (controller.isPastGraphLoading.value) {
+                    return SizedBox(
+                      height: 200,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.secondaryColor,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Loading past charge graph...',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return const ChargeGraphWidget(isCurrentCharge: false);
+                }),
+                if (kDebugMode) ...[
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () async {
+                      // Seed 4 days of dummy data for testing migration time.
+                      await GraphHiveStorageService.seedDummyCurrentData(
+                        duration: const Duration(days: 4),
+                        sampleEvery: const Duration(seconds: 5),
+                      );
+                    },
+                    child: const Text(
+                      'Seed 4 days past graph data (debug only)',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -47,18 +47,25 @@ class LeoHomeController extends GetxController {
   StreamSubscription? _dataReceivedSubscription;
   StreamSubscription? _measureDataSubscription;
   Timer? _graphInactivityTimer;
+  final isPastGraphLoading = false.obs;
 
   @override
   void onInit() {
     super.onInit();
     clearCurrentGraph();
-    _restoreGraphFromHive();
     _listenToAdapterState();
     _listenToDeviceStream();
     _listenToConnectionStream();
     _listenToDataReceived();
     _listenToMeasureData();
     _loadInitialState();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    // Load past graph after first frame so UI becomes visible quickly.
+    _restoreGraphFromHive();
   }
 
   Future<void> _loadInitialState() async {
@@ -337,57 +344,62 @@ class LeoHomeController extends GetxController {
   }
 
   Future<void> _restoreGraphFromHive() async {
-    // 1) Restore any previously archived "last" (past) session so it
-    // survives across app restarts.
-    final storedLast = await GraphHiveStorageService.getPastSamples();
-    if (storedLast.isNotEmpty) {
+    isPastGraphLoading.value = true;
+    try {
+      // 1) Restore any previously archived "last" (past) session so it
+      // survives across app restarts.
+      final storedLast = await GraphHiveStorageService.getPastSamples();
+      if (storedLast.isNotEmpty) {
+        lastChargeGraphPoints.assignAll(
+          storedLast
+              .map((e) => GraphPoint(seconds: e.dataKey, current: e.value))
+              .toList(),
+        );
+
+        final lastSeconds = lastChargeGraphPoints.last.seconds;
+        final adjustedMaxLast = max(60.0, lastSeconds);
+        lastGraphXAxisLimit.value = adjustedMaxLast;
+        lastGraphXAxisInterval.value = _computeXAxisInterval(adjustedMaxLast);
+      }
+
+      // 2) Handle any interrupted "current" session from the previous run.
+      final storedCurrent = await GraphHiveStorageService.getCurrentSamples();
+      if (storedCurrent.isEmpty) {
+        return;
+      }
+
+      final bool shouldPromote = GraphHiveStorageService.checkDataConditions(
+        storedCurrent,
+      );
+
+      if (!shouldPromote) {
+        // Session didn't meet overall conditions: drop it, but DO NOT touch
+        // the previously archived past graph, which is already restored.
+        await GraphHiveStorageService.clearCurrentSamples();
+        clearCurrentGraph();
+        return;
+      }
+
+      // Promote the completed current session to be the new "last" (past)
+      // charge graph and persist it, replacing any older past graph.
       lastChargeGraphPoints.assignAll(
-        storedLast
+        storedCurrent
             .map((e) => GraphPoint(seconds: e.dataKey, current: e.value))
             .toList(),
       );
 
-      final lastSeconds = lastChargeGraphPoints.last.seconds;
-      final adjustedMaxLast = max(60.0, lastSeconds);
-      lastGraphXAxisLimit.value = adjustedMaxLast;
-      lastGraphXAxisInterval.value = _computeXAxisInterval(adjustedMaxLast);
-    }
+      final durationSeconds =
+          storedCurrent.last.dataKey - storedCurrent.first.dataKey;
+      final adjustedMax = max(60.0, durationSeconds);
+      lastGraphXAxisLimit.value = adjustedMax;
+      lastGraphXAxisInterval.value = _computeXAxisInterval(adjustedMax);
 
-    // 2) Handle any interrupted "current" session from the previous run.
-    final storedCurrent = await GraphHiveStorageService.getCurrentSamples();
-    if (storedCurrent.isEmpty) {
-      return;
-    }
-
-    final firstSec = storedCurrent.first.dataKey;
-    final lastSec = storedCurrent.last.dataKey;
-    final durationSeconds = (lastSec - firstSec).abs();
-
-    // Only promote sessions that ran at least ~4 minutes.
-    const minimumSecondsForArchive = 4 * 60;
-    if (durationSeconds < minimumSecondsForArchive) {
-      // Session too short: drop it, but DO NOT touch the previously archived
-      // past graph, which is already restored above.
+      await GraphHiveStorageService.replacePastSamples(storedCurrent);
       await GraphHiveStorageService.clearCurrentSamples();
       clearCurrentGraph();
-      return;
+    } finally {
+      isPastGraphLoading.value = false;
     }
-
-    // Promote the completed current session to be the new "last" (past)
-    // charge graph and persist it, replacing any older past graph.
-    lastChargeGraphPoints.assignAll(
-      storedCurrent
-          .map((e) => GraphPoint(seconds: e.dataKey, current: e.value))
-          .toList(),
-    );
-
-    final adjustedMax = max(60.0, durationSeconds);
-    lastGraphXAxisLimit.value = adjustedMax;
-    lastGraphXAxisInterval.value = _computeXAxisInterval(adjustedMax);
-
-    await GraphHiveStorageService.replacePastSamples(storedCurrent);
-    await GraphHiveStorageService.clearCurrentSamples();
-    clearCurrentGraph();
   }
 
   void finalizeCurrentGraphSession() {
