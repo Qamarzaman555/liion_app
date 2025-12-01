@@ -5,6 +5,7 @@ import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/modules/leo_empty/graphs/charge_graph_widget.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
+import 'package:liion_app/app/services/ble_scan_service.dart';
 import '../../controllers/leo_home_controller.dart';
 
 class LeoMetricsSummary extends StatelessWidget {
@@ -31,12 +32,22 @@ class LeoMetricsSummary extends StatelessWidget {
                     label: 'Current',
                   ),
                   trailing: Obx(
-                    () =>
-                        _MetricValueChip(value: controller.currentValue.value),
+                    () => _MetricValueChip(
+                      value:
+                          controller.connectionState.value ==
+                              BleConnectionState.connected
+                          ? controller.currentValue.value
+                          : '--',
+                    ),
                   ),
                   extra: Obx(
-                    () =>
-                        _MetricValueChip(value: controller.voltageValue.value),
+                    () => _MetricValueChip(
+                      value:
+                          controller.connectionState.value ==
+                              BleConnectionState.connected
+                          ? controller.voltageValue.value
+                          : '--',
+                    ),
                   ),
                   extraLabel: 'Voltage',
                 ),
@@ -47,27 +58,33 @@ class LeoMetricsSummary extends StatelessWidget {
                     const Text('Power'),
                     const SizedBox(width: 12),
                     Obx(
-                      () =>
-                          _MetricValueChip(value: controller.powerValue.value),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('Firmware'),
-                    const SizedBox(width: 12),
-                    Obx(
                       () => _MetricValueChip(
-                        value: controller.binFileFromLeoName.value.isEmpty
-                            ? 'N/A'
-                            : controller.binFileFromLeoName.value,
+                        value:
+                            controller.connectionState.value ==
+                                BleConnectionState.connected
+                            ? controller.powerValue.value
+                            : '--',
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                // Row(
+                //   mainAxisAlignment: MainAxisAlignment.center,
+                //   children: [
+                //     const Text('Firmware'),
+                //     const SizedBox(width: 12),
+                //     Obx(
+                //       () => _MetricValueChip(
+                //         value: controller.binFileFromLeoName.value.isEmpty
+                //             ? 'N/A'
+                //             : controller.binFileFromLeoName.value,
+                //       ),
+                //     ),
+                //   ],
+                // ),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     GestureDetector(
                       onTap: () => _showModeSelectionDialog(context),
@@ -83,6 +100,18 @@ class LeoMetricsSummary extends StatelessWidget {
                           ],
                         );
                       }),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        controller.clearCurrentGraph();
+                      },
+                      child: Row(
+                        children: [
+                          _currentChargingMode(SvgAssets.resetIcon),
+                          const SizedBox(width: 8),
+                          _chargingModeText('Reset'),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -376,7 +405,7 @@ class _MetricValueChip extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         child: Text(
-          value,
+          value.isEmpty ? '--' : value,
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
       ),
