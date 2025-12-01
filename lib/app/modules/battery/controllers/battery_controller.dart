@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:get/get.dart';
+import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class BatteryController extends GetxController {
@@ -94,10 +95,9 @@ class BatteryController extends GetxController {
   Future<void> startHealthCalculation() async {
     final success = await BleScanService.startBatteryHealthCalculation();
     if (!success) {
-      Get.snackbar(
-        'Cannot Start',
-        'Device must be charging and battery below 40%',
-        snackPosition: SnackPosition.BOTTOM,
+      AppSnackbars.showSuccess(
+        title: 'Cannot Start',
+        message: 'Device must be charging and battery below 40%',
       );
     }
   }

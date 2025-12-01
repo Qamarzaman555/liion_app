@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,23 +12,21 @@ class LeoTroubleshootController extends GetxController {
       isResetting.value = true;
       final success = await BleScanService.sendCommand("reboot");
       if (success) {
-        Get.snackbar(
-          'Success',
-          'Leo device reset command sent',
-          snackPosition: SnackPosition.BOTTOM,
+        AppSnackbars.showSuccess(
+          title: 'Success',
+          message: 'Leo device reset command sent',
         );
       } else {
-        Get.snackbar(
-          'Error',
-          'Failed to send reset command. Please ensure device is connected.',
-          snackPosition: SnackPosition.BOTTOM,
+        AppSnackbars.showSuccess(
+          title: 'Error',
+          message:
+              'Failed to send reset command. Please ensure device is connected.',
         );
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'An error occurred: $e',
-        snackPosition: SnackPosition.BOTTOM,
+      AppSnackbars.showSuccess(
+        title: 'Error',
+        message: 'An error occurred: $e',
       );
     } finally {
       isResetting.value = false;
@@ -41,17 +40,15 @@ class LeoTroubleshootController extends GetxController {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        Get.snackbar(
-          'Error',
-          'Could not open FAQ page',
-          snackPosition: SnackPosition.BOTTOM,
+        AppSnackbars.showSuccess(
+          title: 'Error',
+          message: 'Could not open FAQ page',
         );
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'An error occurred: $e',
-        snackPosition: SnackPosition.BOTTOM,
+      AppSnackbars.showSuccess(
+        title: 'Error',
+        message: 'An error occurred: $e',
       );
     }
   }
@@ -59,10 +56,9 @@ class LeoTroubleshootController extends GetxController {
   Future<void> updateFromFile() async {
     // TODO: Implement OTA update functionality
     // This would require the OTA package and related controllers
-    Get.snackbar(
-      'Info',
-      'OTA update functionality coming soon',
-      snackPosition: SnackPosition.BOTTOM,
+    AppSnackbars.showSuccess(
+      title: 'Info',
+      message: 'OTA update functionality coming soon',
     );
   }
 }

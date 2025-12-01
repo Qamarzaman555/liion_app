@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class ChargeLimitController extends GetxController {
@@ -89,22 +89,14 @@ class ChargeLimitController extends GetxController {
     if (success) {
       chargeLimit.value = limit;
       chargeLimitEnabled.value = true;
-      Get.snackbar(
-        'Success',
-        'Charge limit set to $limit%',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppColors.transparentColor,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
+      AppSnackbars.showSuccess(
+        title: 'Success',
+        message: 'Charge limit set to $limit%',
       );
     } else {
-      Get.snackbar(
-        'Error',
-        'Failed to set charge limit',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppColors.transparentColor,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
+      AppSnackbars.showSuccess(
+        title: 'Error',
+        message: 'Failed to set charge limit',
       );
     }
 
@@ -115,15 +107,11 @@ class ChargeLimitController extends GetxController {
     final success = await BleScanService.setChargeLimitEnabled(enabled);
     if (success) {
       chargeLimitEnabled.value = enabled;
-      Get.snackbar(
-        enabled ? 'Charge Limit Enabled' : 'Charge Limit Disabled',
-        enabled
+      AppSnackbars.showSuccess(
+        title: enabled ? 'Charge Limit Enabled' : 'Charge Limit Disabled',
+        message: enabled
             ? 'Limit set to ${chargeLimit.value}%'
             : 'Leo will use default charge limit',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppColors.transparentColor,
-        colorText: AppColors.blackColor,
-        duration: const Duration(seconds: 2),
       );
     }
   }

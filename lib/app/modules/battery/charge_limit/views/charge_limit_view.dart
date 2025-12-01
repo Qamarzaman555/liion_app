@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
 import 'package:liion_app/app/core/widgets/custom_switch.dart';
 import 'package:liion_app/app/modules/battery/controllers/battery_controller.dart';
@@ -108,11 +109,9 @@ Widget _buildTitle(ChargeLimitController controller) {
           value: controller.chargeLimitEnabled.value,
           onChanged: (value) {
             if (!controller.isConnected.value) {
-              Get.snackbar(
-                'Not Connected',
-                'Please connect to Leo to enable charge limit',
-                snackPosition: SnackPosition.BOTTOM,
-                duration: const Duration(seconds: 2),
+              AppSnackbars.showSuccess(
+                title: 'Not Connected',
+                message: 'Please connect to Leo to enable charge limit',
               );
               return;
             }
@@ -253,11 +252,9 @@ Widget _buildSaveButton(ChargeLimitController controller) {
     text: "Save Charge Limit",
     onPressed: () {
       if (!controller.isConnected.value) {
-        Get.snackbar(
-          'Not Connected',
-          'Please connect to Leo to save limit',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 2),
+        AppSnackbars.showSuccess(
+          title: 'Not Connected',
+          message: 'Please connect to Leo to save limit',
         );
         return;
       }

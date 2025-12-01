@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
 import '../controllers/feedback_controller.dart';
 
@@ -113,23 +114,17 @@ class FeedbackView extends GetView<FeedbackController> {
 
   void _submitFeedback(BuildContext context) {
     if (controller.feedbackText.value.trim().isEmpty) {
-      Get.snackbar(
-        'Error',
-        'Please enter your feedback',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppColors.errorColor,
-        colorText: AppColors.whiteColor,
+      AppSnackbars.showSuccess(
+        title: 'Error',
+        message: 'Please enter your feedback',
       );
       return;
     }
 
     // TODO: Implement actual feedback submission
-    Get.snackbar(
-      'Thank You!',
-      'Your feedback has been submitted successfully.',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: AppColors.primaryColor,
-      colorText: AppColors.whiteColor,
+    AppSnackbars.showSuccess(
+      title: 'Thank You!',
+      message: 'Your feedback has been submitted successfully.',
     );
 
     // Clear feedback and go back

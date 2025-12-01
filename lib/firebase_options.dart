@@ -65,5 +65,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'liion-power-227c6.firebasestorage.app',
     iosBundleId: 'com.example.liionApp',
   );
-
 }
