@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:get/get.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
+import 'package:liion_app/app/modules/leo_empty/utils/graph_storage_service.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class LeoHomeController extends GetxController {
@@ -46,12 +47,12 @@ class LeoHomeController extends GetxController {
   StreamSubscription? _dataReceivedSubscription;
   StreamSubscription? _measureDataSubscription;
   Timer? _graphInactivityTimer;
-  static const Duration _graphInactivityTimeout = Duration(seconds: 30);
 
   @override
   void onInit() {
     super.onInit();
     clearCurrentGraph();
+    _restoreGraphFromStorage();
     _listenToAdapterState();
     _listenToDeviceStream();
     _listenToConnectionStream();
@@ -296,7 +297,7 @@ class LeoHomeController extends GetxController {
       GraphPoint(seconds: elapsedSeconds, current: current.toDouble()),
     );
     _updateCurrentGraphAxis(elapsedSeconds);
-    // _restartGraphInactivityTimer();
+    _persistCurrentGraph();
   }
 
   void _updateCurrentGraphAxis(double elapsedSeconds) {
@@ -305,20 +306,64 @@ class LeoHomeController extends GetxController {
     currentGraphXAxisInterval.value = _computeXAxisInterval(adjustedMax);
   }
 
+  /// Compute X axis interval so that we only show about 3–4 labels on the
+  /// bottom axis, regardless of how long the session is.
   double _computeXAxisInterval(double maxRangeSeconds) {
-    if (maxRangeSeconds <= 60) return 10;
-    if (maxRangeSeconds <= 5 * 60) return 60;
-    if (maxRangeSeconds <= 15 * 60) return 120;
-    if (maxRangeSeconds <= 60 * 60) return 600;
-    return 1800;
+    // Guard against invalid ranges
+    if (maxRangeSeconds <= 0) {
+      return 10.0;
+    }
+
+    // We want roughly this many labels on the X axis.
+    const targetLabelCount = 4;
+
+    // With minX fixed at 0 for now, the visible range is simply [0, maxRangeSeconds].
+    final range = maxRangeSeconds;
+
+    // Ensure at least two labels (start and end).
+    final effectiveLabelCount = max(2, targetLabelCount);
+
+    // Raw spacing to hit the target label count.
+    final rawInterval = range / (effectiveLabelCount - 1);
+
+    // We could "beautify" the interval to round values, but since labels are
+    // formatted as durations (e.g. 5m13s, 1h02m), using the raw interval keeps
+    // the label count low and readable even for long sessions.
+    return rawInterval;
   }
 
-  void _restartGraphInactivityTimer() {
-    _graphInactivityTimer?.cancel();
-    _graphInactivityTimer = Timer(
-      _graphInactivityTimeout,
-      finalizeCurrentGraphSession,
+  Future<void> _persistCurrentGraph() async {
+    if (currentGraphStartTime.value == null || currentGraphPoints.isEmpty) {
+      await GraphStorageService.clearCurrentGraph();
+      return;
+    }
+
+    final data = GraphSessionData(
+      startTime: currentGraphStartTime.value!,
+      points: List<GraphPoint>.from(currentGraphPoints),
     );
+    await GraphStorageService.saveCurrentGraph(data);
+  }
+
+  Future<void> _restoreGraphFromStorage() async {
+    final stored = await GraphStorageService.loadCurrentGraph();
+    if (stored == null || stored.points.isEmpty) {
+      return;
+    }
+
+    // On next app start, move the previously "current" session into the
+    // "last" (past) charge graph, then clear storage so a new session
+    // can start fresh.
+    lastChargeGraphPoints.assignAll(stored.points);
+    lastGraphStartTime.value = stored.startTime;
+
+    final lastSeconds = stored.points.last.seconds;
+    final adjustedMax = max(60.0, lastSeconds);
+    lastGraphXAxisLimit.value = adjustedMax;
+    lastGraphXAxisInterval.value = _computeXAxisInterval(adjustedMax);
+
+    await GraphStorageService.clearCurrentGraph();
+    clearCurrentGraph();
   }
 
   void finalizeCurrentGraphSession() {
