@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:get/get.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
+import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class LeoHomeController extends GetxController {
@@ -35,6 +36,9 @@ class LeoHomeController extends GetxController {
   final lastGraphXAxisInterval = 10.0.obs;
   final currentGraphStartTime = Rxn<DateTime>();
   final lastGraphStartTime = Rxn<DateTime>();
+
+  // Add charging mode related variables
+  final Rx<ChargingMode> currentMode = ChargingMode.smart.obs;
 
   StreamSubscription? _deviceSubscription;
   StreamSubscription? _connectionSubscription;
@@ -119,6 +123,9 @@ class LeoHomeController extends GetxController {
         Future.delayed(const Duration(seconds: 2), () {
           requestLeoFirmwareVersion();
         });
+        Future.delayed(const Duration(seconds: 3), () {
+          requestChargingMode();
+        });
       } else if (newState == BleConnectionState.connecting) {
         connectingDeviceAddress.value = address;
       } else if (newState == BleConnectionState.disconnected) {
@@ -185,13 +192,26 @@ class LeoHomeController extends GetxController {
       }
 
       // Parse measure data - check if any part contains 'measure'
-      if (parts.length >= 1 &&
+      if (parts.isNotEmpty &&
           (parts[1] == 'measure' || parts.contains('measure'))) {
         print('Measure data detected: $parts');
         bool isValid = _canParseToDouble(parts, 2, 4);
         print('Is valid: $isValid');
         if (isValid) {
           measureDataList.assignAll(parts);
+
+          String safeValue = parts[10];
+          // Get.find<LogsController>().logMessage(
+          //     "(batteryController)measure command response received");
+
+          /// Charge Mode Update
+          if (safeValue == "0") {
+            currentMode.value = ChargingMode.smart;
+          } else if (safeValue == "1") {
+            currentMode.value = ChargingMode.ghost;
+          } else if (safeValue == "2") {
+            currentMode.value = ChargingMode.safe;
+          }
 
           // Index 4 is current
           double current = double.parse(parts[4]).abs();
@@ -208,6 +228,18 @@ class LeoHomeController extends GetxController {
 
           // Add to graph using the same value shown in UI
           _addGraphSample(current);
+        }
+      }
+      if (parts[2] == "chmode") {
+        String safeValue = parts[1];
+        safeValue = safeValue.replaceAll(RegExp(r'[^0-9]'), '');
+        print("Safe value is $safeValue  ${safeValue.runtimeType}");
+        if (safeValue == "0") {
+          currentMode.value = ChargingMode.smart;
+        } else if (safeValue == "1") {
+          currentMode.value = ChargingMode.ghost;
+        } else if (safeValue == "2") {
+          currentMode.value = ChargingMode.safe;
         }
       }
 
@@ -382,12 +414,43 @@ class LeoHomeController extends GetxController {
     }
   }
 
+  Future<void> requestChargingMode() async {
+    if (connectionState.value == BleConnectionState.connected) {
+      await BleScanService.sendCommand('chmode');
+    }
+  }
+
   /// Send custom command to Leo
   Future<bool> sendCommand(String command) async {
     if (connectionState.value != BleConnectionState.connected) {
       return false;
     }
     return await BleScanService.sendCommand(command);
+  }
+
+  // Update charging mode
+  Future<void> updateChargingMode(ChargingMode mode) async {
+    if (connectionState.value == BleConnectionState.disconnected) {
+      Get.snackbar(
+        "No Device Connected",
+        "Please connect to a device to update the charging mode",
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    try {
+      // Send mode change command to Leo
+      await BleScanService.sendCommand("chmode ${mode.index}\n");
+    } catch (e) {
+      // Revert the mode if the command fails
+      currentMode.value = ChargingMode.smart;
+      Get.snackbar(
+        "Failed to update charging mode",
+        "Please try again",
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
   }
 
   Future<void> refreshDevices() async {

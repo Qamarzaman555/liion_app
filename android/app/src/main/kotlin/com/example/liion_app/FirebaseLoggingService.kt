@@ -11,8 +11,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
-import kotlin.math.min
-import kotlin.math.pow
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -44,19 +42,7 @@ class FirebaseLoggingService private constructor() {
     private val batchSize = 10
     private var outageStart: Date? = null
     private var retryJob: Job? = null
-    private var initRetryJob: Job? = null
     private var isSamsungDevice = false
-    private var initRetryAttempt = 0
-    private var lastInitRetryTime: Long = 0
-    private val maxInitRetries = 10
-    private val maxRetryDelay = 300000L // 5 minutes max delay
-    private val baseRetryDelay = 5000L // 5 seconds base delay
-    private var consecutiveFailures = 0
-    private var lastSuccessfulFlush: Long = 0
-    private var isFirestoreConnected = true
-    private var retryAttempt = 0
-    private val maxLogRetryAttempts = 5
-    private val retryInterval = 30000L // 30 seconds
 
     val initialized: Boolean
         get() = isInitialized
@@ -73,30 +59,11 @@ class FirebaseLoggingService private constructor() {
             )
         }
 
-        // Cancel any existing initialization retry job
-        initRetryJob?.cancel()
-        initRetryAttempt = 0
-
-        performInitialization(context, appVersion, buildNumber, isRetry = false)
-    }
-
-    private fun performInitialization(
-            context: Context,
-            appVersion: String,
-            buildNumber: String,
-            isRetry: Boolean
-    ) {
         scope.launch {
             try {
                 // Check network connectivity
                 if (!hasNetworkConnection()) {
                     Log.w("FirebaseLogging", "No network connection available for Firebase logging")
-                    scheduleInitializationRetry(
-                            context,
-                            appVersion,
-                            buildNumber,
-                            "No network connection"
-                    )
                     return@launch
                 }
 
@@ -107,12 +74,6 @@ class FirebaseLoggingService private constructor() {
                         Log.d("FirebaseLogging", "Firebase initialized")
                     } catch (e: Exception) {
                         Log.e("FirebaseLogging", "Failed to initialize Firebase", e)
-                        scheduleInitializationRetry(
-                                context,
-                                appVersion,
-                                buildNumber,
-                                "Firebase initialization failed: ${e.message}"
-                        )
                         return@launch
                     }
                 }
@@ -120,25 +81,7 @@ class FirebaseLoggingService private constructor() {
                 firestore = FirebaseFirestore.getInstance()
                 if (firestore == null) {
                     Log.e("FirebaseLogging", "Failed to get Firestore instance")
-                    scheduleInitializationRetry(
-                            context,
-                            appVersion,
-                            buildNumber,
-                            "Failed to get Firestore instance"
-                    )
                     return@launch
-                }
-
-                // Enable Firestore persistence and network settings
-                try {
-                    firestore?.firestoreSettings =
-                            firestore
-                                    ?.firestoreSettings
-                                    ?.toBuilder()
-                                    ?.setPersistenceEnabled(true)
-                                    ?.build()
-                } catch (e: Exception) {
-                    Log.w("FirebaseLogging", "Could not configure Firestore settings", e)
                 }
 
                 // Get device label
@@ -184,18 +127,16 @@ class FirebaseLoggingService private constructor() {
                                         ?.set(sessionData, SetOptions.merge())
                                         ?.addOnSuccessListener {
                                             isInitialized = true
-                                            initRetryAttempt = 0 // Reset retry counter on success
-                                            consecutiveFailures = 0
-                                            isFirestoreConnected = true
-                                            lastSuccessfulFlush = System.currentTimeMillis()
                                             Log.d(
                                                     "FirebaseLogging",
                                                     "Logging session initialized successfully"
                                             )
                                             log("INFO", "Logging session initialized")
 
-                                            // Start retry mechanism for ALL devices
-                                            startRetryMechanism()
+                                            // Start retry mechanism for Samsung devices
+                                            if (isSamsungDevice) {
+                                                startRetryMechanism()
+                                            }
                                         }
                                         ?.addOnFailureListener { e ->
                                             Log.e(
@@ -203,93 +144,25 @@ class FirebaseLoggingService private constructor() {
                                                     "Failed to create session document",
                                                     e
                                             )
-                                            scheduleInitializationRetry(
-                                                    context,
-                                                    appVersion,
-                                                    buildNumber,
-                                                    "Failed to create session document: ${e.message}"
-                                            )
+                                            // Retry initialization for Samsung devices
+                                            if (isSamsungDevice) {
+                                                scope.launch {
+                                                    delay(5000) // Wait 5 seconds before retry
+                                                    initialize(context, appVersion, buildNumber)
+                                                }
+                                            }
                                         }
                             } catch (e: Exception) {
                                 Log.e("FirebaseLogging", "Error processing snapshot", e)
-                                scheduleInitializationRetry(
-                                        context,
-                                        appVersion,
-                                        buildNumber,
-                                        "Error processing snapshot: ${e.message}"
-                                )
                             }
                         }
                         ?.addOnFailureListener { e ->
                             Log.e("FirebaseLogging", "Failed to get collection snapshot", e)
-                            scheduleInitializationRetry(
-                                    context,
-                                    appVersion,
-                                    buildNumber,
-                                    "Failed to get collection snapshot: ${e.message}"
-                            )
                         }
             } catch (e: Exception) {
                 Log.e("FirebaseLogging", "Error in initialize", e)
-                scheduleInitializationRetry(
-                        context,
-                        appVersion,
-                        buildNumber,
-                        "Exception during initialization: ${e.message}"
-                )
             }
         }
-    }
-
-    private fun scheduleInitializationRetry(
-            context: Context,
-            appVersion: String,
-            buildNumber: String,
-            reason: String
-    ) {
-        if (initRetryAttempt >= maxInitRetries) {
-            Log.e(
-                    "FirebaseLogging",
-                    "Max initialization retries ($maxInitRetries) reached. Reason: $reason"
-            )
-            return
-        }
-
-        initRetryAttempt++
-        val delay = calculateExponentialBackoff(initRetryAttempt, baseRetryDelay, maxRetryDelay)
-        val currentTime = System.currentTimeMillis()
-
-        // Prevent too frequent retries
-        if (currentTime - lastInitRetryTime < delay) {
-            return
-        }
-
-        lastInitRetryTime = currentTime
-
-        Log.w(
-                "FirebaseLogging",
-                "Scheduling initialization retry #$initRetryAttempt in ${delay}ms. Reason: $reason"
-        )
-
-        initRetryJob?.cancel()
-        initRetryJob =
-                scope.launch {
-                    delay(delay)
-                    if (!isInitialized) {
-                        Log.d(
-                                "FirebaseLogging",
-                                "Retrying initialization (attempt $initRetryAttempt/$maxInitRetries)"
-                        )
-                        performInitialization(context, appVersion, buildNumber, isRetry = true)
-                    }
-                }
-    }
-
-    private fun calculateExponentialBackoff(attempt: Int, baseDelay: Long, maxDelay: Long): Long {
-        val delay = min(baseDelay * (2.0.pow(attempt - 1)).toLong(), maxDelay)
-        // Add jitter to prevent thundering herd
-        val jitter = (delay * 0.1).toLong() * (Math.random() * 2 - 1).toLong()
-        return (delay + jitter).coerceAtLeast(1000) // Minimum 1 second
     }
 
     fun log(level: String, message: String) {
