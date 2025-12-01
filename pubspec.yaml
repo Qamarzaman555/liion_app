@@ -45,6 +45,8 @@ dependencies:
   url_launcher: ^6.3.1
   syncfusion_flutter_sliders: ^27.2.5
   fl_chart: ^0.66.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
 
 dev_dependencies:
   flutter_test:

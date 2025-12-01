@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:get/get.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
-import 'package:liion_app/app/modules/leo_empty/utils/graph_storage_service.dart';
+import 'package:liion_app/app/modules/leo_empty/utils/graph_hive_storage_service.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class LeoHomeController extends GetxController {
@@ -52,7 +52,7 @@ class LeoHomeController extends GetxController {
   void onInit() {
     super.onInit();
     clearCurrentGraph();
-    _restoreGraphFromStorage();
+    _restoreGraphFromHive();
     _listenToAdapterState();
     _listenToDeviceStream();
     _listenToConnectionStream();
@@ -297,7 +297,11 @@ class LeoHomeController extends GetxController {
       GraphPoint(seconds: elapsedSeconds, current: current.toDouble()),
     );
     _updateCurrentGraphAxis(elapsedSeconds);
-    _persistCurrentGraph();
+    // Persist to Hive for crash/kill-safe recovery.
+    GraphHiveStorageService.appendCurrentSample(
+      seconds: elapsedSeconds,
+      current: current.toDouble(),
+    );
   }
 
   void _updateCurrentGraphAxis(double elapsedSeconds) {
@@ -332,37 +336,57 @@ class LeoHomeController extends GetxController {
     return rawInterval;
   }
 
-  Future<void> _persistCurrentGraph() async {
-    if (currentGraphStartTime.value == null || currentGraphPoints.isEmpty) {
-      await GraphStorageService.clearCurrentGraph();
+  Future<void> _restoreGraphFromHive() async {
+    // 1) Restore any previously archived "last" (past) session so it
+    // survives across app restarts.
+    final storedLast = await GraphHiveStorageService.getPastSamples();
+    if (storedLast.isNotEmpty) {
+      lastChargeGraphPoints.assignAll(
+        storedLast
+            .map((e) => GraphPoint(seconds: e.dataKey, current: e.value))
+            .toList(),
+      );
+
+      final lastSeconds = lastChargeGraphPoints.last.seconds;
+      final adjustedMaxLast = max(60.0, lastSeconds);
+      lastGraphXAxisLimit.value = adjustedMaxLast;
+      lastGraphXAxisInterval.value = _computeXAxisInterval(adjustedMaxLast);
+    }
+
+    // 2) Handle any interrupted "current" session from the previous run.
+    final storedCurrent = await GraphHiveStorageService.getCurrentSamples();
+    if (storedCurrent.isEmpty) {
       return;
     }
 
-    final data = GraphSessionData(
-      startTime: currentGraphStartTime.value!,
-      points: List<GraphPoint>.from(currentGraphPoints),
+    final firstSec = storedCurrent.first.dataKey;
+    final lastSec = storedCurrent.last.dataKey;
+    final durationSeconds = (lastSec - firstSec).abs();
+
+    // Only promote sessions that ran at least ~4 minutes.
+    const minimumSecondsForArchive = 4 * 60;
+    if (durationSeconds < minimumSecondsForArchive) {
+      // Session too short: drop it, but DO NOT touch the previously archived
+      // past graph, which is already restored above.
+      await GraphHiveStorageService.clearCurrentSamples();
+      clearCurrentGraph();
+      return;
+    }
+
+    // Promote the completed current session to be the new "last" (past)
+    // charge graph and persist it, replacing any older past graph.
+    lastChargeGraphPoints.assignAll(
+      storedCurrent
+          .map((e) => GraphPoint(seconds: e.dataKey, current: e.value))
+          .toList(),
     );
-    await GraphStorageService.saveCurrentGraph(data);
-  }
 
-  Future<void> _restoreGraphFromStorage() async {
-    final stored = await GraphStorageService.loadCurrentGraph();
-    if (stored == null || stored.points.isEmpty) {
-      return;
-    }
-
-    // On next app start, move the previously "current" session into the
-    // "last" (past) charge graph, then clear storage so a new session
-    // can start fresh.
-    lastChargeGraphPoints.assignAll(stored.points);
-    lastGraphStartTime.value = stored.startTime;
-
-    final lastSeconds = stored.points.last.seconds;
-    final adjustedMax = max(60.0, lastSeconds);
+    final adjustedMax = max(60.0, durationSeconds);
     lastGraphXAxisLimit.value = adjustedMax;
     lastGraphXAxisInterval.value = _computeXAxisInterval(adjustedMax);
 
-    await GraphStorageService.clearCurrentGraph();
+    await GraphHiveStorageService.replacePastSamples(storedCurrent);
+    await GraphHiveStorageService.clearCurrentSamples();
     clearCurrentGraph();
   }
 

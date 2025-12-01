@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'app/modules/leo_empty/models/graph_values_hive_model.dart';
 import 'app/routes/app_pages.dart';
 import 'app/services/ble_scan_service.dart';
 import 'firebase_options.dart';
@@ -12,6 +14,10 @@ void main() async {
 
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize Hive for local graph persistence.
+  await Hive.initFlutter();
+  Hive.registerAdapter(GraphValuesDataHiveAdapter());
 
   // Request permissions and start service on Android
   if (Platform.isAndroid) {
