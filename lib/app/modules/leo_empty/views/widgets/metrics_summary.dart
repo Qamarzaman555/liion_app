@@ -5,7 +5,6 @@ import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/modules/leo_empty/graphs/charge_graph_widget.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
-import 'package:liion_app/app/services/ble_scan_service.dart';
 import '../../controllers/leo_home_controller.dart';
 
 class LeoMetricsSummary extends StatelessWidget {
@@ -73,29 +72,14 @@ class LeoMetricsSummary extends StatelessWidget {
                     GestureDetector(
                       onTap: () => _showModeSelectionDialog(context),
                       child: Obx(() {
-                        String svgIcon;
-                        String mode;
-                        switch (controller.currentMode.value) {
-                          case ChargingMode.smart:
-                            svgIcon = SvgAssets.smartModeIcon;
-                            mode = "Smart Mode";
-                            break;
-                          case ChargingMode.ghost:
-                            svgIcon = SvgAssets.ghostModeIcon;
-                            mode = "Ghost Mode";
-
-                            break;
-                          case ChargingMode.safe:
-                            svgIcon = SvgAssets.safeModeIcon;
-                            mode = "Safe Mode";
-
-                            break;
-                        }
+                        final mode = controller.currentMode.value;
+                        final svgIcon = _modeIcon(mode);
+                        final label = _modeLabel(mode);
                         return Row(
                           children: [
                             _currentChargingMode(svgIcon),
                             const SizedBox(width: 8),
-                            _chargingModeText(mode),
+                            _chargingModeText(label),
                           ],
                         );
                       }),
@@ -223,6 +207,28 @@ class LeoMetricsSummary extends StatelessWidget {
     );
   }
 
+  String _modeLabel(ChargingMode mode) {
+    switch (mode) {
+      case ChargingMode.smart:
+        return 'Smart Mode';
+      case ChargingMode.ghost:
+        return 'Ghost Mode';
+      case ChargingMode.safe:
+        return 'Safe Mode';
+    }
+  }
+
+  String _modeIcon(ChargingMode mode, {bool filled = false}) {
+    switch (mode) {
+      case ChargingMode.smart:
+        return filled ? SvgAssets.smartModeIconFilled : SvgAssets.smartModeIcon;
+      case ChargingMode.ghost:
+        return filled ? SvgAssets.ghostModeIconFilled : SvgAssets.ghostModeIcon;
+      case ChargingMode.safe:
+        return filled ? SvgAssets.safeModeIconFilled : SvgAssets.safeModeIcon;
+    }
+  }
+
   Widget _buildModeOption(
     BuildContext context,
     String title,
@@ -231,39 +237,12 @@ class LeoMetricsSummary extends StatelessWidget {
     ChargingMode mode,
   ) {
     final isSelected = controller.currentMode.value == mode;
-
-    String svgIcon;
-    switch (mode) {
-      case ChargingMode.smart:
-        svgIcon = isSelected
-            ? SvgAssets.smartModeIconFilled
-            : SvgAssets.smartModeIcon;
-        break;
-      case ChargingMode.ghost:
-        svgIcon = isSelected
-            ? SvgAssets.ghostModeIconFilled
-            : SvgAssets.ghostModeIcon;
-        break;
-      case ChargingMode.safe:
-        svgIcon = isSelected
-            ? SvgAssets.safeModeIconFilled
-            : SvgAssets.safeModeIcon;
-        break;
-    }
+    final svgIcon = _modeIcon(mode, filled: isSelected);
 
     return InkWell(
       onTap: () {
-        if (controller.connectionState.value == BleConnectionState.connected) {
-          Navigator.pop(context);
-          controller.updateChargingMode(mode);
-        } else {
-          Navigator.pop(context);
-          Get.snackbar(
-            "No Device Connected",
-            "Please connect to a device to update the charging mode",
-            snackPosition: SnackPosition.BOTTOM,
-          );
-        }
+        Navigator.pop(context);
+        controller.updateChargingMode(mode);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
@@ -353,11 +332,11 @@ class _MetricRow extends StatelessWidget {
     return Row(
       children: [
         leading,
-        SizedBox(width: 8),
+        const SizedBox(width: 8),
         trailing,
         const Spacer(),
-        Text(extraLabel, style: TextStyle()),
-        SizedBox(width: 8),
+        Text(extraLabel, style: const TextStyle()),
+        const SizedBox(width: 8),
         extra,
       ],
     );
