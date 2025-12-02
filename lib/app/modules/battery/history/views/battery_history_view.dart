@@ -19,7 +19,9 @@ class BatteryHistoryView extends GetView<BatteryHistoryController> {
       ),
       body: Obx(() {
         if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(
+            child: CircularProgressIndicator(color: AppColors.secondaryColor),
+          );
         }
 
         if (controller.sessions.isEmpty) {
@@ -49,25 +51,29 @@ class BatteryHistoryView extends GetView<BatteryHistoryController> {
         }
 
         return RefreshIndicator(
-          onRefresh: controller.refresh,
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: controller.sessions.length,
-            itemBuilder: (context, index) {
-              final session = controller.sessions[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: BatteryUsageWidget(
-                  formattedTotalChargeTime: session.formattedDuration,
-                  formattedChargeStartTime: session.formattedStartTime,
-                  initialBatteryLevel: session.initialLevel,
-                  finalBatteryLevel: session.finalLevel,
-                  batteryUsage: session.batteryUsageString,
-                  consumptionRate: session.consumptionRate,
-                  isCharging: session.isCharging,
-                ),
-              );
-            },
+          onRefresh: controller.refreshLoadSessions,
+          color: AppColors.secondaryColor,
+
+          child: Obx(
+            () => ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: controller.sessions.length,
+              itemBuilder: (context, index) {
+                final session = controller.sessions[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: BatteryUsageWidget(
+                    formattedTotalChargeTime: session.formattedDuration,
+                    formattedChargeStartTime: session.formattedStartTime,
+                    initialBatteryLevel: session.initialLevel,
+                    finalBatteryLevel: session.finalLevel,
+                    batteryUsage: session.batteryUsageString,
+                    consumptionRate: session.consumptionRate,
+                    isCharging: session.isCharging,
+                  ),
+                );
+              },
+            ),
           ),
         );
       }),

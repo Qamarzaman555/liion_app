@@ -26,7 +26,7 @@ class BatteryHistoryController extends GetxController {
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refreshLoadSessions() async {
     await loadSessions();
   }
 }
