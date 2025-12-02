@@ -83,30 +83,30 @@ class GraphHiveStorageService {
     return timeCondition && hasValueAboveThreshold;
   }
 
-  /// DEBUG / TESTING ONLY:
-  /// Seed the current graph box with synthetic data for a given duration.
-  ///
-  /// This lets you simulate very long sessions (e.g. 4 days) and then
-  /// restart the app to observe how long it takes to promote data into
-  /// the past charge graph.
-  static Future<void> seedDummyCurrentData({
-    required Duration duration,
-    required Duration sampleEvery,
-  }) async {
-    final box = await _openBox(currentBoxName);
-    await box.clear();
+  // /// DEBUG / TESTING ONLY:
+  // /// Seed the current graph box with synthetic data for a given duration.
+  // ///
+  // /// This lets you simulate very long sessions (e.g. 4 days) and then
+  // /// restart the app to observe how long it takes to promote data into
+  // /// the past charge graph.
+  // static Future<void> seedDummyCurrentData({
+  //   required Duration duration,
+  //   required Duration sampleEvery,
+  // }) async {
+  //   final box = await _openBox(currentBoxName);
+  //   await box.clear();
 
-    final totalSeconds = duration.inSeconds;
-    final step = sampleEvery.inSeconds;
+  //   final totalSeconds = duration.inSeconds;
+  //   final step = sampleEvery.inSeconds;
 
-    for (int elapsed = 0; elapsed <= totalSeconds; elapsed += step) {
-      final seconds = elapsed.toDouble();
-      // Pseudo current waveform between ~0 and 3A with some variation.
-      final waveform = sin(elapsed / 1800.0) + 1.5;
-      final noise = 0.2 * sin(elapsed / 60.0);
-      final current = (waveform + noise).clamp(0.0, 3.0);
+  //   for (int elapsed = 0; elapsed <= totalSeconds; elapsed += step) {
+  //     final seconds = elapsed.toDouble();
+  //     // Pseudo current waveform between ~0 and 3A with some variation.
+  //     final waveform = sin(elapsed / 1800.0) + 1.5;
+  //     final noise = 0.2 * sin(elapsed / 60.0);
+  //     final current = (waveform + noise).clamp(0.0, 3.0);
 
-      await box.add(GraphValuesDataHive(dataKey: seconds, value: current));
-    }
-  }
+  //     await box.add(GraphValuesDataHive(dataKey: seconds, value: current));
+  //   }
+  // }
 }

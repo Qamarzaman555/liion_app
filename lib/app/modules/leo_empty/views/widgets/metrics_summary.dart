@@ -173,22 +173,22 @@ class LeoMetricsSummary extends StatelessWidget {
                   }
                   return const ChargeGraphWidget(isCurrentCharge: false);
                 }),
-                if (kDebugMode) ...[
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () async {
-                      // Seed 4 days of dummy data for testing migration time.
-                      await GraphHiveStorageService.seedDummyCurrentData(
-                        duration: const Duration(days: 4),
-                        sampleEvery: const Duration(seconds: 5),
-                      );
-                    },
-                    child: const Text(
-                      'Seed 4 days past graph data (debug only)',
-                      style: TextStyle(fontSize: 11),
-                    ),
-                  ),
-                ],
+                // if (kDebugMode) ...[
+                //   const SizedBox(height: 8),
+                //   TextButton(
+                //     onPressed: () async {
+                //       // Seed 4 days of dummy data for testing migration time.
+                //       await GraphHiveStorageService.seedDummyCurrentData(
+                //         duration: const Duration(days: 4),
+                //         sampleEvery: const Duration(seconds: 5),
+                //       );
+                //     },
+                //     child: const Text(
+                //       'Seed 4 days past graph data (debug only)',
+                //       style: TextStyle(fontSize: 11),
+                //     ),
+                //   ),
+                // ],
               ],
             ),
           ),
