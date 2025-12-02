@@ -273,6 +273,10 @@ class MainActivity : FlutterActivity() {
                         BleScanService.stopBatteryHealthCalculation()
                         result.success(true)
                     }
+                    "getBatterySessionHistory" -> {
+                        val sessions = BleScanService.getBatterySessionHistory()
+                        result.success(sessions)
+                    }
                     else -> result.notImplemented()
                 }
             }

@@ -26,6 +26,8 @@ class BatteryView extends GetView<BatteryController> {
               const BatteryHeader(),
               const SizedBox(height: 12),
               _buildChargeLimitButton(),
+              const SizedBox(height: 12),
+              _buildHistoryButton(),
               const BatteryMetricsCard(),
               // const BatteryLevelCard(),
               // const SizedBox(height: 20),
@@ -63,6 +65,29 @@ class BatteryView extends GetView<BatteryController> {
             //     color: AppColors.whiteColor,
             //   ),
             // ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CustomButton(
+        text: "View Battery History",
+        onPressed: () => Get.toNamed(AppRoutes.batteryHistoryView),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              "View Battery History",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.whiteColor,
+              ),
+            ),
           ],
         ),
       ),

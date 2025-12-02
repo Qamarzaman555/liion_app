@@ -97,6 +97,22 @@ class BleScanService : Service() {
         var dischargingTimeSeconds: Long = 0
         var firmwareVersion: String = ""
         
+        // Battery session history
+        data class BatterySession(
+            val startTime: Long,
+            val endTime: Long,
+            val initialLevel: Int,
+            val finalLevel: Int,
+            val isCharging: Boolean,
+            val durationSeconds: Long,
+            val accumulatedMah: Double
+        )
+        const val MAX_SESSIONS = 100 // Keep last 100 sessions
+        
+        fun getBatterySessionHistory(): List<Map<String, Any>> {
+            return instance?.getSessionHistory() ?: emptyList()
+        }
+        
         private var instance: BleScanService? = null
         
         fun rescan() {
@@ -217,6 +233,13 @@ class BleScanService : Service() {
     private var lastHealthSampleTime: Long = 0
     private val HEALTH_SAMPLE_INTERVAL_MS = 1000L // Sample every 1 second
     
+    // Battery session tracking
+    private var currentSessionStartTime: Long = 0
+    private var currentSessionInitialLevel: Int = -1
+    private var currentSessionIsCharging: Boolean = false
+    private var currentSessionAccumulatedMah: Double = 0.0
+    private val batterySessions = mutableListOf<Companion.BatterySession>()
+    
     // Firebase logging
     private val logger: FirebaseLoggingService by lazy { FirebaseLoggingService.getInstance() }
 
@@ -236,11 +259,20 @@ class BleScanService : Service() {
                 val chargingStateChanged = isPhoneCharging != isCharging
                 
                 if (levelChanged || chargingStateChanged) {
-                    phoneBatteryLevel = batteryPct
-                    isPhoneCharging = isCharging
-                    
                     // Reset time counters if charging state changed
                     if (chargingStateChanged) {
+                        // End current session if one exists (before updating battery level)
+                        if (currentSessionInitialLevel >= 0) {
+                            endCurrentSession()
+                        }
+                        
+                        // Update battery state
+                        phoneBatteryLevel = batteryPct
+                        isPhoneCharging = isCharging
+                        
+                        // Start new session
+                        startNewSession(batteryPct, isCharging)
+                        
                         if (isCharging) {
                             chargingTimeSeconds = 0
                             // Auto-start fresh health calculation when charger is connected
@@ -259,6 +291,9 @@ class BleScanService : Service() {
                             }
                         }
                         lastChargingState = isCharging
+                    } else {
+                        // Just update level if no state change
+                        phoneBatteryLevel = batteryPct
                     }
                     
                     // Check if health calculation is complete
@@ -956,6 +991,133 @@ class BleScanService : Service() {
     }
     
     // ==================== End Battery Health Calculation ====================
+    
+    // ==================== Battery Session Tracking ====================
+    
+    private fun startNewSession(initialLevel: Int, isCharging: Boolean) {
+        currentSessionStartTime = System.currentTimeMillis()
+        currentSessionInitialLevel = initialLevel
+        currentSessionIsCharging = isCharging
+        currentSessionAccumulatedMah = 0.0
+    }
+    
+    
+    private fun endCurrentSession() {
+        if (currentSessionInitialLevel < 0) return
+        
+        val endTime = System.currentTimeMillis()
+        val durationSeconds = (endTime - currentSessionStartTime) / 1000
+        
+        // Save session whenever charging state changes (regardless of level change)
+        // Only skip if duration is too short (< 1 second) to avoid noise
+        if (durationSeconds >= 1) {
+            val session = Companion.BatterySession(
+                startTime = currentSessionStartTime,
+                endTime = endTime,
+                initialLevel = currentSessionInitialLevel,
+                finalLevel = phoneBatteryLevel,
+                isCharging = currentSessionIsCharging,
+                durationSeconds = durationSeconds,
+                accumulatedMah = currentSessionAccumulatedMah
+            )
+            
+            batterySessions.add(session)
+            
+            // Keep only last MAX_SESSIONS
+            if (batterySessions.size > MAX_SESSIONS) {
+                batterySessions.removeAt(0)
+            }
+            
+            // Save to SharedPreferences
+            saveSessions()
+            
+            logger.logInfo("Battery session saved: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
+                    "$currentSessionInitialLevel% -> $phoneBatteryLevel% " +
+                    "($durationSeconds s, ${currentSessionAccumulatedMah.toInt()} mAh)")
+        }
+        
+        // Reset current session
+        currentSessionInitialLevel = -1
+        currentSessionAccumulatedMah = 0.0
+    }
+    
+    private fun saveSessions() {
+        prefs?.edit()?.apply {
+            putInt("battery_sessions_count", batterySessions.size)
+            batterySessions.forEachIndexed { index, session ->
+                putLong("session_${index}_start", session.startTime)
+                putLong("session_${index}_end", session.endTime)
+                putInt("session_${index}_initial", session.initialLevel)
+                putInt("session_${index}_final", session.finalLevel)
+                putBoolean("session_${index}_charging", session.isCharging)
+                putLong("session_${index}_duration", session.durationSeconds)
+                putFloat("session_${index}_mah", session.accumulatedMah.toFloat())
+            }
+            apply()
+        }
+    }
+    
+    private fun loadSessions() {
+        val count = prefs?.getInt("battery_sessions_count", 0) ?: 0
+        batterySessions.clear()
+        
+        for (i in 0 until count.coerceAtMost(MAX_SESSIONS)) {
+            val startTime = prefs?.getLong("session_${i}_start", 0L) ?: 0L
+            val endTime = prefs?.getLong("session_${i}_end", 0L) ?: 0L
+            val initialLevel = prefs?.getInt("session_${i}_initial", -1) ?: -1
+            val finalLevel = prefs?.getInt("session_${i}_final", -1) ?: -1
+            val isCharging = prefs?.getBoolean("session_${i}_charging", false) ?: false
+            val durationSeconds = prefs?.getLong("session_${i}_duration", 0L) ?: 0L
+            val accumulatedMah = prefs?.getFloat("session_${i}_mah", 0f)?.toDouble() ?: 0.0
+            
+            if (startTime > 0 && endTime > 0 && initialLevel >= 0 && finalLevel >= 0) {
+                batterySessions.add(Companion.BatterySession(
+                    startTime = startTime,
+                    endTime = endTime,
+                    initialLevel = initialLevel,
+                    finalLevel = finalLevel,
+                    isCharging = isCharging,
+                    durationSeconds = durationSeconds,
+                    accumulatedMah = accumulatedMah
+                ))
+            }
+        }
+    }
+    
+    fun getSessionHistory(): List<Map<String, Any>> {
+        // Include current session if active
+        val sessionsToReturn = mutableListOf<Companion.BatterySession>()
+        sessionsToReturn.addAll(batterySessions)
+        
+        if (currentSessionInitialLevel >= 0) {
+            val now = System.currentTimeMillis()
+            val durationSeconds = (now - currentSessionStartTime) / 1000
+            sessionsToReturn.add(Companion.BatterySession(
+                startTime = currentSessionStartTime,
+                endTime = now,
+                initialLevel = currentSessionInitialLevel,
+                finalLevel = phoneBatteryLevel,
+                isCharging = currentSessionIsCharging,
+                durationSeconds = durationSeconds,
+                accumulatedMah = currentSessionAccumulatedMah
+            ))
+        }
+        
+        // Return in reverse chronological order (newest first)
+        return sessionsToReturn.reversed().map { session ->
+            mapOf(
+                "startTime" to session.startTime,
+                "endTime" to session.endTime,
+                "initialLevel" to session.initialLevel,
+                "finalLevel" to session.finalLevel,
+                "isCharging" to session.isCharging,
+                "durationSeconds" to session.durationSeconds,
+                "accumulatedMah" to session.accumulatedMah
+            )
+        }
+    }
+    
+    // ==================== End Battery Session Tracking ====================
 
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -1020,6 +1182,14 @@ class BleScanService : Service() {
         if (healthReadings.isEmpty()) {
             estimatedCapacityMah = prefs?.getFloat("estimated_capacity_mah", 0f)?.toDouble() ?: 0.0
             batteryHealthPercent = prefs?.getFloat("battery_health_percent", -1f)?.toDouble() ?: -1.0
+        }
+        
+        // Load battery session history
+        loadSessions()
+        
+        // Initialize current session if service starts with active charging state
+        if (phoneBatteryLevel >= 0) {
+            startNewSession(phoneBatteryLevel, isPhoneCharging)
         }
         
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -1181,7 +1351,14 @@ class BleScanService : Service() {
             // Accumulate mAh (current in mA * time in hours)
             val now = System.currentTimeMillis()
             val elapsedHours = (now - lastMetricsSampleTime) / 3600000.0
-            metricsAccumulatedMah += kotlin.math.abs(batteryCurrentMa) * elapsedHours
+            val mahDelta = kotlin.math.abs(batteryCurrentMa) * elapsedHours
+            metricsAccumulatedMah += mahDelta
+            
+            // Also accumulate to current session if active
+            if (currentSessionInitialLevel >= 0) {
+                currentSessionAccumulatedMah += mahDelta
+            }
+            
             lastMetricsSampleTime = now
             
             // Send update to Flutter
@@ -1479,6 +1656,12 @@ class BleScanService : Service() {
 
     override fun onDestroy() {
         logger.logServiceState("Service destroyed")
+        
+        // End current session if active
+        if (currentSessionInitialLevel >= 0) {
+            endCurrentSession()
+        }
+        
         stopBleScan()
         cancelReconnect()
         stopChargeLimitTimer()

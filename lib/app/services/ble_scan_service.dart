@@ -573,4 +573,18 @@ class BleScanService {
     });
     return _chargeLimitStream!;
   }
+
+  /// Get battery session history
+  static Future<List<Map<String, dynamic>>> getBatterySessionHistory() async {
+    try {
+      final result = await _methodChannel.invokeMethod<List>(
+        'getBatterySessionHistory',
+      );
+      if (result == null) return [];
+      return result.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } on PlatformException catch (e) {
+      print('Failed to get battery session history: ${e.message}');
+      return [];
+    }
+  }
 }

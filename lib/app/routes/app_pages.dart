@@ -16,6 +16,8 @@ import '../modules/leo_troubleshoot/views/leo_troubleshoot_view.dart';
 import '../modules/leo_troubleshoot/bindings/leo_troubleshoot_binding.dart';
 import '../modules/manual/views/manual_view.dart';
 import '../modules/manual/bindings/manual_binding.dart';
+import '../modules/battery/history/views/battery_history_view.dart';
+import '../modules/battery/history/battery_history_binding.dart';
 
 class AppPages {
   static const initial = AppRoutes.splash;
@@ -60,6 +62,11 @@ class AppPages {
       name: AppRoutes.leoManual,
       page: () => const ManualView(),
       binding: ManualBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.batteryHistoryView,
+      page: () => const BatteryHistoryView(),
+      binding: BatteryHistoryBinding(),
     ),
   ];
 }

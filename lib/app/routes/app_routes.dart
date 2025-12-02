@@ -7,4 +7,5 @@ abstract class AppRoutes {
   static const advanceSettings = '/advance-settings';
   static const leoTroubleshoot = '/leo-troubleshoot';
   static const leoManual = '/leo-manual';
+  static const batteryHistoryView = '/battery-history';
 }
