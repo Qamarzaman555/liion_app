@@ -1187,11 +1187,6 @@ class BleScanService : Service() {
         // Load battery session history
         loadSessions()
         
-        // Initialize current session if service starts with active charging state
-        if (phoneBatteryLevel >= 0) {
-            startNewSession(phoneBatteryLevel, isPhoneCharging)
-        }
-        
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
         bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
@@ -1204,7 +1199,7 @@ class BleScanService : Service() {
         val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         registerReceiver(batteryReceiver, batteryFilter)
         
-        // Get initial battery level
+        // Get initial battery level and start session tracking
         val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         batteryIntent?.let {
             val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
@@ -1215,6 +1210,11 @@ class BleScanService : Service() {
             isPhoneCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                     status == BatteryManager.BATTERY_STATUS_FULL
             lastChargingState = isPhoneCharging
+            
+            // Start battery session tracking immediately when service starts
+            if (phoneBatteryLevel >= 0) {
+                startNewSession(phoneBatteryLevel, isPhoneCharging)
+            }
         }
         
         // Start keep-alive mechanism
