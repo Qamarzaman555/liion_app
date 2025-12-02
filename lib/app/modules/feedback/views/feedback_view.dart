@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
+import 'package:liion_app/app/modules/feedback/views/widgets/feedback_header.dart';
 import '../controllers/feedback_controller.dart';
 
 class FeedbackView extends GetView<FeedbackController> {
@@ -12,170 +12,176 @@ class FeedbackView extends GetView<FeedbackController> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
-      appBar: AppBar(
-        backgroundColor: AppColors.whiteColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.blackColor),
-          onPressed: () => Get.back(),
-        ),
-        title: const Text(
-          'Feedback',
-          style: TextStyle(
-            color: AppColors.blackColor,
-            fontFamily: 'Inter',
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      body: Center(child: Text("Feedback")),
-      // body: SingleChildScrollView(
-      //   padding: const EdgeInsets.all(20),
-      //   child: Column(
-      //     crossAxisAlignment: CrossAxisAlignment.start,
-      //     children: [
-      //       const SizedBox(height: 20),
-      //       const Text(
-      //         'We\'d love to hear from you!',
-      //         style: TextStyle(
-      //           color: Color(0xFF282828),
-      //           fontFamily: 'Inter',
-      //           fontSize: 18,
-      //           fontWeight: FontWeight.w600,
-      //         ),
-      //       ),
-      //       const SizedBox(height: 8),
-      //       const Text(
-      //         'Please share your thoughts, suggestions, or report any issues you\'ve encountered.',
-      //         style: TextStyle(
-      //           color: Color(0xFF888888),
-      //           fontFamily: 'Inter',
-      //           fontSize: 14,
-      //         ),
-      //       ),
-      //       const SizedBox(height: 32),
-      //       const Text(
-      //         'Your Feedback',
-      //         style: TextStyle(
-      //           color: Color(0xFF282828),
-      //           fontFamily: 'Inter',
-      //           fontSize: 16,
-      //           fontWeight: FontWeight.w600,
-      //         ),
-      //       ),
-      //       const SizedBox(height: 12),
-
-      //       TextField(
-      //         maxLines: 8,
-      //         decoration: InputDecoration(
-      //           hintText: 'Enter your feedback here...',
-      //           hintStyle: const TextStyle(
-      //             color: Color(0xFF888888),
-      //             fontFamily: 'Inter',
-      //           ),
-      //           filled: true,
-      //           fillColor: AppColors.cardBGColor,
-      //           border: OutlineInputBorder(
-      //             borderRadius: BorderRadius.circular(12),
-      //             borderSide: BorderSide.none,
-      //           ),
-      //           contentPadding: const EdgeInsets.all(16),
-      //         ),
-      //         style: const TextStyle(
-      //           color: Color(0xFF282828),
-      //           fontFamily: 'Inter',
-      //           fontSize: 14,
-      //         ),
-      //         onChanged: (value) => controller.setFeedback(value),
-      //       ),
-
-      //       const SizedBox(height: 32),
-      //       Obx(
-      //         () => CustomButton(
-      //           text: 'Submit Feedback',
-      //           onPressed: () {
-      //             if (controller.feedbackText.value.trim().isNotEmpty) {
-      //               _submitFeedback(context);
-      //             }
-      //           },
-      //           backgroundColor: controller.feedbackText.value.trim().isEmpty
-      //               ? AppColors.greyColor
-      //               : null,
-      //         ),
-      //       ),
-      //       const SizedBox(height: 20),
-      //       _buildContactInfo(),
-      //     ],
-      //   ),
-      // ),
-    );
-  }
-
-  void _submitFeedback(BuildContext context) {
-    if (controller.feedbackText.value.trim().isEmpty) {
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'Please enter your feedback',
-      );
-      return;
-    }
-
-    // TODO: Implement actual feedback submission
-    AppSnackbars.showSuccess(
-      title: 'Thank You!',
-      message: 'Your feedback has been submitted successfully.',
-    );
-
-    // Clear feedback and go back
-    controller.setFeedback('');
-    Future.delayed(const Duration(seconds: 1), () => Get.back());
-  }
-
-  Widget _buildContactInfo() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardBGColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline, color: AppColors.primaryColor, size: 20),
-              const SizedBox(width: 8),
-              const Text(
-                'Contact Information',
-                style: TextStyle(
-                  color: Color(0xFF282828),
-                  fontFamily: 'Inter',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          reverse: true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const FeedbackHeader(),
+                const SizedBox(height: 20),
+                const Text(
+                  'How can we improve?',
+                  style: TextStyle(
+                    color: Color(0xFF282828),
+                    fontFamily: 'Inter',
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Email: support@liionpower.nl',
-            style: TextStyle(
-              color: Color(0xFF888888),
-              fontFamily: 'Inter',
-              fontSize: 13,
+                const SizedBox(height: 20),
+                Form(
+                  key: controller.formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextFormField(
+                        controller: controller.emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        onTapOutside: (event) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        style: const TextStyle(color: AppColors.blackColor),
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 20,
+                            horizontal: 20,
+                          ),
+                          errorStyle: const TextStyle(
+                            color: AppColors.redColor,
+                            fontSize: 12,
+                            fontFamily: 'Inter',
+                          ),
+                          hintText: 'Email (optional)',
+                          hintStyle: const TextStyle(
+                            color: AppColors.textfieldColor,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.secondaryColor,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.secondaryColor,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.redColor,
+                            ),
+                          ),
+                          focusedErrorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.redColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        maxLines: 14,
+                        keyboardType: TextInputType.multiline,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Error: Feedback can\'t be empty';
+                          }
+                          return null;
+                        },
+                        onTapOutside: (event) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        onChanged: (value) {
+                          controller.setFeedback(value);
+                        },
+                        style: const TextStyle(color: AppColors.blackColor),
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 20,
+                            horizontal: 20,
+                          ),
+                          errorStyle: const TextStyle(
+                            color: AppColors.redColor,
+                            fontSize: 12,
+                            fontFamily: 'Inter',
+                          ),
+                          hintText: 'Your feedback...',
+                          hintStyle: const TextStyle(
+                            color: AppColors.textfieldColor,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.secondaryColor,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.secondaryColor,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.redColor,
+                            ),
+                          ),
+                          focusedErrorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              width: 1,
+                              color: AppColors.redColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 30),
+                Obx(
+                  () => CustomButton(
+                    text: 'Send Feedback',
+                    onPressed: () =>
+                        controller.handleFeedbackSubmission(context),
+                    backgroundColor: AppColors.secondaryColor,
+                    isLoading: controller.loading.value,
+                    height: 60,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          controller.loading.value
+                              ? 'Sending...'
+                              : 'Send Feedback',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.whiteColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Website: www.liionpower.nl',
-            style: TextStyle(
-              color: Color(0xFF888888),
-              fontFamily: 'Inter',
-              fontSize: 13,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

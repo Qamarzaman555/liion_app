@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
+import 'package:liion_app/app/modules/about/views/widgets/about_header.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 import '../../leo_empty/controllers/leo_home_controller.dart';
 import '../controllers/about_controller.dart';
@@ -14,28 +15,7 @@ class AboutView extends GetView<AboutController> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
-      appBar: AppBar(
-        backgroundColor: AppColors.whiteColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            size: 20,
-            color: AppColors.blackColor,
-          ),
-          onPressed: () => Get.back(),
-        ),
-        title: const Text(
-          'About',
-          style: TextStyle(
-            color: Color(0xFF282828),
-            fontFamily: 'Inter',
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: false,
-      ),
+
       body: SafeArea(
         child: Obx(
           () => SingleChildScrollView(
@@ -43,6 +23,8 @@ class AboutView extends GetView<AboutController> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                SizedBox(height: 20),
+                const AboutHeader(),
                 const SizedBox(height: 20),
                 _buildInfoRow(
                   title: 'App Name',

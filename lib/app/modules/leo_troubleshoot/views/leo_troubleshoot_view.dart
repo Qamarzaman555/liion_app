@@ -23,9 +23,10 @@ class LeoTroubleshootView extends GetView<LeoTroubleshootController> {
                 children: [
                   IconButton(
                     icon: const Icon(
-                      Icons.arrow_back_ios_new,
-                      size: 20,
+                      Icons.arrow_back,
+                      size: 26,
                       color: AppColors.blackColor,
+                      weight: 8,
                     ),
                     onPressed: () => Get.back(),
                   ),
