@@ -19,9 +19,7 @@ class BatteryHistoryView extends GetView<BatteryHistoryController> {
       ),
       body: Obx(() {
         if (controller.isLoading.value) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         if (controller.sessions.isEmpty) {
@@ -37,18 +35,12 @@ class BatteryHistoryView extends GetView<BatteryHistoryController> {
                 const SizedBox(height: 16),
                 Text(
                   'No battery sessions yet',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Sessions will appear here as you charge or discharge',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                   textAlign: TextAlign.center,
                 ),
               ],

@@ -88,7 +88,13 @@ class _BatteryUsageWidgetState extends State<BatteryUsageWidget> {
               children: [
                 const SizedBox.shrink(),
                 Text(
-                  "${widget.consumptionRate.length >= 6 ? widget.consumptionRate.substring(0, 6) : widget.consumptionRate} mAh",
+                  "${widget.consumptionRate.length >= 6
+                      ? widget.isCharging
+                            ? "+${widget.consumptionRate.substring(0, 6)}"
+                            : "-${widget.consumptionRate.substring(0, 6)}"
+                      : widget.isCharging
+                      ? "+${widget.consumptionRate}"
+                      : "-${widget.consumptionRate}"} mAh",
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
