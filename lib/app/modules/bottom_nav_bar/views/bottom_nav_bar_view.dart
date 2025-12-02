@@ -104,7 +104,7 @@ class BottomNavBarView extends GetView<BottomNavBarController> {
           ),
         ),
       ),
-      body: Obx(() => controller.currentView),
+      body: SafeArea(child: Obx(() => controller.currentView)),
     );
   }
 }
