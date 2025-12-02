@@ -3,6 +3,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
+import 'package:liion_app/app/services/ble_scan_service.dart';
+import '../../leo_empty/controllers/leo_home_controller.dart';
 import '../controllers/about_controller.dart';
 
 class AboutView extends GetView<AboutController> {
@@ -70,7 +72,8 @@ class AboutView extends GetView<AboutController> {
                       : controller.buildNumber.value,
                   icon: SvgAssets.appBuildNoInfoIcon,
                 ),
-                if (controller.isConnected.value &&
+                if (Get.find<LeoHomeController>().connectionState.value ==
+                        BleConnectionState.connected &&
                     controller.leoFirmwareVersion.value.isNotEmpty)
                   _buildInfoRow(
                     title: 'Leo Firmware Version',
@@ -78,7 +81,6 @@ class AboutView extends GetView<AboutController> {
                     icon: SvgAssets.leoVersionInfoIcon,
                   ),
                 const SizedBox(height: 40),
-                // _buildFooter(),
               ],
             ),
           ),
@@ -131,34 +133,6 @@ class AboutView extends GetView<AboutController> {
           SvgPicture.asset(icon, width: 45, height: 45),
         ],
       ),
-    );
-  }
-
-  Widget _buildFooter() {
-    return Column(
-      children: [
-        const Divider(color: Color(0xFFE0E0E0)),
-        const SizedBox(height: 24),
-        const Text(
-          '© 2024 Liion Power. All rights reserved.',
-          style: TextStyle(
-            color: Color(0xFF888888),
-            fontFamily: 'Inter',
-            fontSize: 12,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Developed by Liion Power',
-          style: TextStyle(
-            color: Color(0xFF888888),
-            fontFamily: 'Inter',
-            fontSize: 12,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
     );
   }
 }

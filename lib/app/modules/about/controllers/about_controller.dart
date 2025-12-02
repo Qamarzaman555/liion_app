@@ -2,6 +2,8 @@ import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
+import '../../leo_empty/controllers/leo_home_controller.dart';
+
 class AboutController extends GetxController {
   final appName = ''.obs;
   final packageName = ''.obs;
@@ -39,7 +41,7 @@ class AboutController extends GetxController {
         // Note: This would need to be implemented based on your Leo device protocol
         // For now, we'll leave it empty or you can implement the command to get firmware
         leoFirmwareVersion.value =
-            ''; // TODO: Implement firmware version retrieval
+            Get.find<LeoHomeController>().binFileFromLeoName.value;
       }
     } catch (e) {
       print('Error checking connection: $e');

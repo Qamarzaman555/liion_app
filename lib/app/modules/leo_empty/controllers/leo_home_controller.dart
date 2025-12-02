@@ -21,6 +21,11 @@ class LeoHomeController extends GetxController {
   final lastReceivedData = ''.obs;
   final receivedDataLog = <String>[].obs;
 
+  String get leoFirmwareVersion => binFileFromLeoName.value;
+  set leoFirmwareVersion(String value) {
+    binFileFromLeoName.value = value;
+  }
+
   // Measure data (voltage and current)
   final measureDataList = <String>[].obs;
   final voltageValue = ''.obs;
