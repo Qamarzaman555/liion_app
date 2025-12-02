@@ -50,9 +50,9 @@ class BatteryHealthProgress extends GetView<BatteryController> {
               () => Padding(
                 padding: const EdgeInsets.only(left: 0),
                 child: Text(
-                  controller.healthReadingsCount.value < 1
+                  controller.batteryHealthPercent.value < 0
                       ? "--"
-                      : "${(controller.healthReadingsCount.value > 100 ? 100 : controller.healthReadingsCount.value.toStringAsFixed(2))}%",
+                      : "${(controller.batteryHealthPercent.value > 100 ? 100 : controller.batteryHealthPercent.value.toStringAsFixed(0))}%",
                   style: const TextStyle(
                     color: Color(0xFF282828),
                     fontFamily: 'Inter',
@@ -67,13 +67,11 @@ class BatteryHealthProgress extends GetView<BatteryController> {
         const SizedBox(height: 16),
         Obx(
           () => LinearProgressIndicator(
-            value: (controller.healthReadingsCount.value < 1
+            value: (controller.batteryHealthPercent.value < 0
                 ? 0
-                : controller.healthReadingsCount.value / 100),
+                : controller.batteryHealthPercent.value / 100),
             backgroundColor: Colors.grey.withOpacity(0.3),
-            valueColor: const AlwaysStoppedAnimation<Color>(
-              Color(0xFF97CF43),
-            ),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF97CF43)),
           ),
         ),
         Obx(
@@ -84,9 +82,7 @@ class BatteryHealthProgress extends GetView<BatteryController> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.grey.withOpacity(0.2),
-                    ),
+                    border: Border.all(color: Colors.grey.withOpacity(0.2)),
                   ),
                   child: Text(
                     'Health reading based on ${controller.healthReadingsCount.value} charge cycles (${controller.healthReadingsCount.value * 60}% charged) ${controller.totalEstimatedValues.value.toInt()} mAh total',
@@ -105,4 +101,3 @@ class BatteryHealthProgress extends GetView<BatteryController> {
     );
   }
 }
-
