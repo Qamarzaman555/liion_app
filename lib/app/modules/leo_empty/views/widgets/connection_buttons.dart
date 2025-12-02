@@ -29,11 +29,11 @@ class LeoConnectionButtons extends StatelessWidget {
                 : AppColors.primaryColor,
             text:
                 controller.connectionState.value == BleConnectionState.connected
-                ? 'Connected'
+                ? 'Leo is Connected'
                 : controller.connectionState.value ==
                       BleConnectionState.connecting
                 ? 'Connecting...'
-                : 'Disconnected',
+                : 'Connect Leo',
 
             onPressed: onConnectionButtonPressed,
             child: Row(
@@ -42,11 +42,11 @@ class LeoConnectionButtons extends StatelessWidget {
                 Text(
                   controller.connectionState.value ==
                           BleConnectionState.connected
-                      ? 'Connected'
+                      ? 'Leo is Connected'
                       : controller.connectionState.value ==
                             BleConnectionState.connecting
                       ? 'Connecting...'
-                      : 'Disconnected',
+                      : 'Connect Leo',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,

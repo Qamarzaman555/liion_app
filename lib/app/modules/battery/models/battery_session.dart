@@ -58,14 +58,42 @@ class BatterySession {
     final dateTime = DateTime.fromMillisecondsSinceEpoch(startTime);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
     final sessionDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
 
+    // Format time as h:mm AM/PM
+    final hour12 = dateTime.hour == 0
+        ? 12
+        : dateTime.hour > 12
+        ? dateTime.hour - 12
+        : dateTime.hour;
+    final period = dateTime.hour < 12 ? 'AM' : 'PM';
+    final timeString =
+        "$hour12:${dateTime.minute.toString().padLeft(2, '0')} $period";
+
     if (sessionDate == today) {
-      // Today: show time only
-      return "${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}";
+      // Today: show "today, --time"
+      return "today, $timeString";
+    } else if (sessionDate == yesterday) {
+      // Yesterday: show "yesterday, --time"
+      return "yesterday, $timeString";
     } else {
-      // Other days: show date and time
-      return "${dateTime.day}/${dateTime.month} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}";
+      // Other days: show "1 Dec, --time"
+      const monthAbbreviations = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      return "${dateTime.day} ${monthAbbreviations[dateTime.month - 1]}, $timeString";
     }
   }
 

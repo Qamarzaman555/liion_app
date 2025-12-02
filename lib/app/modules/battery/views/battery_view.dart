@@ -2,14 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
-import 'package:liion_app/app/modules/battery/charge_limit/controllers/charge_limit_controller.dart';
 import 'package:liion_app/app/routes/app_routes.dart';
 import '../controllers/battery_controller.dart';
 import '../widgets/battery_header.dart';
 import '../widgets/battery_metrics_card.dart';
-import '../widgets/battery_level_card.dart';
-import '../widgets/battery_status_section.dart';
-import '../widgets/battery_health_section.dart';
 
 class BatteryView extends GetView<BatteryController> {
   const BatteryView({super.key});
@@ -26,9 +22,8 @@ class BatteryView extends GetView<BatteryController> {
               const BatteryHeader(),
               const SizedBox(height: 12),
               _buildChargeLimitButton(),
-              const SizedBox(height: 12),
-              _buildHistoryButton(),
               const BatteryMetricsCard(),
+              _buildHistoryButton(),
               // const BatteryLevelCard(),
               // const SizedBox(height: 20),
               // const BatteryStatusSection(),
