@@ -77,8 +77,7 @@ class BleScanService : Service() {
         var healthCalculationStartPercent: Int = -1
         var healthCalculationEndPercent: Int = -1
         var accumulatedCurrentMah: Double = 0.0
-        // const val HEALTH_CALCULATION_RANGE = 60 // Need 60% charge increase
-        const val HEALTH_CALCULATION_RANGE = 1 // Need 60% charge increase
+        const val HEALTH_CALCULATION_RANGE = 60 // Need 60% charge increase
 
         
         // Health readings history (last 5 readings)

@@ -50,119 +50,119 @@ class FirebaseLoggingService private constructor() {
     fun initialize(context: Context, appVersion: String, buildNumber: String) {
         this.context = context.applicationContext
 
-        // // Detect Samsung devices
-        // isSamsungDevice = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
-        // if (isSamsungDevice) {
-        //     Log.d(
-        //             "FirebaseLogging",
-        //             "Samsung device detected - applying Samsung-specific workarounds"
-        //     )
-        // }
+        // Detect Samsung devices
+        isSamsungDevice = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+        if (isSamsungDevice) {
+            Log.d(
+                    "FirebaseLogging",
+                    "Samsung device detected - applying Samsung-specific workarounds"
+            )
+        }
 
-        // scope.launch {
-        //     try {
-        //         // Check network connectivity
-        //         if (!hasNetworkConnection()) {
-        //             Log.w("FirebaseLogging", "No network connection available for Firebase logging")
-        //             return@launch
-        //         }
+        scope.launch {
+            try {
+                // Check network connectivity
+                if (!hasNetworkConnection()) {
+                    Log.w("FirebaseLogging", "No network connection available for Firebase logging")
+                    return@launch
+                }
 
-        //         // Initialize Firebase if not already done
-        //         if (FirebaseApp.getApps(context).isEmpty()) {
-        //             try {
-        //                 FirebaseApp.initializeApp(context)
-        //                 Log.d("FirebaseLogging", "Firebase initialized")
-        //             } catch (e: Exception) {
-        //                 Log.e("FirebaseLogging", "Failed to initialize Firebase", e)
-        //                 return@launch
-        //             }
-        //         }
+                // Initialize Firebase if not already done
+                if (FirebaseApp.getApps(context).isEmpty()) {
+                    try {
+                        FirebaseApp.initializeApp(context)
+                        Log.d("FirebaseLogging", "Firebase initialized")
+                    } catch (e: Exception) {
+                        Log.e("FirebaseLogging", "Failed to initialize Firebase", e)
+                        return@launch
+                    }
+                }
 
-        //         firestore = FirebaseFirestore.getInstance()
-        //         if (firestore == null) {
-        //             Log.e("FirebaseLogging", "Failed to get Firestore instance")
-        //             return@launch
-        //         }
+                firestore = FirebaseFirestore.getInstance()
+                if (firestore == null) {
+                    Log.e("FirebaseLogging", "Failed to get Firestore instance")
+                    return@launch
+                }
 
-        //         // Get device label
-        //         deviceKey = getDeviceLabel()
-        //         Log.d("FirebaseLogging", "Device key: $deviceKey")
+                // Get device label
+                deviceKey = getDeviceLabel()
+                Log.d("FirebaseLogging", "Device key: $deviceKey")
 
-        //         // Get next session ID
-        //         val baseCollectionPath = "logs/app-logs/$deviceKey"
+                // Get next session ID
+                val baseCollectionPath = "logs/app-logs/$deviceKey"
 
-        //         firestore
-        //                 ?.collection(baseCollectionPath)
-        //                 ?.get()
-        //                 ?.addOnSuccessListener { snapshot ->
-        //                     try {
-        //                         var maxKey = 0
-        //                         for (doc in snapshot.documents) {
-        //                             val id = doc.id.trim()
-        //                             val parsed = id.toIntOrNull()
-        //                             if (parsed != null && parsed > maxKey) {
-        //                                 maxKey = parsed
-        //                             }
-        //                         }
+                firestore
+                        ?.collection(baseCollectionPath)
+                        ?.get()
+                        ?.addOnSuccessListener { snapshot ->
+                            try {
+                                var maxKey = 0
+                                for (doc in snapshot.documents) {
+                                    val id = doc.id.trim()
+                                    val parsed = id.toIntOrNull()
+                                    if (parsed != null && parsed > maxKey) {
+                                        maxKey = parsed
+                                    }
+                                }
 
-        //                         val nextKey = (maxKey + 1).toString()
-        //                         sessionId = nextKey
-        //                         sessionDocPath = "$baseCollectionPath/$nextKey"
+                                val nextKey = (maxKey + 1).toString()
+                                sessionId = nextKey
+                                sessionDocPath = "$baseCollectionPath/$nextKey"
 
-        //                         Log.d("FirebaseLogging", "Session path: $sessionDocPath")
+                                Log.d("FirebaseLogging", "Session path: $sessionDocPath")
 
-        //                         // Create session document
-        //                         val sessionData =
-        //                                 hashMapOf(
-        //                                         "createdAt" to FieldValue.serverTimestamp(),
-        //                                         "device" to deviceKey,
-        //                                         "platform" to "android",
-        //                                         "appVersion" to appVersion,
-        //                                         "buildNumber" to buildNumber,
-        //                                         "logs" to listOf<Map<String, Any>>()
-        //                                 )
+                                // Create session document
+                                val sessionData =
+                                        hashMapOf(
+                                                "createdAt" to FieldValue.serverTimestamp(),
+                                                "device" to deviceKey,
+                                                "platform" to "android",
+                                                "appVersion" to appVersion,
+                                                "buildNumber" to buildNumber,
+                                                "logs" to listOf<Map<String, Any>>()
+                                        )
 
-        //                         firestore
-        //                                 ?.document(sessionDocPath!!)
-        //                                 ?.set(sessionData, SetOptions.merge())
-        //                                 ?.addOnSuccessListener {
-        //                                     isInitialized = true
-        //                                     Log.d(
-        //                                             "FirebaseLogging",
-        //                                             "Logging session initialized successfully"
-        //                                     )
-        //                                     log("INFO", "Logging session initialized")
+                                firestore
+                                        ?.document(sessionDocPath!!)
+                                        ?.set(sessionData, SetOptions.merge())
+                                        ?.addOnSuccessListener {
+                                            isInitialized = true
+                                            Log.d(
+                                                    "FirebaseLogging",
+                                                    "Logging session initialized successfully"
+                                            )
+                                            log("INFO", "Logging session initialized")
 
-        //                                     // Start retry mechanism for Samsung devices
-        //                                     if (isSamsungDevice) {
-        //                                         startRetryMechanism()
-        //                                     }
-        //                                 }
-        //                                 ?.addOnFailureListener { e ->
-        //                                     Log.e(
-        //                                             "FirebaseLogging",
-        //                                             "Failed to create session document",
-        //                                             e
-        //                                     )
-        //                                     // Retry initialization for Samsung devices
-        //                                     if (isSamsungDevice) {
-        //                                         scope.launch {
-        //                                             delay(5000) // Wait 5 seconds before retry
-        //                                             initialize(context, appVersion, buildNumber)
-        //                                         }
-        //                                     }
-        //                                 }
-        //                     } catch (e: Exception) {
-        //                         Log.e("FirebaseLogging", "Error processing snapshot", e)
-        //                     }
-        //                 }
-        //                 ?.addOnFailureListener { e ->
-        //                     Log.e("FirebaseLogging", "Failed to get collection snapshot", e)
-        //                 }
-        //     } catch (e: Exception) {
-        //         Log.e("FirebaseLogging", "Error in initialize", e)
-        //     }
-        // }
+                                            // Start retry mechanism for Samsung devices
+                                            if (isSamsungDevice) {
+                                                startRetryMechanism()
+                                            }
+                                        }
+                                        ?.addOnFailureListener { e ->
+                                            Log.e(
+                                                    "FirebaseLogging",
+                                                    "Failed to create session document",
+                                                    e
+                                            )
+                                            // Retry initialization for Samsung devices
+                                            if (isSamsungDevice) {
+                                                scope.launch {
+                                                    delay(5000) // Wait 5 seconds before retry
+                                                    initialize(context, appVersion, buildNumber)
+                                                }
+                                            }
+                                        }
+                            } catch (e: Exception) {
+                                Log.e("FirebaseLogging", "Error processing snapshot", e)
+                            }
+                        }
+                        ?.addOnFailureListener { e ->
+                            Log.e("FirebaseLogging", "Failed to get collection snapshot", e)
+                        }
+            } catch (e: Exception) {
+                Log.e("FirebaseLogging", "Error in initialize", e)
+            }
+        }
     }
 
     fun log(level: String, message: String) {
