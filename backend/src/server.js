@@ -3,8 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
-import { PrismaClient } from '@prisma/client';
-import { getKarachiTime } from './utils/timezone.js';
+import { getKarachiTime, formatKarachiTime } from './utils/timezone.js';
+import { prisma } from './utils/prisma.js';
 import deviceRoutes from './routes/device.js';
 import sessionRoutes from './routes/session.js';
 import logRoutes from './routes/log.js';
@@ -12,7 +12,6 @@ import logRoutes from './routes/log.js';
 dotenv.config();
 
 const app = express();
-const prisma = new PrismaClient();
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -58,7 +57,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
  *         description: Server is healthy
  */
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: getKarachiTime().toISOString() });
+  res.json({ status: 'ok', timestamp: formatKarachiTime(getKarachiTime()) });
 });
 
 // Routes

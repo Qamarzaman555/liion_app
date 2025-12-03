@@ -86,3 +86,13 @@ Once the server is running, visit:
 - `HOST`: Server host (default: 0.0.0.0)
 - `NODE_ENV`: Environment (development/production)
 
+## Timezone Configuration
+
+**Important**: All timestamps are stored in **Pakistani Standard Time (UTC+5)** regardless of where the server is hosted. The backend automatically converts all timestamps to Pakistani time before storing them in the database.
+
+- Device `createdAt` and `updatedAt`: Stored in Pakistani time
+- Session `createdAt` and `updatedAt`: Stored in Pakistani time  
+- Log `timestamp`: Stored in Pakistani time
+
+This ensures consistent time representation across all data, matching the Android app's timezone.
+

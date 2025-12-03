@@ -1,9 +1,8 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import { body, validationResult } from 'express-validator';
+import { prisma } from '../utils/prisma.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 /**
  * @swagger
@@ -235,6 +234,68 @@ router.post(
     }
   }
 );
+
+/**
+ * @swagger
+ * /api/sessions/{sessionId}:
+ *   delete:
+ *     summary: Delete a session and all its logs
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session UUID
+ *     responses:
+ *       200:
+ *         description: Session deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedSession:
+ *                   $ref: '#/components/schemas/Session'
+ *       404:
+ *         description: Session not found
+ */
+router.delete('/:sessionId', async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Find the session first
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        _count: {
+          select: { logs: true },
+        },
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Delete session (cascades to logs due to onDelete: Cascade in schema)
+    await prisma.session.delete({
+      where: { id: sessionId },
+    });
+
+    console.log(`Session ${sessionId} and all associated logs deleted successfully`);
+    res.json({
+      message: 'Session and all associated logs deleted successfully',
+      deletedSession: session,
+    });
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    next(error);
+  }
+});
 
 export default router;
 

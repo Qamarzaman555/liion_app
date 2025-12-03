@@ -1,10 +1,9 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import { body, validationResult, query } from 'express-validator';
 import { getKarachiTime, parseToKarachiTime, formatKarachiTime } from '../utils/timezone.js';
+import { prisma } from '../utils/prisma.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 /**
  * @swagger
@@ -200,15 +199,17 @@ router.post(
         });
       }
 
-      // Create log entry with UTC+5 (Karachi) timezone
+      // Create log entry - always use Pakistani time
+      // If Android provided timestamp, parse it; otherwise use current Pakistani time
       const logTimestamp = timestamp ? parseToKarachiTime(timestamp) : getKarachiTime();
       
+      // Explicitly set timestamp to Pakistani time (middleware will also ensure this)
       const log = await prisma.log.create({
         data: {
           sessionId: dbSession.id,
           level,
           message,
-          timestamp: logTimestamp,
+          timestamp: logTimestamp, // Pakistani time
         },
       });
 
@@ -274,6 +275,121 @@ router.get('/:logId', async (req, res, next) => {
 
     res.json(formattedLog);
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/logs/session/{sessionId}:
+ *   delete:
+ *     summary: Delete all logs for a session
+ *     tags: [Logs]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Session UUID
+ *     responses:
+ *       200:
+ *         description: Logs deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedCount:
+ *                   type: integer
+ */
+router.delete('/session/:sessionId', async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Check if session exists
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Delete all logs for this session
+    const result = await prisma.log.deleteMany({
+      where: { sessionId },
+    });
+
+    console.log(`Deleted ${result.count} logs for session ${sessionId}`);
+    res.json({
+      message: `Deleted ${result.count} log(s) for session`,
+      deletedCount: result.count,
+    });
+  } catch (error) {
+    console.error('Error deleting logs for session:', error);
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/logs/{logId}:
+ *   delete:
+ *     summary: Delete a log entry
+ *     tags: [Logs]
+ *     parameters:
+ *       - in: path
+ *         name: logId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Log UUID
+ *     responses:
+ *       200:
+ *         description: Log deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedLog:
+ *                   $ref: '#/components/schemas/Log'
+ *       404:
+ *         description: Log not found
+ */
+router.delete('/:logId', async (req, res, next) => {
+  try {
+    const { logId } = req.params;
+
+    // Find the log first
+    const log = await prisma.log.findUnique({
+      where: { id: logId },
+    });
+
+    if (!log) {
+      return res.status(404).json({ error: 'Log not found' });
+    }
+
+    // Delete log
+    await prisma.log.delete({
+      where: { id: logId },
+    });
+
+    console.log(`Log ${logId} deleted successfully`);
+    res.json({
+      message: 'Log deleted successfully',
+      deletedLog: {
+        ...log,
+        timestamp: formatKarachiTime(log.timestamp),
+      },
+    });
+  } catch (error) {
+    console.error('Error deleting log:', error);
     next(error);
   }
 });
