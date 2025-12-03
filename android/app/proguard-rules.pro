@@ -14,9 +14,9 @@
 -dontwarn com.google.firebase.firestore.**
 -dontwarn com.google.firestore.**
 
-# Keep FirebaseLoggingService
--keep class com.example.liion_app.FirebaseLoggingService { *; }
--keepclassmembers class com.example.liion_app.FirebaseLoggingService {
+# Keep BackendLoggingService
+-keep class com.example.liion_app.BackendLoggingService { *; }
+-keepclassmembers class com.example.liion_app.BackendLoggingService {
     *;
 }
 

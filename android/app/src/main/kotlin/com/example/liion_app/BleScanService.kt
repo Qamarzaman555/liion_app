@@ -239,8 +239,8 @@ class BleScanService : Service() {
     private var currentSessionAccumulatedMah: Double = 0.0
     private val batterySessions = mutableListOf<Companion.BatterySession>()
     
-    // Firebase logging
-    private val logger: FirebaseLoggingService by lazy { FirebaseLoggingService.getInstance() }
+    // Backend logging
+    private val logger: BackendLoggingService by lazy { BackendLoggingService.getInstance() }
 
     // Battery monitoring
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -1243,9 +1243,9 @@ class BleScanService : Service() {
                 packageInfo.versionCode.toString()
             }
             logger.initialize(this, versionName, versionCode)
-            android.util.Log.d("BleScanService", "Firebase logging initialization requested: v$versionName ($versionCode)")
+            android.util.Log.d("BleScanService", "Backend logging initialization requested: v$versionName ($versionCode)")
         } catch (e: Exception) {
-            android.util.Log.e("BleScanService", "Failed to initialize Firebase logging", e)
+            android.util.Log.e("BleScanService", "Failed to initialize backend logging", e)
         }
     }
     
