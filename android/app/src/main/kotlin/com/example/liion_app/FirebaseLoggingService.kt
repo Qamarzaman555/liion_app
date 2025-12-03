@@ -122,36 +122,36 @@ class FirebaseLoggingService private constructor() {
                                                 "logs" to listOf<Map<String, Any>>()
                                         )
 
-                                firestore
-                                        ?.document(sessionDocPath!!)
-                                        ?.set(sessionData, SetOptions.merge())
-                                        ?.addOnSuccessListener {
-                                            isInitialized = true
-                                            Log.d(
-                                                    "FirebaseLogging",
-                                                    "Logging session initialized successfully"
-                                            )
-                                            log("INFO", "Logging session initialized")
+                                // firestore
+                                //         ?.document(sessionDocPath!!)
+                                //         ?.set(sessionData, SetOptions.merge())
+                                //         ?.addOnSuccessListener {
+                                //             isInitialized = true
+                                //             Log.d(
+                                //                     "FirebaseLogging",
+                                //                     "Logging session initialized successfully"
+                                //             )
+                                //             log("INFO", "Logging session initialized")
 
-                                            // Start retry mechanism for Samsung devices
-                                            if (isSamsungDevice) {
-                                                startRetryMechanism()
-                                            }
-                                        }
-                                        ?.addOnFailureListener { e ->
-                                            Log.e(
-                                                    "FirebaseLogging",
-                                                    "Failed to create session document",
-                                                    e
-                                            )
-                                            // Retry initialization for Samsung devices
-                                            if (isSamsungDevice) {
-                                                scope.launch {
-                                                    delay(5000) // Wait 5 seconds before retry
-                                                    initialize(context, appVersion, buildNumber)
-                                                }
-                                            }
-                                        }
+                                //             // Start retry mechanism for Samsung devices
+                                //             if (isSamsungDevice) {
+                                //                 startRetryMechanism()
+                                //             }
+                                //         }
+                                //         ?.addOnFailureListener { e ->
+                                //             Log.e(
+                                //                     "FirebaseLogging",
+                                //                     "Failed to create session document",
+                                //                     e
+                                //             )
+                                //             // Retry initialization for Samsung devices
+                                //             if (isSamsungDevice) {
+                                //                 scope.launch {
+                                //                     delay(5000) // Wait 5 seconds before retry
+                                //                     initialize(context, appVersion, buildNumber)
+                                //                 }
+                                //             }
+                                //         }
                             } catch (e: Exception) {
                                 Log.e("FirebaseLogging", "Error processing snapshot", e)
                             }
@@ -217,23 +217,23 @@ class FirebaseLoggingService private constructor() {
                 return
             }
 
-            document.update("logs", FieldValue.arrayUnion(*batch.toTypedArray()))
-                    .addOnSuccessListener {
-                        Log.d("FirebaseLogging", "Successfully flushed ${batch.size} logs")
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("FirebaseLogging", "Failed to flush logs", e)
-                        // For Samsung devices, retry failed logs
-                        if (isSamsungDevice) {
-                            scope.launch {
-                                bufferMutex.withLock { failedLogsBuffer.addAll(batch) }
-                                Log.d(
-                                        "FirebaseLogging",
-                                        "Buffered ${batch.size} failed logs for retry (Samsung device)"
-                                )
-                            }
-                        }
-                    }
+            // document.update("logs", FieldValue.arrayUnion(*batch.toTypedArray()))
+            //         .addOnSuccessListener {
+            //             Log.d("FirebaseLogging", "Successfully flushed ${batch.size} logs")
+            //         }
+            //         .addOnFailureListener { e ->
+            //             Log.e("FirebaseLogging", "Failed to flush logs", e)
+            //             // For Samsung devices, retry failed logs
+            //             if (isSamsungDevice) {
+            //                 scope.launch {
+            //                     bufferMutex.withLock { failedLogsBuffer.addAll(batch) }
+            //                     Log.d(
+            //                             "FirebaseLogging",
+            //                             "Buffered ${batch.size} failed logs for retry (Samsung device)"
+            //                     )
+            //                 }
+            //             }
+            //         }
         } catch (e: Exception) {
             Log.e("FirebaseLogging", "Exception flushing logs", e)
             if (isSamsungDevice) {

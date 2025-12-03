@@ -1008,8 +1008,8 @@ class BleScanService : Service() {
         val durationSeconds = (endTime - currentSessionStartTime) / 1000
         
         // Save session whenever charging state changes (regardless of level change)
-        // Only skip if duration is too short (< 1 second) to avoid noise
-        if (durationSeconds >= 1) {
+        // Only skip if duration is too short (< 1 second) or mAh is too low (< 1) to avoid noise
+        if (durationSeconds >= 1 && currentSessionAccumulatedMah >= 1.0) {
             val session = Companion.BatterySession(
                 startTime = currentSessionStartTime,
                 endTime = endTime,
@@ -1069,7 +1069,8 @@ class BleScanService : Service() {
             val durationSeconds = prefs?.getLong("session_${i}_duration", 0L) ?: 0L
             val accumulatedMah = prefs?.getFloat("session_${i}_mah", 0f)?.toDouble() ?: 0.0
             
-            if (startTime > 0 && endTime > 0 && initialLevel >= 0 && finalLevel >= 0) {
+            // Only load sessions with valid data and mAh >= 1 to filter out noise
+            if (startTime > 0 && endTime > 0 && initialLevel >= 0 && finalLevel >= 0 && accumulatedMah >= 1.0) {
                 batterySessions.add(Companion.BatterySession(
                     startTime = startTime,
                     endTime = endTime,
@@ -1084,11 +1085,11 @@ class BleScanService : Service() {
     }
     
     fun getSessionHistory(): List<Map<String, Any>> {
-        // Include current session if active
+        // Include current session if active and meets criteria (mAh >= 1)
         val sessionsToReturn = mutableListOf<Companion.BatterySession>()
         sessionsToReturn.addAll(batterySessions)
         
-        if (currentSessionInitialLevel >= 0) {
+        if (currentSessionInitialLevel >= 0 && currentSessionAccumulatedMah >= 1.0) {
             val now = System.currentTimeMillis()
             val durationSeconds = (now - currentSessionStartTime) / 1000
             sessionsToReturn.add(Companion.BatterySession(
@@ -1102,18 +1103,21 @@ class BleScanService : Service() {
             ))
         }
         
-        // Return in reverse chronological order (newest first)
-        return sessionsToReturn.reversed().map { session ->
-            mapOf(
-                "startTime" to session.startTime,
-                "endTime" to session.endTime,
-                "initialLevel" to session.initialLevel,
-                "finalLevel" to session.finalLevel,
-                "isCharging" to session.isCharging,
-                "durationSeconds" to session.durationSeconds,
-                "accumulatedMah" to session.accumulatedMah
-            )
-        }
+        // Filter out any sessions with mAh < 1 and return in reverse chronological order (newest first)
+        return sessionsToReturn
+            .filter { it.accumulatedMah >= 1.0 }
+            .reversed()
+            .map { session ->
+                mapOf(
+                    "startTime" to session.startTime,
+                    "endTime" to session.endTime,
+                    "initialLevel" to session.initialLevel,
+                    "finalLevel" to session.finalLevel,
+                    "isCharging" to session.isCharging,
+                    "durationSeconds" to session.durationSeconds,
+                    "accumulatedMah" to session.accumulatedMah
+                )
+            }
     }
     
     // ==================== End Battery Session Tracking ====================
