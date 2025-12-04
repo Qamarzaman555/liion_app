@@ -12,6 +12,7 @@ class CustomButton extends StatefulWidget {
   final double borderRadius;
   final bool isLoading;
   final Widget? child;
+  final Color? borderColor;
   const CustomButton({
     super.key,
     required this.text,
@@ -24,6 +25,7 @@ class CustomButton extends StatefulWidget {
     this.borderRadius = 8,
     this.isLoading = false,
     this.child,
+    this.borderColor,
   });
 
   @override
@@ -84,6 +86,9 @@ class _CustomButtonState extends State<CustomButton>
           decoration: BoxDecoration(
             color: widget.backgroundColor ?? AppColors.primaryColor,
             borderRadius: BorderRadius.circular(widget.borderRadius),
+            border: Border.all(
+              color: widget.borderColor ?? AppColors.transparentColor,
+            ),
           ),
           padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: 16),
 

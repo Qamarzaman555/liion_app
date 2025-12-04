@@ -11,11 +11,12 @@ class LeoConnectionButtons extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onConnectionButtonPressed,
+    required this.onFirmwareUpdateButtonPressed,
   });
 
   final LeoHomeController controller;
   final VoidCallback onConnectionButtonPressed;
-
+  final VoidCallback onFirmwareUpdateButtonPressed;
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -61,8 +62,7 @@ class LeoConnectionButtons extends StatelessWidget {
         CustomButton(
           backgroundColor: AppColors.primaryInvertColor,
           text: "Leo is up-to-date",
-
-          onPressed: onConnectionButtonPressed,
+          onPressed: onFirmwareUpdateButtonPressed,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/modules/leo_empty/views/widgets/leo_firmware_update_dialog.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 import '../controllers/leo_home_controller.dart';
@@ -48,6 +49,8 @@ class LeoHomeView extends GetView<LeoHomeController> {
                   controller: controller,
                   onConnectionButtonPressed: () =>
                       _handleConnectionButtonTap(context),
+                  onFirmwareUpdateButtonPressed: () =>
+                      _showFirmwareUpdateDialog(context),
                 ),
                 const SizedBox(height: 20),
                 LeoMetricsSummary(controller: controller),
@@ -73,6 +76,14 @@ class LeoHomeView extends GetView<LeoHomeController> {
       context: context,
       barrierDismissible: true,
       builder: (_) => const BluetoothConnectionDialog(),
+    );
+  }
+
+  void _showFirmwareUpdateDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const LeoFirmwareUpdateDialog(),
     );
   }
 }
