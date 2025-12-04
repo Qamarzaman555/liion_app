@@ -1949,10 +1949,30 @@ class BleScanService : Service() {
                 packetNumber++
                 
                 // Update progress
-                val progress = (packetNumber * 100) / otaTotalPackets
+                val progress = if (otaTotalPackets > 0) {
+                    (packetNumber * 100) / otaTotalPackets
+                } else {
+                    0
+                }
                 otaProgress = progress
                 otaCurrentPacket = packetNumber
-                MainActivity.sendOtaProgress(progress, true, null)
+                
+                // Send progress update frequently for smooth UI updates
+                // Send every packet for first 10, then every 5 packets, then every 10
+                val updateFrequency = when {
+                    packetNumber < 10 -> 1
+                    packetNumber < 100 -> 5
+                    else -> 10
+                }
+                
+                if (packetNumber % updateFrequency == 0 || packetNumber == otaTotalPackets) {
+                    MainActivity.sendOtaProgress(progress, true, "Sending packet $packetNumber/$otaTotalPackets")
+                }
+                
+                // Always send progress for the last packet
+                if (packetNumber == otaTotalPackets) {
+                    MainActivity.sendOtaProgress(100, true, "All packets sent")
+                }
             }
             
             android.util.Log.d("BleScanService", "All packets sent. Sending completion signal...")

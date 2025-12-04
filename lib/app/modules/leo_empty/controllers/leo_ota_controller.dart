@@ -16,8 +16,11 @@ class LeoOtaController extends GetxController {
   final isDownloadingFirmware = false.obs;
   final downloadProgress = 0.0.obs;
   final otaMessage = ''.obs;
+  final otaCurrentPacket = 0.obs;
+  final otaTotalPackets = 0.obs;
 
   StreamSubscription<Map<String, dynamic>>? _otaProgressSubscription;
+  Timer? _progressPollingTimer;
 
   @override
   void onInit() {
@@ -28,7 +31,44 @@ class LeoOtaController extends GetxController {
   @override
   void onClose() {
     _otaProgressSubscription?.cancel();
+    _progressPollingTimer?.cancel();
     super.onClose();
+  }
+
+  /// Start periodic progress polling as backup (in case stream has issues)
+  void _startProgressPolling() {
+    _progressPollingTimer?.cancel();
+    _progressPollingTimer = Timer.periodic(const Duration(milliseconds: 500), (
+      timer,
+    ) async {
+      if (!isOtaInProgress.value) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final progress = await BleScanService.getOtaProgress();
+        final inProgress = await BleScanService.isOtaUpdateInProgress();
+
+        if (progress != (otaProgress.value * 100).round()) {
+          print(
+            'Progress polling: Updating from ${otaProgress.value * 100}% to $progress%',
+          );
+          otaProgress.value = progress / 100.0;
+          otaProgress.refresh();
+        }
+
+        if (inProgress != isOtaInProgress.value) {
+          print(
+            'Progress polling: Updating inProgress from ${isOtaInProgress.value} to $inProgress',
+          );
+          isOtaInProgress.value = inProgress;
+          isOtaInProgress.refresh();
+        }
+      } catch (e) {
+        print('Error polling progress: $e');
+      }
+    });
   }
 
   /// Listen to OTA progress updates from Kotlin service
@@ -36,28 +76,63 @@ class LeoOtaController extends GetxController {
     _otaProgressSubscription?.cancel();
     _otaProgressSubscription = BleScanService.otaProgressStream.listen(
       (event) {
+        print('OTA Progress Event: $event');
         final progress = event['progress'] as int? ?? 0;
         final inProgress = event['inProgress'] as bool? ?? false;
         final message = event['message'] as String? ?? '';
 
-        otaProgress.value = progress / 100.0;
+        print(
+          'OTA Progress: $progress%, InProgress: $inProgress, Message: $message',
+        );
+
+        // Update progress (ensure it's between 0 and 1)
+        final progressValue = (progress.clamp(0, 100) / 100.0);
+        otaProgress.value = progressValue;
         isOtaInProgress.value = inProgress;
         otaMessage.value = message;
 
+        // Extract packet numbers from message if available
+        final packetMatch = RegExp(r'(\d+)/(\d+)').firstMatch(message);
+        if (packetMatch != null) {
+          otaCurrentPacket.value =
+              int.tryParse(packetMatch.group(1) ?? '0') ?? 0;
+          otaTotalPackets.value =
+              int.tryParse(packetMatch.group(2) ?? '0') ?? 0;
+        }
+
+        print(
+          'Updated UI - Progress: $progressValue (${progress}%), InProgress: $inProgress, Message: $message',
+        );
+
+        // Force UI refresh
+        otaProgress.refresh();
+        isOtaInProgress.refresh();
+        otaMessage.refresh();
+
+        // Stop polling when OTA completes
+        if (!inProgress) {
+          _progressPollingTimer?.cancel();
+        }
+
         if (!inProgress && progress == 100) {
           // OTA completed successfully
-          AppSnackbars.showSuccess(
-            title: 'Update Successful',
-            message: 'Firmware update completed successfully.',
-          );
-        } else if (!inProgress && progress == 0 && message.isNotEmpty) {
-          // OTA failed
-          AppSnackbars.showSuccess(title: 'Update Failed', message: message);
+          print('OTA completed successfully');
+          // Don't show snackbar here, let the dialog handle it
+          // The message will be displayed in the dialog
+        } else if (!inProgress &&
+            progress == 0 &&
+            message.isNotEmpty &&
+            !message.toLowerCase().contains('completed')) {
+          // OTA failed (but not if it says completed)
+          print('OTA failed: $message');
+          // Error message will be shown in dialog
         }
       },
       onError: (error) {
         print('OTA progress stream error: $error');
+        isOtaInProgress.value = false;
       },
+      cancelOnError: false,
     );
   }
 
@@ -204,6 +279,14 @@ class LeoOtaController extends GetxController {
       // Send initial progress
       otaProgress.value = 0.0;
       isOtaInProgress.value = true;
+      otaCurrentPacket.value = 0;
+      otaTotalPackets.value = 0;
+      otaMessage.value = 'Starting OTA update...';
+
+      // Force UI refresh
+      otaProgress.refresh();
+      isOtaInProgress.refresh();
+      otaMessage.refresh();
 
       // Start OTA update via Kotlin service
       print("Starting OTA update with file: $filePath");
@@ -211,6 +294,10 @@ class LeoOtaController extends GetxController {
 
       if (!success) {
         isOtaInProgress.value = false;
+        otaProgress.value = 0.0;
+        otaMessage.value = 'Failed to start OTA update';
+        isOtaInProgress.refresh();
+        otaProgress.refresh();
         // Error message will be sent via progress stream
         throw Exception(
           'Failed to start OTA update. Check error message for details.',
@@ -218,6 +305,9 @@ class LeoOtaController extends GetxController {
       }
 
       print("OTA update started successfully");
+
+      // Start periodic progress check as backup
+      _startProgressPolling();
     } catch (e) {
       print("Error in startOtaUpdate: $e");
       await WakelockPlus.disable();
@@ -231,11 +321,36 @@ class LeoOtaController extends GetxController {
   /// Cancel OTA update
   Future<void> cancelOtaUpdate() async {
     try {
+      print("Cancelling OTA update...");
+
+      // Stop progress polling
+      _progressPollingTimer?.cancel();
+
       await BleScanService.cancelOtaUpdate();
       await WakelockPlus.disable();
-      print("OTA update cancelled");
+
+      // Update UI state immediately
+      isOtaInProgress.value = false;
+      otaProgress.value = 0.0;
+      otaMessage.value = 'OTA update cancelled';
+      otaCurrentPacket.value = 0;
+      otaTotalPackets.value = 0;
+
+      // Force UI refresh
+      isOtaInProgress.refresh();
+      otaProgress.refresh();
+      otaMessage.refresh();
+
+      print("OTA update cancelled - UI state updated");
     } catch (e) {
       print("Error cancelling OTA update: $e");
+      // Still update UI state even if cancel fails
+      _progressPollingTimer?.cancel();
+      isOtaInProgress.value = false;
+      otaProgress.value = 0.0;
+      otaMessage.value = 'Cancellation error: $e';
+      isOtaInProgress.refresh();
+      otaProgress.refresh();
     }
   }
 }

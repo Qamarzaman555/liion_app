@@ -116,24 +116,31 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  isDownloading
-                      ? 'Downloading Firmware'
-                      : isOtaInProgress
-                      ? 'OTA Update Progress'
-                      : 'Firmware Update',
+                  'OTA Update Progress',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 24),
-                if (isDownloading || isOtaInProgress)
+                if (isDownloading ||
+                    isOtaInProgress ||
+                    otaController.otaMessage.value.isNotEmpty)
                   Column(
                     children: [
                       LinearProgressIndicator(
-                        value: isDownloading ? downloadProgress : progress,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          AppColors.primaryColor,
+                        value: isDownloading
+                            ? downloadProgress.clamp(0.0, 1.0)
+                            : progress.clamp(0.0, 1.0),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          otaController.otaMessage.value.toLowerCase().contains(
+                                    'fail',
+                                  ) ||
+                                  otaController.otaMessage.value
+                                      .toLowerCase()
+                                      .contains('error')
+                              ? Colors.red
+                              : AppColors.primaryColor,
                         ),
                         minHeight: 6,
                         borderRadius: BorderRadius.circular(4),
@@ -142,13 +149,25 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                       const SizedBox(height: 16),
                       Text(
                         isDownloading
-                            ? '${(downloadProgress * 100).toStringAsFixed(0)}%'
-                            : '${(progress * 100).toStringAsFixed(0)}%',
+                            ? '${(downloadProgress.clamp(0.0, 1.0) * 100).toStringAsFixed(0)}%'
+                            : '${(progress.clamp(0.0, 1.0) * 100).toStringAsFixed(0)}%',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (isOtaInProgress &&
+                          otaController.otaTotalPackets.value > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            'Packet ${otaController.otaCurrentPacket.value}/${otaController.otaTotalPackets.value}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
                       if (isOtaInProgress &&
                           otaController.otaMessage.value.isNotEmpty)
                         Padding(
@@ -241,7 +260,20 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                     borderColor: AppColors.blackColor,
                     backgroundColor: AppColors.transparentColor,
                     onPressed: () async {
+                      if (isDownloading) {
+                        // Can't cancel download, just close
+                        if (mounted) {
+                          Navigator.pop(context);
+                        }
+                        return;
+                      }
+
+                      // Cancel OTA update
                       await otaController.cancelOtaUpdate();
+
+                      // Wait a bit for state to update
+                      await Future.delayed(const Duration(milliseconds: 300));
+
                       if (mounted) {
                         Navigator.pop(context);
                       }
@@ -262,19 +294,34 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                   )
                 else
                   CustomButton(
-                    text: 'Close',
+                    text:
+                        otaController.otaMessage.value.toLowerCase().contains(
+                              'success',
+                            ) ||
+                            otaController.otaMessage.value
+                                .toLowerCase()
+                                .contains('completed')
+                        ? 'Done'
+                        : 'Close',
                     textColor: AppColors.blackColor,
                     borderColor: AppColors.blackColor,
                     backgroundColor: AppColors.transparentColor,
                     onPressed: () {
                       Navigator.pop(context);
                     },
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          'Close',
-                          style: TextStyle(
+                          otaController.otaMessage.value.toLowerCase().contains(
+                                    'success',
+                                  ) ||
+                                  otaController.otaMessage.value
+                                      .toLowerCase()
+                                      .contains('completed')
+                              ? 'Done'
+                              : 'Close',
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: AppColors.blackColor,
