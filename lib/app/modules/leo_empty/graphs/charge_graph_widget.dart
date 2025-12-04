@@ -131,9 +131,7 @@ class ChargeGraphWidget extends StatelessWidget {
         bottomTitles: AxisTitles(
           sideTitles: isCurrent ? _bottomTitles : _bottomTitles2,
         ),
-        rightTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
+        rightTitles: AxisTitles(sideTitles: _rightTitles(1.0)),
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         leftTitles: AxisTitles(sideTitles: _leftTitles(interval)),
       );
@@ -171,6 +169,20 @@ class ChargeGraphWidget extends StatelessWidget {
     showTitles: true,
     interval: interval,
     reservedSize: 32,
+  );
+
+  Widget _rightTitleWidgets(double value, TitleMeta meta) {
+    const style = TextStyle(fontSize: 0);
+    final text = "";
+    return Text(text, style: style);
+  }
+
+  SideTitles _rightTitles(double interval) => SideTitles(
+    getTitlesWidget: _rightTitleWidgets,
+    showTitles: true,
+    interval: interval,
+    reservedSize: 10,
+    
   );
 
   Widget _bottomTitleWidgets(double value, TitleMeta meta) {

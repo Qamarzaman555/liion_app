@@ -58,38 +58,40 @@ class BackendLoggingService private constructor() {
 
         scope.launch {
             try {
-                // Check network connectivity
-                if (!hasNetworkConnection()) {
-                    Log.w("BackendLogging", "No network connection available for backend logging")
-                    return@launch
-                }
+                // // DEBUG MODE: Comment out the entire block below to disable backend initialization
+                // // Check network connectivity
+                // if (!hasNetworkConnection()) {
+                //     Log.w("BackendLogging", "No network connection available for backend logging")
+                //     return@launch
+                // }
 
-                // Test backend connectivity first
-                if (!testBackendConnection()) {
-                    Log.e("BackendLogging", "Cannot reach backend server at $backendBaseUrl. Please check if server is running and accessible.")
-                    return@launch
-                }
+                // // Test backend connectivity first
+                // if (!testBackendConnection()) {
+                //     Log.e("BackendLogging", "Cannot reach backend server at $backendBaseUrl. Please check if server is running and accessible.")
+                //     return@launch
+                // }
 
-                // Get device label
-                deviceKey = getDeviceLabel()
-                Log.d("BackendLogging", "Device key: $deviceKey")
+                // // Get device label
+                // deviceKey = getDeviceLabel()
+                // Log.d("BackendLogging", "Device key: $deviceKey")
 
-                // Get next session ID by querying existing sessions
-                val nextSessionId = getNextSessionId()
+                // // Get next session ID by querying existing sessions
+                // val nextSessionId = getNextSessionId()
 
-                sessionId = nextSessionId
-                Log.d("BackendLogging", "Session ID: $sessionId")
+                // sessionId = nextSessionId
+                // Log.d("BackendLogging", "Session ID: $sessionId")
 
-                // Create session via API
-                val sessionCreated = createSession(nextSessionId, appVersion, buildNumber)
+                // // Create session via API
+                // val sessionCreated = createSession(nextSessionId, appVersion, buildNumber)
 
-                if (sessionCreated) {
-                    isInitialized = true
-                    Log.d("BackendLogging", "Logging session initialized successfully")
-                    log("INFO", "Logging session initialized")
-                } else {
-                    Log.e("BackendLogging", "Failed to create session")
-                }
+                // if (sessionCreated) {
+                //     isInitialized = true
+                //     Log.d("BackendLogging", "Logging session initialized successfully")
+                //     log("INFO", "Logging session initialized")
+                // } else {
+                //     Log.e("BackendLogging", "Failed to create session")
+                // }
+                // // DEBUG MODE END
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error in initialize", e)
             }
@@ -287,8 +289,10 @@ class BackendLoggingService private constructor() {
                     return@launch
                 }
 
-                // Send log immediately (no batching)
-                sendLog(level, message)
+                // // DEBUG MODE: Comment out the line below to disable sending logs to backend
+                // // Send log immediately (no batching)
+                // sendLog(level, message)
+                // // DEBUG MODE END
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error in log method", e)
             }
@@ -298,36 +302,38 @@ class BackendLoggingService private constructor() {
     private suspend fun sendLog(level: String, message: String) {
         withContext(Dispatchers.IO) {
             try {
-                val url = URL("$backendBaseUrl$apiBasePath/logs")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.setRequestProperty("Content-Type", "application/json")
-                connection.doOutput = true
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
+                // // DEBUG MODE: Comment out everything below to disable HTTP requests to backend
+                // val url = URL("$backendBaseUrl$apiBasePath/logs")
+                // val connection = url.openConnection() as HttpURLConnection
+                // connection.requestMethod = "POST"
+                // connection.setRequestProperty("Content-Type", "application/json")
+                // connection.doOutput = true
+                // connection.connectTimeout = 5000
+                // connection.readTimeout = 5000
 
-                val timestamp = dateFormat.format(Date())
-                val requestBody = JSONObject().apply {
-                    put("deviceKey", deviceKey)
-                    put("sessionId", sessionId)
-                    put("level", level)
-                    put("message", message)
-                    put("timestamp", timestamp)
-                }
+                // val timestamp = dateFormat.format(Date())
+                // val requestBody = JSONObject().apply {
+                //     put("deviceKey", deviceKey)
+                //     put("sessionId", sessionId)
+                //     put("level", level)
+                //     put("message", message)
+                //     put("timestamp", timestamp)
+                // }
 
-                OutputStreamWriter(connection.outputStream).use { writer ->
-                    writer.write(requestBody.toString())
-                    writer.flush()
-                }
+                // OutputStreamWriter(connection.outputStream).use { writer ->
+                //     writer.write(requestBody.toString())
+                //     writer.flush()
+                // }
 
-                val responseCode = connection.responseCode
-                if (responseCode == HttpURLConnection.HTTP_CREATED || 
-                    responseCode == HttpURLConnection.HTTP_OK) {
-                    Log.d("BackendLogging", "Log sent successfully: $level - $message")
-                } else {
-                    val errorResponse = connection.errorStream?.bufferedReader()?.use { it.readText() }
-                    Log.e("BackendLogging", "Failed to send log: $errorResponse")
-                }
+                // val responseCode = connection.responseCode
+                // if (responseCode == HttpURLConnection.HTTP_CREATED || 
+                //     responseCode == HttpURLConnection.HTTP_OK) {
+                //     Log.d("BackendLogging", "Log sent successfully: $level - $message")
+                // } else {
+                //     val errorResponse = connection.errorStream?.bufferedReader()?.use { it.readText() }
+                //     Log.e("BackendLogging", "Failed to send log: $errorResponse")
+                // }
+                // // DEBUG MODE END
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error sending log", e)
             }
