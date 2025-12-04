@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../../controllers/leo_home_controller.dart';
 import '../../controllers/leo_ota_controller.dart';
+import 'wait_for_install_dialog.dart';
 
 class LeoFirmwareUpdateDialog extends StatefulWidget {
   const LeoFirmwareUpdateDialog({super.key});
@@ -19,16 +20,28 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
   late LeoOtaController otaController;
   late LeoHomeController homeController;
   String? selectedFilePath;
+  bool _hasShownWaitDialog = false;
 
   @override
   void initState() {
     super.initState();
     otaController = Get.put(LeoOtaController());
     homeController = Get.find<LeoHomeController>();
+    // Reset state when dialog opens to ensure clean state
+    _hasShownWaitDialog = false;
+    // Mark OTA progress dialog as open
+    otaController.isOtaProgressDialogOpen.value = true;
   }
 
   @override
   void dispose() {
+    // Reset OTA state when dialog closes (unless OTA is still in progress)
+    if (!otaController.isOtaInProgress.value) {
+      otaController.resetOtaState();
+    } else {
+      // Just mark dialog as closed if OTA is still in progress
+      otaController.isOtaProgressDialogOpen.value = false;
+    }
     // Don't dispose the controller here as it's managed by GetX
     super.dispose();
   }
@@ -112,11 +125,33 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
             final progress = otaController.otaProgress.value;
             final downloadProgress = otaController.downloadProgress.value;
 
+            // When OTA reaches 100% and is complete, show wait for install dialog
+            // Note: We check progress >= 1.0 even if isOtaInProgress is still true
+            // because device may disconnect before acknowledgment
+            if (progress >= 1.0 &&
+                otaController.isOtaProgressDialogOpen.value &&
+                !_hasShownWaitDialog) {
+              _hasShownWaitDialog = true;
+              // Start the install timer immediately when showing wait dialog
+              // This handles the case where device disconnects before acknowledgment
+              otaController.startInstallTimer();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const WaitForInstallDialogBox(),
+                  );
+                }
+              });
+            }
+
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'OTA Update Progress',
+                  'Update in progress',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -259,6 +294,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                     textColor: AppColors.blackColor,
                     borderColor: AppColors.blackColor,
                     backgroundColor: AppColors.transparentColor,
+                    borderWidth: 2,
                     onPressed: () async {
                       if (isDownloading) {
                         // Can't cancel download, just close
@@ -307,6 +343,10 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                     borderColor: AppColors.blackColor,
                     backgroundColor: AppColors.transparentColor,
                     onPressed: () {
+                      // Reset state when closing dialog
+                      if (!otaController.isOtaInProgress.value) {
+                        otaController.resetOtaState();
+                      }
                       Navigator.pop(context);
                     },
                     child: Row(
