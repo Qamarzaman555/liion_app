@@ -1,5 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
+import 'package:liion_app/app/modules/leo_empty/controllers/leo_ota_controller.dart';
+import 'package:liion_app/app/modules/leo_empty/views/widgets/leo_firmware_update_dialog.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -54,11 +58,58 @@ class LeoTroubleshootController extends GetxController {
   }
 
   Future<void> updateFromFile() async {
-    // TODO: Implement OTA update functionality
-    // This would require the OTA package and related controllers
-    AppSnackbars.showSuccess(
-      title: 'Info',
-      message: 'OTA update functionality coming soon',
-    );
+    try {
+      isUpdating.value = true;
+      
+      // Get OTA controller
+      final otaController = Get.put(LeoOtaController());
+      
+      // Check if OTA is already in progress
+      if (otaController.isOtaInProgress.value ||
+          otaController.isDownloadingFirmware.value ||
+          otaController.isOtaProgressDialogOpen.value) {
+        // OTA is already in progress, just show the progress dialog
+        final context = Get.context;
+        if (context != null) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const LeoFirmwareUpdateDialog(),
+          );
+        }
+        return;
+      }
+      
+      // Show file picker
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['bin'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final filePath = result.files.single.path!;
+        
+        // Get context from Get
+        final context = Get.context;
+        if (context != null) {
+          // Show progress dialog
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const LeoFirmwareUpdateDialog(),
+          );
+          
+          // Start OTA update
+          await otaController.startOtaUpdate(filePath);
+        }
+      }
+    } catch (e) {
+      AppSnackbars.showSuccess(
+        title: 'Error',
+        message: 'Failed to start OTA update: $e',
+      );
+    } finally {
+      isUpdating.value = false;
+    }
   }
 }

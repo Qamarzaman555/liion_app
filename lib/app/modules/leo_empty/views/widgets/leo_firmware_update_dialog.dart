@@ -27,21 +27,32 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
     super.initState();
     otaController = Get.put(LeoOtaController());
     homeController = Get.find<LeoHomeController>();
-    // Reset state when dialog opens to ensure clean state
-    _hasShownWaitDialog = false;
+
+    // Only reset wait dialog flag if OTA is not in progress
+    // This allows reopening the dialog to show current progress
+    if (!otaController.isOtaInProgress.value &&
+        !otaController.isDownloadingFirmware.value) {
+      _hasShownWaitDialog = false;
+    }
+
     // Mark OTA progress dialog as open
     otaController.isOtaProgressDialogOpen.value = true;
   }
 
   @override
   void dispose() {
-    // Reset OTA state when dialog closes (unless OTA is still in progress)
-    if (!otaController.isOtaInProgress.value) {
+    // Only mark dialog as closed, don't reset state if OTA is still in progress
+    // This allows reopening the dialog to show current progress
+    otaController.isOtaProgressDialogOpen.value = false;
+
+    // Only reset OTA state when dialog closes AND OTA is not in progress
+    // This ensures state is cleaned up after completion/cancellation
+    if (!otaController.isOtaInProgress.value &&
+        !otaController.isDownloadingFirmware.value &&
+        otaController.otaProgress.value == 0.0) {
       otaController.resetOtaState();
-    } else {
-      // Just mark dialog as closed if OTA is still in progress
-      otaController.isOtaProgressDialogOpen.value = false;
     }
+
     // Don't dispose the controller here as it's managed by GetX
     super.dispose();
   }

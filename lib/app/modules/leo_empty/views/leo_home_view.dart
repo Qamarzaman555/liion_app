@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/modules/leo_empty/views/widgets/leo_firmware_update_dialog.dart';
+import 'package:liion_app/app/modules/leo_empty/controllers/leo_ota_controller.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 import '../controllers/leo_home_controller.dart';
@@ -79,11 +80,68 @@ class LeoHomeView extends GetView<LeoHomeController> {
     );
   }
 
-  void _showFirmwareUpdateDialog(BuildContext context) {
-    showDialog(
+  void _showFirmwareUpdateDialog(BuildContext context) async {
+    // Get OTA controller
+    final otaController = Get.put(LeoOtaController());
+
+    // Check if OTA is already in progress
+    if (otaController.isOtaInProgress.value ||
+        otaController.isDownloadingFirmware.value ||
+        otaController.isOtaProgressDialogOpen.value) {
+      // OTA is already in progress, just show the progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const LeoFirmwareUpdateDialog(),
+      );
+      return;
+    }
+
+    // Show folder name input dialog for cloud download
+    final TextEditingController folderController = TextEditingController();
+    final result = await showDialog<String>(
       context: context,
-      barrierDismissible: true,
-      builder: (_) => const LeoFirmwareUpdateDialog(),
+      builder: (context) => AlertDialog(
+        title: const Text('Download Firmware'),
+        content: TextField(
+          controller: folderController,
+          decoration: const InputDecoration(
+            labelText: 'Firebase Storage Folder Name',
+            hintText: 'e.g., firmware/leo',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (folderController.text.isNotEmpty) {
+                Navigator.pop(context, folderController.text);
+              }
+            },
+            child: const Text('Download'),
+          ),
+        ],
+      ),
     );
+
+    if (result != null && result.isNotEmpty) {
+      // Show progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const LeoFirmwareUpdateDialog(),
+      );
+
+      // Download firmware and start OTA
+      await otaController.downloadFolder(result);
+      if (otaController.cloudBinFilePath.value.isNotEmpty) {
+        await otaController.startOtaUpdate(
+          otaController.cloudBinFilePath.value,
+        );
+      }
+    }
   }
 }
