@@ -1167,7 +1167,7 @@ class BleScanService : Service() {
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
         
-        // Initialize Firebase logging
+        // Initialize backend logging
         initializeLogging()
         
         // Acquire partial wake lock to keep CPU running

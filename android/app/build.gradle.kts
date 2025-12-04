@@ -1,8 +1,5 @@
 plugins {
     id("com.android.application")
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
-    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -50,11 +47,7 @@ android {
 }
 
 dependencies {
-    // Firebase Firestore for cloud logging
-    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
-    implementation("com.google.firebase:firebase-firestore")
-    
-    // Kotlin coroutines for async logging
+    // Kotlin coroutines for async operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
 

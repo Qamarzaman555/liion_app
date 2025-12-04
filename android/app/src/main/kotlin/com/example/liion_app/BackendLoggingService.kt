@@ -32,7 +32,7 @@ class BackendLoggingService private constructor() {
     // IMPORTANT: Change this to your backend server IP address
     // For local development: "http://10.0.2.2:3000" (Android emulator)
     // For physical device: "http://YOUR_COMPUTER_IP:3000" (e.g., "http://192.168.18.82:3000")
-    private val backendBaseUrl: String = "http://192.168.18.82:3000"
+    private val backendBaseUrl: String = "http://13.62.9.177:3000"
     private val apiBasePath: String = "/api"
 
     private var deviceKey: String? = null

@@ -2,18 +2,6 @@
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 
-# Keep Firebase classes from being obfuscated
--keep class com.google.firebase.** { *; }
--keep class com.google.android.gms.** { *; }
--dontwarn com.google.firebase.**
--dontwarn com.google.android.gms.**
-
-# Keep Firebase Firestore classes
--keep class com.google.firebase.firestore.** { *; }
--keep class com.google.firestore.** { *; }
--dontwarn com.google.firebase.firestore.**
--dontwarn com.google.firestore.**
-
 # Keep BackendLoggingService
 -keep class com.example.liion_app.BackendLoggingService { *; }
 -keepclassmembers class com.example.liion_app.BackendLoggingService {
