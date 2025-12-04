@@ -127,6 +127,19 @@ class LeoHomeView extends GetView<LeoHomeController> {
       ),
     );
 
+    // Check again if OTA started while user was entering folder name
+    if (otaController.isOtaInProgress.value ||
+        otaController.isDownloadingFirmware.value ||
+        otaController.isOtaProgressDialogOpen.value) {
+      // OTA started while entering folder name, just show progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const LeoFirmwareUpdateDialog(),
+      );
+      return;
+    }
+
     if (result != null && result.isNotEmpty) {
       // Show progress dialog
       showDialog(
