@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:liion_app/firebase_options.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'app/modules/leo_empty/models/graph_values_hive_model.dart';
 import 'app/routes/app_pages.dart';
@@ -9,6 +11,8 @@ import 'app/services/ble_scan_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Initialize Hive for local graph persistence.
   await Hive.initFlutter();

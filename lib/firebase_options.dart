@@ -50,11 +50,11 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBej3BCx9HwJsw-XS92Pne3i3qplRITWFA',
-    appId: '1:575356527960:android:8651210c2d1ae42440f12d',
-    messagingSenderId: '575356527960',
-    projectId: 'liion-power-227c6',
-    storageBucket: 'liion-power-227c6.firebasestorage.app',
+    apiKey: 'AIzaSyAGZvNm1OrUp2-S3XSvzCL8l5V7QER19wA',
+    appId: '1:517661999690:android:dbf9e1533b0d3ce0159cb3',
+    messagingSenderId: '517661999690',
+    projectId: 'liion-power-app',
+    storageBucket: 'liion-power-app.appspot.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(

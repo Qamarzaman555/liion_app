@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
         private const val BATTERY_HEALTH_CHANNEL = "com.liion_app/battery_health"
         private const val MEASURE_DATA_CHANNEL = "com.liion_app/measure_data"
         private const val BATTERY_METRICS_CHANNEL = "com.liion_app/battery_metrics"
+        private const val OTA_PROGRESS_CHANNEL = "com.liion_app/ota_progress"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -38,6 +39,7 @@ class MainActivity : FlutterActivity() {
         private var batteryHealthSink: EventChannel.EventSink? = null
         private var measureDataSink: EventChannel.EventSink? = null
         private var batteryMetricsSink: EventChannel.EventSink? = null
+        private var otaProgressSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun clearAllSinks() {
@@ -49,6 +51,19 @@ class MainActivity : FlutterActivity() {
             chargeLimitSink = null
             batteryHealthSink = null
             batteryMetricsSink = null
+            otaProgressSink = null
+        }
+        
+        fun sendOtaProgress(progress: Int, inProgress: Boolean, message: String?) {
+            try {
+                otaProgressSink?.success(mapOf(
+                    "progress" to progress,
+                    "inProgress" to inProgress,
+                    "message" to (message ?: "")
+                ))
+            } catch (e: Exception) {
+                otaProgressSink = null
+            }
         }
         
         fun sendDeviceUpdate(address: String, name: String) {
@@ -277,6 +292,25 @@ class MainActivity : FlutterActivity() {
                         val sessions = BleScanService.getBatterySessionHistory()
                         result.success(sessions)
                     }
+                    "startOtaUpdate" -> {
+                        val filePath = call.argument<String>("filePath")
+                        if (filePath != null) {
+                            val success = BleScanService.startOtaUpdate(filePath)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "File path is required", null)
+                        }
+                    }
+                    "cancelOtaUpdate" -> {
+                        BleScanService.cancelOtaUpdate()
+                        result.success(true)
+                    }
+                    "getOtaProgress" -> {
+                        result.success(BleScanService.getOtaProgress())
+                    }
+                    "isOtaUpdateInProgress" -> {
+                        result.success(BleScanService.isOtaUpdateInProgress())
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -392,6 +426,17 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     batteryMetricsSink = null
+                }
+            })
+        
+        // Event Channel for OTA progress
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, OTA_PROGRESS_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    otaProgressSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    otaProgressSink = null
                 }
             })
     }

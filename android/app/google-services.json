@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "575356527960",
-    "project_id": "liion-power-227c6",
-    "storage_bucket": "liion-power-227c6.firebasestorage.app"
+    "project_number": "517661999690",
+    "project_id": "liion-power-app",
+    "storage_bucket": "liion-power-app.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:575356527960:android:8651210c2d1ae42440f12d",
+        "mobilesdk_app_id": "1:517661999690:android:dbf9e1533b0d3ce0159cb3",
         "android_client_info": {
           "package_name": "com.example.liion_app"
         }
@@ -15,7 +15,45 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBej3BCx9HwJsw-XS92Pne3i3qplRITWFA"
+          "current_key": "AIzaSyAGZvNm1OrUp2-S3XSvzCL8l5V7QER19wA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:517661999690:android:099f4acc05438d96159cb3",
+        "android_client_info": {
+          "package_name": "com.sparkleo.liion"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAGZvNm1OrUp2-S3XSvzCL8l5V7QER19wA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:517661999690:android:73110ed48220d6b3159cb3",
+        "android_client_info": {
+          "package_name": "nl.liionpower.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAGZvNm1OrUp2-S3XSvzCL8l5V7QER19wA"
         }
       ],
       "services": {

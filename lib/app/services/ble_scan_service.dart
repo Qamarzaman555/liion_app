@@ -177,6 +177,9 @@ class BleScanService {
   static const EventChannel _batteryMetricsChannel = EventChannel(
     'com.liion_app/battery_metrics',
   );
+  static const EventChannel _otaProgressChannel = EventChannel(
+    'com.liion_app/ota_progress',
+  );
 
   static Stream<Map<String, String>>? _deviceStream;
   static Stream<Map<String, dynamic>>? _connectionStream;
@@ -187,6 +190,7 @@ class BleScanService {
   static Stream<BatteryHealthInfo>? _batteryHealthStream;
   static Stream<MeasureData>? _measureDataStream;
   static Stream<BatteryMetrics>? _batteryMetricsStream;
+  static Stream<Map<String, dynamic>>? _otaProgressStream;
 
   /// Start the foreground BLE scan service
   static Future<bool> startService() async {
@@ -586,5 +590,62 @@ class BleScanService {
       print('Failed to get battery session history: ${e.message}');
       return [];
     }
+  }
+
+  /// Start OTA update
+  static Future<bool> startOtaUpdate(String filePath) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'startOtaUpdate',
+        {'filePath': filePath},
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to start OTA update: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Cancel OTA update
+  static Future<bool> cancelOtaUpdate() async {
+    try {
+      await _methodChannel.invokeMethod('cancelOtaUpdate');
+      return true;
+    } on PlatformException catch (e) {
+      print('Failed to cancel OTA update: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get OTA progress
+  static Future<int> getOtaProgress() async {
+    try {
+      final result = await _methodChannel.invokeMethod<int>('getOtaProgress');
+      return result ?? 0;
+    } on PlatformException catch (e) {
+      print('Failed to get OTA progress: ${e.message}');
+      return 0;
+    }
+  }
+
+  /// Check if OTA update is in progress
+  static Future<bool> isOtaUpdateInProgress() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'isOtaUpdateInProgress',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to check OTA status: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Stream of OTA progress updates
+  static Stream<Map<String, dynamic>> get otaProgressStream {
+    _otaProgressStream ??= _otaProgressChannel
+        .receiveBroadcastStream()
+        .map((event) => Map<String, dynamic>.from(event as Map));
+    return _otaProgressStream!;
   }
 }

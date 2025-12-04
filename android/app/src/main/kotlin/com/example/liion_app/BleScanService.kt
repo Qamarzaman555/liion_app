@@ -36,6 +36,11 @@ class BleScanService : Service() {
         val RX_CHAR_UUID: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
         val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         
+        // OTA Service UUIDs
+        val OTA_SERVICE_UUID: UUID = UUID.fromString("d6f1d96d-594c-4c53-b1c6-144a1dfde6d8")
+        val OTA_DATA_CHAR_UUID: UUID = UUID.fromString("23408888-1f40-4cd8-9b89-ca8d45f8a5b0")
+        val OTA_CONTROL_CHAR_UUID: UUID = UUID.fromString("7ad671aa-21c0-46a4-b722-270e3ae3d830")
+        
         // Connection states
         const val STATE_DISCONNECTED = 0
         const val STATE_CONNECTING = 1
@@ -131,6 +136,22 @@ class BleScanService : Service() {
             return instance?.writeCommand(command) ?: false
         }
         
+        fun startOtaUpdate(filePath: String): Boolean {
+            return instance?.startOtaUpdate(filePath) ?: false
+        }
+        
+        fun cancelOtaUpdate() {
+            instance?.cancelOtaUpdate()
+        }
+        
+        fun getOtaProgress(): Int {
+            return instance?.getOtaProgress() ?: 0
+        }
+        
+        fun isOtaUpdateInProgress(): Boolean {
+            return instance?.isOtaUpdateInProgress() ?: false
+        }
+        
         fun getPhoneBatteryInfo(): Map<String, Any> {
             return mapOf(
                 "level" to phoneBatteryLevel,
@@ -194,6 +215,22 @@ class BleScanService : Service() {
     private var txCharacteristic: BluetoothGattCharacteristic? = null
     private var rxCharacteristic: BluetoothGattCharacteristic? = null
     private var isUartReady = false
+    
+    // MTU tracking
+    private var currentMtu = 23 // Default BLE MTU
+    
+    // OTA characteristics
+    private var otaDataCharacteristic: BluetoothGattCharacteristic? = null
+    private var otaControlCharacteristic: BluetoothGattCharacteristic? = null
+    private var isOtaInProgress = false
+    private var otaCancelRequested = false
+    private var otaProgress = 0
+    private var otaTotalPackets = 0
+    private var otaCurrentPacket = 0
+    private val otaReadLock = Object()
+    private var lastReadValue: ByteArray? = null
+    private val otaWriteLock = Object()
+    private var otaWriteCompleted = false
     
     // Reconnection state
     private var reconnectRunnable: Runnable? = null
@@ -376,6 +413,10 @@ class BleScanService : Service() {
                         isUartReady = false
                         txCharacteristic = null
                         rxCharacteristic = null
+                        otaDataCharacteristic = null
+                        otaControlCharacteristic = null
+                        isOtaInProgress = false
+                        otaCancelRequested = false
                         chargeLimitConfirmed = false
                         
                         // Stop charge limit timer
@@ -402,6 +443,7 @@ class BleScanService : Service() {
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             handler.post {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
+                    instance?.currentMtu = mtu
                     try {
                         gatt.discoverServices()
                     } catch (e: SecurityException) {
@@ -459,8 +501,49 @@ class BleScanService : Service() {
             handler.post {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     // Write successful
+                    if (isOtaInProgress && 
+                        (characteristic.uuid == OTA_DATA_CHAR_UUID || 
+                         characteristic.uuid == OTA_CONTROL_CHAR_UUID)) {
+                        // OTA write completed - notify waiting thread
+                        synchronized(otaWriteLock) {
+                            otaWriteCompleted = true
+                            otaWriteLock.notify()
+                        }
+                    }
                 } else {
                     // Write failed
+                    if (isOtaInProgress) {
+                        synchronized(otaWriteLock) {
+                            otaWriteCompleted = true
+                            otaWriteLock.notify()
+                        }
+                        MainActivity.sendOtaProgress(0, false, "Write failed: status $status")
+                        isOtaInProgress = false
+                    }
+                }
+            }
+        }
+        
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            handler.post {
+                if (status == BluetoothGatt.GATT_SUCCESS && isOtaInProgress) {
+                    val value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        characteristic.value
+                    } else {
+                        @Suppress("DEPRECATION")
+                        characteristic.value
+                    }
+                    if (value != null && value.isNotEmpty() && characteristic.uuid == OTA_CONTROL_CHAR_UUID) {
+                        // Handle OTA control response
+                        synchronized(otaReadLock) {
+                            lastReadValue = value
+                            otaReadLock.notify()
+                        }
+                    }
                 }
             }
         }
@@ -553,6 +636,37 @@ class BleScanService : Service() {
             } catch (e: SecurityException) {
                 e.printStackTrace()
             }
+        }
+        
+        // Setup OTA service
+        setupOtaService(gatt)
+    }
+    
+    private fun setupOtaService(gatt: BluetoothGatt) {
+        val otaService = gatt.getService(OTA_SERVICE_UUID)
+        
+        if (otaService == null) {
+            android.util.Log.w("BleScanService", "OTA service not found. UUID: $OTA_SERVICE_UUID")
+            android.util.Log.d("BleScanService", "Available services: ${gatt.services.map { it.uuid }}")
+            return
+        }
+        
+        android.util.Log.d("BleScanService", "OTA service found")
+        
+        otaDataCharacteristic = otaService.getCharacteristic(OTA_DATA_CHAR_UUID)
+        otaControlCharacteristic = otaService.getCharacteristic(OTA_CONTROL_CHAR_UUID)
+        
+        if (otaDataCharacteristic == null) {
+            android.util.Log.w("BleScanService", "OTA data characteristic not found. UUID: $OTA_DATA_CHAR_UUID")
+            android.util.Log.d("BleScanService", "Available characteristics in OTA service: ${otaService.characteristics.map { it.uuid }}")
+        } else {
+            android.util.Log.d("BleScanService", "OTA data characteristic found")
+        }
+        
+        if (otaControlCharacteristic == null) {
+            android.util.Log.w("BleScanService", "OTA control characteristic not found. UUID: $OTA_CONTROL_CHAR_UUID")
+        } else {
+            android.util.Log.d("BleScanService", "OTA control characteristic found")
         }
     }
 
@@ -1653,6 +1767,332 @@ class BleScanService : Service() {
         }
         
         updateNotification(fullText)
+    }
+
+    // OTA Update Methods
+    fun startOtaUpdate(filePath: String): Boolean {
+        if (connectionState != STATE_CONNECTED || bluetoothGatt == null) {
+            return false
+        }
+        
+        if (otaDataCharacteristic == null || otaControlCharacteristic == null) {
+            return false
+        }
+        
+        if (isOtaInProgress) {
+            return false
+        }
+        
+        return try {
+            android.util.Log.d("BleScanService", "startOtaUpdate called with path: $filePath")
+            
+            isOtaInProgress = true
+            otaCancelRequested = false
+            otaProgress = 0
+            otaCurrentPacket = 0
+            
+            // Stop regular UART commands during OTA to avoid interference
+            stopMeasureTimer()
+            stopChargeLimitTimer()
+            android.util.Log.d("BleScanService", "Stopped regular UART timers for OTA")
+            
+            // Send initial progress
+            MainActivity.sendOtaProgress(0, true, "Reading firmware file...")
+            
+            // Read firmware file
+            val file = java.io.File(filePath)
+            android.util.Log.d("BleScanService", "File exists: ${file.exists()}, Path: ${file.absolutePath}")
+            
+            if (!file.exists()) {
+                android.util.Log.e("BleScanService", "Firmware file does not exist: $filePath")
+                MainActivity.sendOtaProgress(0, false, "Firmware file does not exist: $filePath")
+                isOtaInProgress = false
+                return false
+            }
+            
+            val firmwareBytes = file.readBytes()
+            android.util.Log.d("BleScanService", "Firmware file read: ${firmwareBytes.size} bytes")
+            
+            if (firmwareBytes.isEmpty()) {
+                android.util.Log.e("BleScanService", "Firmware file is empty")
+                MainActivity.sendOtaProgress(0, false, "Firmware file is empty")
+                isOtaInProgress = false
+                return false
+            }
+            
+            val chunkSize = 250 // MTU - 3
+            otaTotalPackets = (firmwareBytes.size + chunkSize - 1) / chunkSize
+            android.util.Log.d("BleScanService", "Total packets to send: $otaTotalPackets")
+            
+            // Check if device is connected and OTA service is available
+            if (connectionState != STATE_CONNECTED) {
+                android.util.Log.e("BleScanService", "Device not connected")
+                MainActivity.sendOtaProgress(0, false, "Device not connected")
+                isOtaInProgress = false
+                return false
+            }
+            
+            if (bluetoothGatt == null) {
+                android.util.Log.e("BleScanService", "GATT is null")
+                MainActivity.sendOtaProgress(0, false, "Bluetooth connection not available")
+                isOtaInProgress = false
+                return false
+            }
+            
+            // Start OTA update in background thread
+            Thread {
+                performOtaUpdate(firmwareBytes, chunkSize)
+            }.start()
+            
+            android.util.Log.d("BleScanService", "OTA update thread started")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("BleScanService", "Exception in startOtaUpdate: ${e.message}", e)
+            e.printStackTrace()
+            MainActivity.sendOtaProgress(0, false, "Error starting OTA: ${e.message}")
+            isOtaInProgress = false
+            false
+        }
+    }
+    
+    private fun performOtaUpdate(firmwareBytes: ByteArray, chunkSize: Int) {
+        val gatt = bluetoothGatt ?: run {
+            android.util.Log.e("BleScanService", "GATT is null in performOtaUpdate")
+            MainActivity.sendOtaProgress(0, false, "Bluetooth connection lost")
+            isOtaInProgress = false
+            return
+        }
+        
+        val dataChar = otaDataCharacteristic ?: run {
+            android.util.Log.e("BleScanService", "OTA data characteristic not found")
+            MainActivity.sendOtaProgress(0, false, "OTA data characteristic not found. Device may not support OTA.")
+            isOtaInProgress = false
+            return
+        }
+        
+        val controlChar = otaControlCharacteristic ?: run {
+            android.util.Log.e("BleScanService", "OTA control characteristic not found")
+            MainActivity.sendOtaProgress(0, false, "OTA control characteristic not found. Device may not support OTA.")
+            isOtaInProgress = false
+            return
+        }
+        
+        android.util.Log.d("BleScanService", "OTA characteristics found, proceeding with update")
+        
+        try {
+            android.util.Log.d("BleScanService", "Starting OTA update: ${firmwareBytes.size} bytes, $otaTotalPackets packets")
+            
+            // Get MTU size (use tracked MTU or default)
+            val mtuSize = currentMtu
+            val actualChunkSize = minOf(chunkSize, mtuSize - 3)
+            android.util.Log.d("BleScanService", "MTU: $mtuSize, Chunk size: $actualChunkSize")
+            
+            // Write MTU size to data characteristic (250 as 2 bytes)
+            val mtuBytes = byteArrayOf((250 and 0xFF).toByte(), ((250 shr 8) and 0xFF).toByte())
+            android.util.Log.d("BleScanService", "Writing MTU size to data characteristic")
+            if (!writeOtaCharacteristic(gatt, dataChar, mtuBytes, waitForCompletion = true)) {
+                android.util.Log.e("BleScanService", "Failed to write MTU size")
+                MainActivity.sendOtaProgress(0, false, "Failed to write MTU size")
+                isOtaInProgress = false
+                return
+            }
+            
+            // Write 0x01 to control characteristic to start OTA
+            android.util.Log.d("BleScanService", "Writing 0x01 to control characteristic to start OTA")
+            if (!writeOtaCharacteristic(gatt, controlChar, byteArrayOf(1), waitForCompletion = true)) {
+                android.util.Log.e("BleScanService", "Failed to start OTA")
+                MainActivity.sendOtaProgress(0, false, "Failed to start OTA")
+                isOtaInProgress = false
+                return
+            }
+            Thread.sleep(200) // Wait for device response
+            
+            // Read response from control characteristic
+            android.util.Log.d("BleScanService", "Reading response from control characteristic")
+            val response = readOtaCharacteristicSync(gatt, controlChar, timeoutMs = 2000)
+            
+            if (response == null || response.isEmpty() || response[0].toInt() != 2) {
+                val responseStr = if (response != null && response.isNotEmpty()) response[0].toInt().toString() else "no response"
+                android.util.Log.e("BleScanService", "Device not ready for OTA. Response: $responseStr")
+                MainActivity.sendOtaProgress(0, false, "Device not ready for OTA (response: $responseStr)")
+                isOtaInProgress = false
+                return
+            }
+            
+            android.util.Log.d("BleScanService", "Device ready for OTA. Starting firmware transfer...")
+            
+            // Send firmware chunks
+            var packetNumber = 0
+            for (i in firmwareBytes.indices step actualChunkSize) {
+                if (otaCancelRequested) {
+                    android.util.Log.d("BleScanService", "OTA cancelled by user")
+                    writeOtaCharacteristic(gatt, controlChar, byteArrayOf(4), waitForCompletion = false)
+                    MainActivity.sendOtaProgress(0, false, "OTA cancelled")
+                    isOtaInProgress = false
+                    return
+                }
+                
+                val end = minOf(i + actualChunkSize, firmwareBytes.size)
+                val chunk = firmwareBytes.sliceArray(i until end)
+                
+                if (packetNumber % 100 == 0 || packetNumber < 10) {
+                    android.util.Log.d("BleScanService", "Writing packet $packetNumber/$otaTotalPackets (${chunk.size} bytes)")
+                }
+                
+                if (!writeOtaCharacteristic(gatt, dataChar, chunk, waitForCompletion = true)) {
+                    android.util.Log.e("BleScanService", "Failed to write packet $packetNumber")
+                    MainActivity.sendOtaProgress(0, false, "Failed to write packet $packetNumber")
+                    isOtaInProgress = false
+                    return
+                }
+                
+                packetNumber++
+                
+                // Update progress
+                val progress = (packetNumber * 100) / otaTotalPackets
+                otaProgress = progress
+                otaCurrentPacket = packetNumber
+                MainActivity.sendOtaProgress(progress, true, null)
+            }
+            
+            android.util.Log.d("BleScanService", "All packets sent. Sending completion signal...")
+            
+            // Write 0x04 to control characteristic to finish
+            android.util.Log.d("BleScanService", "Writing 0x04 to control characteristic to finish OTA")
+            writeOtaCharacteristic(gatt, controlChar, byteArrayOf(4), waitForCompletion = true)
+            Thread.sleep(500) // Wait for device to process
+            
+            // Try to read final acknowledgment, but don't fail if device disconnects (it's rebooting)
+            android.util.Log.d("BleScanService", "Waiting for final acknowledgment (0x05)")
+            val finalResponse = readOtaCharacteristicSync(gatt, controlChar, timeoutMs = 2000)
+            
+            // Check if we got a response or if device disconnected (which is normal - device reboots)
+            val deviceDisconnected = connectionState != STATE_CONNECTED || bluetoothGatt == null
+            
+            if (finalResponse != null && finalResponse.isNotEmpty() && finalResponse[0].toInt() == 5) {
+                android.util.Log.d("BleScanService", "OTA update successful! Received acknowledgment (0x05)")
+                MainActivity.sendOtaProgress(100, false, "OTA update successful")
+            } else if (deviceDisconnected) {
+                // Device disconnected after sending all packets - this is normal, device is rebooting to install firmware
+                android.util.Log.d("BleScanService", "OTA update completed. Device disconnected (rebooting to install firmware)")
+                MainActivity.sendOtaProgress(100, false, "OTA update completed. Device is rebooting to install firmware.")
+            } else {
+                val responseStr = if (finalResponse != null && finalResponse.isNotEmpty()) finalResponse[0].toInt().toString() else "no response"
+                android.util.Log.w("BleScanService", "OTA update may have succeeded but no acknowledgment received. Response: $responseStr")
+                // Still mark as success since all packets were sent
+                MainActivity.sendOtaProgress(100, false, "OTA update completed. All packets sent successfully.")
+            }
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+            android.util.Log.e("BleScanService", "OTA update failed: ${e.message}")
+            MainActivity.sendOtaProgress(0, false, "OTA update failed: ${e.message}")
+        } finally {
+            isOtaInProgress = false
+            // Restart regular UART timers after OTA completes (if still connected)
+            if (connectionState == STATE_CONNECTED && isUartReady) {
+                startMeasureTimer()
+                startChargeLimitTimer()
+                android.util.Log.d("BleScanService", "Restarted regular UART timers after OTA")
+            }
+        }
+    }
+    
+    private fun readOtaCharacteristicSync(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        timeoutMs: Long
+    ): ByteArray? {
+        synchronized(otaReadLock) {
+            lastReadValue = null
+        }
+        
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // For API 33+, reading is asynchronous
+                gatt.readCharacteristic(characteristic)
+                // Wait for callback
+                synchronized(otaReadLock) {
+                    otaReadLock.wait(timeoutMs)
+                }
+                lastReadValue
+            } else {
+                @Suppress("DEPRECATION")
+                gatt.readCharacteristic(characteristic)
+                Thread.sleep(200) // Wait a bit for read to complete
+                @Suppress("DEPRECATION")
+                characteristic.value
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+    
+    private fun writeOtaCharacteristic(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        data: ByteArray,
+        waitForCompletion: Boolean = true
+    ): Boolean {
+        return try {
+            synchronized(otaWriteLock) {
+                otaWriteCompleted = false
+            }
+            
+            val writeSuccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == 
+                    BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                characteristic.value = data
+                @Suppress("DEPRECATION")
+                characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                @Suppress("DEPRECATION")
+                gatt.writeCharacteristic(characteristic)
+            }
+            
+            if (!writeSuccess) {
+                return false
+            }
+            
+            // Wait for write completion if requested
+            if (waitForCompletion) {
+                synchronized(otaWriteLock) {
+                    val timeout = 2000L // 2 second timeout
+                    val startTime = System.currentTimeMillis()
+                    while (!otaWriteCompleted && isOtaInProgress) {
+                        val elapsed = System.currentTimeMillis() - startTime
+                        if (elapsed >= timeout) {
+                            return false // Timeout
+                        }
+                        otaWriteLock.wait(timeout - elapsed)
+                    }
+                    return otaWriteCompleted
+                }
+            }
+            
+            true
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+            false
+        } catch (e: InterruptedException) {
+            e.printStackTrace()
+            false
+        }
+    }
+    
+    
+    fun cancelOtaUpdate() {
+        otaCancelRequested = true
+    }
+    
+    fun getOtaProgress(): Int {
+        return otaProgress
+    }
+    
+    fun isOtaUpdateInProgress(): Boolean {
+        return isOtaInProgress
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
