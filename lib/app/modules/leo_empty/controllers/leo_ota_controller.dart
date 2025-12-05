@@ -211,12 +211,12 @@ class LeoOtaController extends GetxController {
           // Note: If device disconnected before acknowledgment (inProgress still true),
           // the dialog will start the timer when it shows (see leo_firmware_update_dialog.dart)
         } else if (!inProgress &&
-            progress == 0 &&
             message.isNotEmpty &&
-            !message.toLowerCase().contains('completed')) {
-          // OTA failed (but not if it says completed)
+            (message.toLowerCase().contains('fail') ||
+                message.toLowerCase().contains('error'))) {
+          // OTA failed - close dialogs and reset state
           print('OTA failed: $message');
-          // Error message will be shown in dialog
+          _handleOtaFailure(message);
         }
       },
       onError: (error) {
@@ -430,6 +430,33 @@ class LeoOtaController extends GetxController {
       _progressPollingTimer?.cancel();
       resetOtaState();
     }
+  }
+
+  /// Handle OTA failure - close dialogs and reset state
+  void _handleOtaFailure(String message) {
+    print('Handling OTA failure: $message');
+    AppSnackbars.showSuccess(
+      title: 'Update Failed',
+      message: 'Failed to update firmware: $message',
+    );
+
+    // Stop progress polling
+    _progressPollingTimer?.cancel();
+
+    // Stop install timer if running
+    _installTimer?.cancel();
+
+    // Close all OTA-related dialogs
+    isOtaProgressDialogOpen.value = false;
+    isTimerDialogOpen.value = false;
+
+    // Disable wake lock
+    WakelockPlus.disable();
+
+    // Reset state after a short delay to allow UI to update
+    Future.delayed(const Duration(milliseconds: 500), () {
+      resetOtaState();
+    });
   }
 
   /// Reset all OTA state to initial values

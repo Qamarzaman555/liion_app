@@ -31,8 +31,24 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
   Widget build(BuildContext context) {
     controller.isTimerDialogOpen.value = true;
 
-    // Listen for timer completion or reconnection
+    // Listen for timer completion, reconnection, or failure
     return Obx(() {
+      // Check if OTA failed (shouldn't happen normally, but handle it)
+      final message = controller.otaMessage.value.toLowerCase();
+      final hasFailed = (message.contains('fail') || message.contains('error')) &&
+          !controller.isOtaInProgress.value;
+      
+      // If OTA failed, close dialog immediately
+      if (hasFailed && mounted && Navigator.canPop(context)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && Navigator.canPop(context)) {
+            Navigator.pop(context);
+            controller.resetOtaState();
+          }
+        });
+        return const SizedBox.shrink();
+      }
+
       // If timer completed (secondsRemaining == 0) or dialog was closed (reconnection), show done dialog
       if (!_hasShownDoneDialog &&
           (controller.secondsRemaining.value == 0 ||

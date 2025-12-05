@@ -138,9 +138,22 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                 !isOtaInProgress &&
                 !isDownloading;
             final isError =
-                message.contains('fail') || message.contains('error');
+                (message.contains('fail') || message.contains('error')) &&
+                !isOtaInProgress &&
+                !isDownloading;
             final shouldShowProgress =
-                (isDownloading || isOtaInProgress) && !isCancelled;
+                (isDownloading || isOtaInProgress) && !isCancelled && !isError;
+
+            // Auto-close dialog if OTA failed
+            if (isError && mounted && Navigator.canPop(context)) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                  // Reset state after closing
+                  otaController.resetOtaState();
+                }
+              });
+            }
 
             return Column(
               mainAxisSize: MainAxisSize.min,

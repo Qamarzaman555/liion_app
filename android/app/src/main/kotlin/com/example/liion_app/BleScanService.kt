@@ -1921,8 +1921,11 @@ class BleScanService : Service() {
             
             android.util.Log.d("BleScanService", "Device ready for OTA. Starting firmware transfer...")
             
-            // Send firmware chunks (synchronous writes to avoid GATT busy)
+            // Send firmware chunks with retry logic and proper flow control
             var packetNumber = 0
+            var consecutiveFailures = 0
+            val maxConsecutiveFailures = 5
+            val retryDelayMs = 50L
             
             for (i in firmwareBytes.indices step actualChunkSize) {
                 if (otaCancelRequested) {
@@ -1940,13 +1943,46 @@ class BleScanService : Service() {
                     android.util.Log.d("BleScanService", "Writing packet $packetNumber/$otaTotalPackets (${chunk.size} bytes)")
                 }
                 
-                // Wait for completion to prevent overlapping writes (prevents GATT busy)
-                if (!writeOtaCharacteristic(gatt, dataChar, chunk, waitForCompletion = true)) {
-                    android.util.Log.e("BleScanService", "Failed to write packet $packetNumber")
-                    MainActivity.sendOtaProgress(0, false, "Failed to write packet $packetNumber")
+                // Retry logic for packet writes
+                var writeSuccess = false
+                var retryCount = 0
+                val maxRetries = 3
+                
+                while (!writeSuccess && retryCount < maxRetries && !otaCancelRequested) {
+                    // Wait for completion to prevent overlapping writes (prevents GATT busy)
+                    writeSuccess = writeOtaCharacteristic(gatt, dataChar, chunk, waitForCompletion = true)
+                    
+                    if (!writeSuccess) {
+                        retryCount++
+                        consecutiveFailures++
+                        android.util.Log.w("BleScanService", "Failed to write packet $packetNumber (attempt $retryCount/$maxRetries)")
+                        
+                        if (consecutiveFailures >= maxConsecutiveFailures) {
+                            android.util.Log.e("BleScanService", "Too many consecutive failures ($consecutiveFailures). Aborting OTA.")
+                            MainActivity.sendOtaProgress(0, false, "Failed to write packet $packetNumber after $consecutiveFailures consecutive failures")
+                            isOtaInProgress = false
+                            return
+                        }
+                        
+                        // Exponential backoff: 50ms, 100ms, 200ms
+                        val backoffDelay = retryDelayMs * (1 shl (retryCount - 1))
+                        android.util.Log.d("BleScanService", "Retrying packet $packetNumber after ${backoffDelay}ms delay")
+                        Thread.sleep(backoffDelay)
+                    } else {
+                        consecutiveFailures = 0 // Reset on success
+                    }
+                }
+                
+                if (!writeSuccess) {
+                    android.util.Log.e("BleScanService", "Failed to write packet $packetNumber after $maxRetries attempts")
+                    MainActivity.sendOtaProgress(0, false, "Failed to write packet $packetNumber after $maxRetries attempts")
                     isOtaInProgress = false
                     return
                 }
+                
+                // Small delay after successful write to ensure BLE stack is ready for next packet
+                // This prevents "prior command is not finished" errors
+                Thread.sleep(10) // 10ms delay is sufficient for BLE stack to process
                 
                 packetNumber++
                 
@@ -2062,9 +2098,10 @@ class BleScanService : Service() {
                 otaWriteCompleted = false
             }
             
+            // Try to write the characteristic
             val writeSuccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                gatt.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == 
-                    BluetoothStatusCodes.SUCCESS
+                val result = gatt.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                result == BluetoothStatusCodes.SUCCESS
             } else {
                 @Suppress("DEPRECATION")
                 characteristic.value = data
@@ -2075,30 +2112,45 @@ class BleScanService : Service() {
             }
             
             if (!writeSuccess) {
+                android.util.Log.w("BleScanService", "writeCharacteristic returned false immediately - BLE stack may be busy")
                 return false
             }
             
             // Wait for write completion if requested
             if (waitForCompletion) {
                 synchronized(otaWriteLock) {
-                    val timeout = 2000L // 2 second timeout
+                    val timeout = 3000L // 3 second timeout (increased from 2s for reliability)
                     val startTime = System.currentTimeMillis()
                     while (!otaWriteCompleted && isOtaInProgress) {
                         val elapsed = System.currentTimeMillis() - startTime
                         if (elapsed >= timeout) {
+                            android.util.Log.w("BleScanService", "Write completion timeout after ${elapsed}ms")
                             return false // Timeout
                         }
-                        otaWriteLock.wait(timeout - elapsed)
+                        val remainingTime = timeout - elapsed
+                        if (remainingTime > 0) {
+                            otaWriteLock.wait(remainingTime)
+                        }
                     }
-                    return otaWriteCompleted
+                    if (!otaWriteCompleted) {
+                        android.util.Log.w("BleScanService", "Write completed but otaWriteCompleted is false")
+                        return false
+                    }
+                    return true
                 }
             }
             
             true
         } catch (e: SecurityException) {
+            android.util.Log.e("BleScanService", "SecurityException in writeOtaCharacteristic: ${e.message}")
             e.printStackTrace()
             false
         } catch (e: InterruptedException) {
+            android.util.Log.e("BleScanService", "InterruptedException in writeOtaCharacteristic: ${e.message}")
+            e.printStackTrace()
+            false
+        } catch (e: Exception) {
+            android.util.Log.e("BleScanService", "Exception in writeOtaCharacteristic: ${e.message}")
             e.printStackTrace()
             false
         }
