@@ -28,12 +28,20 @@ class BackendLoggingService private constructor() {
         }
     }
 
-    // Backend API configuration - update this with your backend URL
-    // IMPORTANT: Change this to your backend server IP address
-    // For local development: "http://10.0.2.2:3000" (Android emulator)
-    // For physical device: "http://YOUR_COMPUTER_IP:3000" (e.g., "http://192.168.18.82:3000")
-    private val backendBaseUrl: String = "http://13.62.9.177:3000"
+    // Backend API configuration
+    // Default: "http://10.0.2.2:3000" (Android emulator - maps to host machine's localhost)
+    // For physical device: Use setBackendUrl() to set your computer's IP (e.g., "http://192.168.1.100:3000")
+    private var backendBaseUrl: String = "http://13.62.9.177:3000"
     private val apiBasePath: String = "/api"
+    
+    /**
+     * Set the backend server URL
+     * @param url Full URL including protocol and port (e.g., "http://192.168.1.100:3000")
+     */
+    fun setBackendUrl(url: String) {
+        backendBaseUrl = url.trimEnd('/') // Remove trailing slash if present
+        Log.d("BackendLogging", "Backend URL set to: $backendBaseUrl")
+    }
 
     private var deviceKey: String? = null
     private var sessionId: String? = null
@@ -58,40 +66,62 @@ class BackendLoggingService private constructor() {
 
         scope.launch {
             try {
-                // // DEBUG MODE: Comment out the entire block below to disable backend initialization
-                // // Check network connectivity
-                // if (!hasNetworkConnection()) {
-                //     Log.w("BackendLogging", "No network connection available for backend logging")
-                //     return@launch
-                // }
+                Log.d("BackendLogging", "Initializing backend logging service")
+                Log.d("BackendLogging", "Backend URL: $backendBaseUrl")
+                Log.d("BackendLogging", "App Version: $appVersion, Build: $buildNumber")
+                
+                // Check network connectivity
+                if (!hasNetworkConnection()) {
+                    Log.w("BackendLogging", "No network connection available for backend logging")
+                    return@launch
+                }
 
-                // // Test backend connectivity first
-                // if (!testBackendConnection()) {
-                //     Log.e("BackendLogging", "Cannot reach backend server at $backendBaseUrl. Please check if server is running and accessible.")
-                //     return@launch
-                // }
+                // Test backend connectivity first
+                if (!testBackendConnection()) {
+                    Log.e("BackendLogging", "Cannot reach backend server at $backendBaseUrl")
+                    Log.e("BackendLogging", "For Android emulator: Use http://10.0.2.2:3000 (default)")
+                    Log.e("BackendLogging", "For physical device: Call setBackendUrl() with your computer's IP (e.g., http://192.168.1.100:3000)")
+                    return@launch
+                }
 
-                // // Get device label
-                // deviceKey = getDeviceLabel()
-                // Log.d("BackendLogging", "Device key: $deviceKey")
+                // Get device label
+                deviceKey = getDeviceLabel()
+                Log.d("BackendLogging", "Device key: $deviceKey")
 
-                // // Get next session ID by querying existing sessions
-                // val nextSessionId = getNextSessionId()
+                // First ensure device exists (check via GET /api/devices, create if not exists)
+                Log.d("BackendLogging", "Ensuring device exists before getting session ID. Device key: $deviceKey")
+                val deviceExists = ensureDeviceExists()
+                if (!deviceExists) {
+                    Log.e("BackendLogging", "Failed to ensure device exists. Device key: $deviceKey. Retrying...")
+                    // Try one more time after a short delay
+                    delay(2000)
+                    val retryResult = ensureDeviceExists()
+                    if (!retryResult) {
+                        Log.e("BackendLogging", "Retry failed. Cannot proceed without device. Device key: $deviceKey, Backend URL: $backendBaseUrl")
+                        return@launch
+                    } else {
+                        Log.d("BackendLogging", "Device created successfully on retry")
+                    }
+                } else {
+                    Log.d("BackendLogging", "Device exists, proceeding with session ID retrieval")
+                }
 
-                // sessionId = nextSessionId
-                // Log.d("BackendLogging", "Session ID: $sessionId")
+                // Get next session ID by querying existing sessions
+                val nextSessionId = getNextSessionId()
 
-                // // Create session via API
-                // val sessionCreated = createSession(nextSessionId, appVersion, buildNumber)
+                sessionId = nextSessionId
+                Log.d("BackendLogging", "Session ID: $sessionId")
 
-                // if (sessionCreated) {
-                //     isInitialized = true
-                //     Log.d("BackendLogging", "Logging session initialized successfully")
-                //     log("INFO", "Logging session initialized")
-                // } else {
-                //     Log.e("BackendLogging", "Failed to create session")
-                // }
-                // // DEBUG MODE END
+                // Create session via API (this will update session if it already exists)
+                val sessionCreated = createSession(nextSessionId, appVersion, buildNumber)
+
+                if (sessionCreated) {
+                    isInitialized = true
+                    Log.d("BackendLogging", "Logging session initialized successfully")
+                    log("INFO", "Logging session initialized")
+                } else {
+                    Log.e("BackendLogging", "Failed to create session")
+                }
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error in initialize", e)
             }
@@ -144,23 +174,8 @@ class BackendLoggingService private constructor() {
     ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                // First ensure device exists (this will create it if it doesn't exist)
-                Log.d("BackendLogging", "Ensuring device exists before creating session. Device key: $deviceKey")
-                val deviceCreated = ensureDeviceExists()
-                if (!deviceCreated) {
-                    Log.e("BackendLogging", "Failed to ensure device exists. Device key: $deviceKey. Retrying...")
-                    // Try one more time after a short delay
-                    delay(2000)
-                    val retryResult = ensureDeviceExists()
-                    if (!retryResult) {
-                        Log.e("BackendLogging", "Retry failed. Cannot create session without device. Device key: $deviceKey, Backend URL: $backendBaseUrl")
-                        return@withContext false
-                    } else {
-                        Log.d("BackendLogging", "Device created successfully on retry")
-                    }
-                } else {
-                    Log.d("BackendLogging", "Device exists, proceeding with session creation")
-                }
+                // Device should already exist at this point, but create session
+                Log.d("BackendLogging", "Creating/updating session. Device key: $deviceKey, Session ID: $sessionId")
 
                 val url = URL("$backendBaseUrl$apiBasePath/sessions")
                 val connection = url.openConnection() as HttpURLConnection
@@ -209,19 +224,58 @@ class BackendLoggingService private constructor() {
         return withContext(Dispatchers.IO) {
             try {
                 if (deviceKey == null) {
-                    Log.e("BackendLogging", "Device key is null, cannot create device")
+                    Log.e("BackendLogging", "Device key is null, cannot check/create device")
                     return@withContext false
                 }
 
-                val fullUrl = "$backendBaseUrl$apiBasePath/devices"
-                Log.d("BackendLogging", "Creating device at: $fullUrl")
-                val url = URL(fullUrl)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.setRequestProperty("Content-Type", "application/json")
-                connection.doOutput = true
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
+                // First, check if device exists by getting all devices
+                val checkUrl = "$backendBaseUrl$apiBasePath/devices"
+                Log.d("BackendLogging", "Checking if device exists at: $checkUrl")
+                val checkConnection = URL(checkUrl).openConnection() as HttpURLConnection
+                checkConnection.requestMethod = "GET"
+                checkConnection.setRequestProperty("Content-Type", "application/json")
+                checkConnection.connectTimeout = 5000
+                checkConnection.readTimeout = 5000
+
+                val checkResponseCode = checkConnection.responseCode
+                if (checkResponseCode == HttpURLConnection.HTTP_OK) {
+                    val response = checkConnection.inputStream.bufferedReader().use { it.readText() }
+                    val devices = org.json.JSONArray(response)
+                    
+                    // Check if device exists in the list
+                    var deviceExists = false
+                    for (i in 0 until devices.length()) {
+                        val device = devices.getJSONObject(i)
+                        val existingDeviceKey = device.getString("deviceKey")
+                        if (existingDeviceKey == deviceKey) {
+                            deviceExists = true
+                            Log.d("BackendLogging", "Device found in list: $deviceKey")
+                            break
+                        }
+                    }
+
+                    if (deviceExists) {
+                        // Device exists, no need to create
+                        Log.d("BackendLogging", "Device already exists: $deviceKey")
+                        return@withContext true
+                    } else {
+                        // Device doesn't exist, create it
+                        Log.d("BackendLogging", "Device not found in list, creating new device: $deviceKey")
+                    }
+                } else {
+                    // If GET fails, try to create device anyway
+                    Log.w("BackendLogging", "Failed to get devices list (code: $checkResponseCode), attempting to create device")
+                }
+
+                // Create device if it doesn't exist
+                val createUrl = "$backendBaseUrl$apiBasePath/devices"
+                Log.d("BackendLogging", "Creating device at: $createUrl")
+                val createConnection = URL(createUrl).openConnection() as HttpURLConnection
+                createConnection.requestMethod = "POST"
+                createConnection.setRequestProperty("Content-Type", "application/json")
+                createConnection.doOutput = true
+                createConnection.connectTimeout = 15000
+                createConnection.readTimeout = 15000
 
                 val requestBody = JSONObject().apply {
                     put("deviceKey", deviceKey)
@@ -231,30 +285,30 @@ class BackendLoggingService private constructor() {
                 val requestBodyString = requestBody.toString()
                 Log.d("BackendLogging", "Request body: $requestBodyString")
 
-                OutputStreamWriter(connection.outputStream).use { writer ->
+                OutputStreamWriter(createConnection.outputStream).use { writer ->
                     writer.write(requestBodyString)
                     writer.flush()
                 }
 
-                val responseCode = connection.responseCode
-                Log.d("BackendLogging", "Device creation response code: $responseCode")
+                val createResponseCode = createConnection.responseCode
+                Log.d("BackendLogging", "Device creation response code: $createResponseCode")
                 
-                if (responseCode == HttpURLConnection.HTTP_OK || 
-                    responseCode == HttpURLConnection.HTTP_CREATED) {
+                if (createResponseCode == HttpURLConnection.HTTP_OK || 
+                    createResponseCode == HttpURLConnection.HTTP_CREATED) {
                     val responseBody = try {
-                        connection.inputStream.bufferedReader().use { it.readText() }
+                        createConnection.inputStream.bufferedReader().use { it.readText() }
                     } catch (e: Exception) {
                         "Could not read response: ${e.message}"
                     }
-                    Log.d("BackendLogging", "Device created/retrieved successfully: $deviceKey. Response: $responseBody")
+                    Log.d("BackendLogging", "Device created successfully: $deviceKey. Response: $responseBody")
                     true
                 } else {
                     val errorResponse = try {
-                        connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "No error message"
+                        createConnection.errorStream?.bufferedReader()?.use { it.readText() } ?: "No error message"
                     } catch (e: Exception) {
                         "Could not read error response: ${e.message}"
                     }
-                    Log.e("BackendLogging", "Failed to create device. Response code: $responseCode, Error: $errorResponse, URL: $fullUrl")
+                    Log.e("BackendLogging", "Failed to create device. Response code: $createResponseCode, Error: $errorResponse, URL: $createUrl")
                     false
                 }
             } catch (e: java.net.UnknownHostException) {
@@ -289,10 +343,8 @@ class BackendLoggingService private constructor() {
                     return@launch
                 }
 
-                // // DEBUG MODE: Comment out the line below to disable sending logs to backend
-                // // Send log immediately (no batching)
-                // sendLog(level, message)
-                // // DEBUG MODE END
+                // Send log immediately (no batching)
+                sendLog(level, message)
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error in log method", e)
             }
@@ -302,38 +354,36 @@ class BackendLoggingService private constructor() {
     private suspend fun sendLog(level: String, message: String) {
         withContext(Dispatchers.IO) {
             try {
-                // // DEBUG MODE: Comment out everything below to disable HTTP requests to backend
-                // val url = URL("$backendBaseUrl$apiBasePath/logs")
-                // val connection = url.openConnection() as HttpURLConnection
-                // connection.requestMethod = "POST"
-                // connection.setRequestProperty("Content-Type", "application/json")
-                // connection.doOutput = true
-                // connection.connectTimeout = 5000
-                // connection.readTimeout = 5000
+                val url = URL("$backendBaseUrl$apiBasePath/logs")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.doOutput = true
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
 
-                // val timestamp = dateFormat.format(Date())
-                // val requestBody = JSONObject().apply {
-                //     put("deviceKey", deviceKey)
-                //     put("sessionId", sessionId)
-                //     put("level", level)
-                //     put("message", message)
-                //     put("timestamp", timestamp)
-                // }
+                val timestamp = dateFormat.format(Date())
+                val requestBody = JSONObject().apply {
+                    put("deviceKey", deviceKey)
+                    put("sessionId", sessionId)
+                    put("level", level)
+                    put("message", message)
+                    put("timestamp", timestamp)
+                }
 
-                // OutputStreamWriter(connection.outputStream).use { writer ->
-                //     writer.write(requestBody.toString())
-                //     writer.flush()
-                // }
+                OutputStreamWriter(connection.outputStream).use { writer ->
+                    writer.write(requestBody.toString())
+                    writer.flush()
+                }
 
-                // val responseCode = connection.responseCode
-                // if (responseCode == HttpURLConnection.HTTP_CREATED || 
-                //     responseCode == HttpURLConnection.HTTP_OK) {
-                //     Log.d("BackendLogging", "Log sent successfully: $level - $message")
-                // } else {
-                //     val errorResponse = connection.errorStream?.bufferedReader()?.use { it.readText() }
-                //     Log.e("BackendLogging", "Failed to send log: $errorResponse")
-                // }
-                // // DEBUG MODE END
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_CREATED || 
+                    responseCode == HttpURLConnection.HTTP_OK) {
+                    Log.d("BackendLogging", "Log sent successfully: $level - $message")
+                } else {
+                    val errorResponse = connection.errorStream?.bufferedReader()?.use { it.readText() }
+                    Log.e("BackendLogging", "Failed to send log: $errorResponse")
+                }
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error sending log", e)
             }
