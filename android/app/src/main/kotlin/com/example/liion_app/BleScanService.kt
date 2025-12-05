@@ -111,7 +111,7 @@ class BleScanService : Service() {
             val durationSeconds: Long,
             val accumulatedMah: Double
         )
-        const val MAX_SESSIONS = 100 // Keep last 100 sessions
+        const val MAX_SESSIONS = 300 // Keep last 300 sessions
         
         fun getBatterySessionHistory(): List<Map<String, Any>> {
             return instance?.getSessionHistory() ?: emptyList()
@@ -1142,11 +1142,27 @@ class BleScanService : Service() {
             }
             
             // Save to SharedPreferences
-            saveSessions()
+            val saveSuccess = saveSessions()
             
-            logger.logInfo("Battery session saved: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
+            if (saveSuccess) {
+                logger.logInfo("(session) Battery session added: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
+                        "$currentSessionInitialLevel% -> $phoneBatteryLevel% " +
+                        "($durationSeconds s, ${currentSessionAccumulatedMah.toInt()} mAh)")
+            } else {
+                logger.logError("(session) Battery session failed to save: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
+                        "$currentSessionInitialLevel% -> $phoneBatteryLevel% " +
+                        "($durationSeconds s, ${currentSessionAccumulatedMah.toInt()} mAh)")
+            }
+        } else {
+            // Session skipped due to insufficient duration or mAh
+            val skipReason = when {
+                durationSeconds < 1 -> "duration too short ($durationSeconds s < 1 s)"
+                currentSessionAccumulatedMah < 1.0 -> "mAh too low (${currentSessionAccumulatedMah.toInt()} mAh < 1 mAh)"
+                else -> "unknown reason"
+            }
+            logger.logInfo("(session) Battery session skipped: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
                     "$currentSessionInitialLevel% -> $phoneBatteryLevel% " +
-                    "($durationSeconds s, ${currentSessionAccumulatedMah.toInt()} mAh)")
+                    "($durationSeconds s, ${currentSessionAccumulatedMah.toInt()} mAh) - Reason: $skipReason")
         }
         
         // Reset current session
@@ -1154,26 +1170,41 @@ class BleScanService : Service() {
         currentSessionAccumulatedMah = 0.0
     }
     
-    private fun saveSessions() {
-        prefs?.edit()?.apply {
-            putInt("battery_sessions_count", batterySessions.size)
+    private fun saveSessions(): Boolean {
+        return try {
+            // Log all sessions being saved
+            logger.logInfo("(session) Saving ${batterySessions.size} battery session(s) to SharedPreferences:")
             batterySessions.forEachIndexed { index, session ->
-                putLong("session_${index}_start", session.startTime)
-                putLong("session_${index}_end", session.endTime)
-                putInt("session_${index}_initial", session.initialLevel)
-                putInt("session_${index}_final", session.finalLevel)
-                putBoolean("session_${index}_charging", session.isCharging)
-                putLong("session_${index}_duration", session.durationSeconds)
-                putFloat("session_${index}_mah", session.accumulatedMah.toFloat())
+                logger.logInfo("(session) Saving session ${index + 1}/${batterySessions.size}: ${if (session.isCharging) "Charge" else "Discharge"} " +
+                        "${session.initialLevel}% -> ${session.finalLevel}% " +
+                        "(${session.durationSeconds} s, ${session.accumulatedMah.toInt()} mAh)")
             }
-            apply()
+            
+            prefs?.edit()?.apply {
+                putInt("battery_sessions_count", batterySessions.size)
+                batterySessions.forEachIndexed { index, session ->
+                    putLong("session_${index}_start", session.startTime)
+                    putLong("session_${index}_end", session.endTime)
+                    putInt("session_${index}_initial", session.initialLevel)
+                    putInt("session_${index}_final", session.finalLevel)
+                    putBoolean("session_${index}_charging", session.isCharging)
+                    putLong("session_${index}_duration", session.durationSeconds)
+                    putFloat("session_${index}_mah", session.accumulatedMah.toFloat())
+                }
+                apply()
+            } != null
+        } catch (e: Exception) {
+            logger.logError("(session) Failed to save battery sessions to SharedPreferences: ${e.message}")
+            false
         }
     }
     
     private fun loadSessions() {
         val count = prefs?.getInt("battery_sessions_count", 0) ?: 0
+        logger.logInfo("(session) Loading battery session history from SharedPreferences (found $count session(s) in storage)")
         batterySessions.clear()
         
+        var loadedCount = 0
         for (i in 0 until count.coerceAtMost(MAX_SESSIONS)) {
             val startTime = prefs?.getLong("session_${i}_start", 0L) ?: 0L
             val endTime = prefs?.getLong("session_${i}_end", 0L) ?: 0L
@@ -1194,11 +1225,18 @@ class BleScanService : Service() {
                     durationSeconds = durationSeconds,
                     accumulatedMah = accumulatedMah
                 ))
+                loadedCount++
+                logger.logInfo("(session) Loaded session $loadedCount: ${if (isCharging) "Charge" else "Discharge"} " +
+                        "$initialLevel% -> $finalLevel% " +
+                        "($durationSeconds s, ${accumulatedMah.toInt()} mAh)")
             }
         }
+        logger.logInfo("(session) Successfully loaded $loadedCount battery session(s) from SharedPreferences")
     }
     
     fun getSessionHistory(): List<Map<String, Any>> {
+        logger.logInfo("(session) Flutter requested battery session history from SharedPreferences")
+        
         // Include current session if active and meets criteria (mAh >= 1)
         val sessionsToReturn = mutableListOf<Companion.BatterySession>()
         sessionsToReturn.addAll(batterySessions)
@@ -1218,20 +1256,36 @@ class BleScanService : Service() {
         }
         
         // Filter out any sessions with mAh < 1 and return in reverse chronological order (newest first)
-        return sessionsToReturn
+        val filteredSessions = sessionsToReturn
             .filter { it.accumulatedMah >= 1.0 }
             .reversed()
-            .map { session ->
-                mapOf(
-                    "startTime" to session.startTime,
-                    "endTime" to session.endTime,
-                    "initialLevel" to session.initialLevel,
-                    "finalLevel" to session.finalLevel,
-                    "isCharging" to session.isCharging,
-                    "durationSeconds" to session.durationSeconds,
-                    "accumulatedMah" to session.accumulatedMah
-                )
-            }
+        
+        val result = filteredSessions.map { session ->
+            mapOf(
+                "startTime" to session.startTime,
+                "endTime" to session.endTime,
+                "initialLevel" to session.initialLevel,
+                "finalLevel" to session.finalLevel,
+                "isCharging" to session.isCharging,
+                "durationSeconds" to session.durationSeconds,
+                "accumulatedMah" to session.accumulatedMah
+            )
+        }
+        
+        // Log all sessions being returned to Flutter
+        logger.logInfo("(session) Returning ${result.size} battery session(s) to Flutter:")
+        result.forEachIndexed { index, sessionMap ->
+            val isCharging = sessionMap["isCharging"] as? Boolean ?: false
+            val initialLevel = sessionMap["initialLevel"] as? Int ?: 0
+            val finalLevel = sessionMap["finalLevel"] as? Int ?: 0
+            val durationSeconds = sessionMap["durationSeconds"] as? Long ?: 0L
+            val accumulatedMah = sessionMap["accumulatedMah"] as? Double ?: 0.0
+            logger.logInfo("(session) Session ${index + 1}/${result.size}: ${if (isCharging) "Charge" else "Discharge"} " +
+                    "$initialLevel% -> $finalLevel% " +
+                    "($durationSeconds s, ${accumulatedMah.toInt()} mAh)")
+        }
+        
+        return result
     }
     
     // ==================== End Battery Session Tracking ====================
