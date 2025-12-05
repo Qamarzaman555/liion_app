@@ -1921,8 +1921,9 @@ class BleScanService : Service() {
             
             android.util.Log.d("BleScanService", "Device ready for OTA. Starting firmware transfer...")
             
-            // Send firmware chunks
+            // Send firmware chunks (synchronous writes to avoid GATT busy)
             var packetNumber = 0
+            
             for (i in firmwareBytes.indices step actualChunkSize) {
                 if (otaCancelRequested) {
                     android.util.Log.d("BleScanService", "OTA cancelled by user")
@@ -1939,6 +1940,7 @@ class BleScanService : Service() {
                     android.util.Log.d("BleScanService", "Writing packet $packetNumber/$otaTotalPackets (${chunk.size} bytes)")
                 }
                 
+                // Wait for completion to prevent overlapping writes (prevents GATT busy)
                 if (!writeOtaCharacteristic(gatt, dataChar, chunk, waitForCompletion = true)) {
                     android.util.Log.e("BleScanService", "Failed to write packet $packetNumber")
                     MainActivity.sendOtaProgress(0, false, "Failed to write packet $packetNumber")

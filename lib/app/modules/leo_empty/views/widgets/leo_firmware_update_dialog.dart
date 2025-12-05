@@ -131,6 +131,17 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
               });
             }
 
+            // Check if OTA was cancelled or failed
+            final message = otaController.otaMessage.value.toLowerCase();
+            final isCancelled =
+                message.contains('cancel') &&
+                !isOtaInProgress &&
+                !isDownloading;
+            final isError =
+                message.contains('fail') || message.contains('error');
+            final shouldShowProgress =
+                (isDownloading || isOtaInProgress) && !isCancelled;
+
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -142,9 +153,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                if (isDownloading ||
-                    isOtaInProgress ||
-                    otaController.otaMessage.value.isNotEmpty)
+                if (shouldShowProgress)
                   Column(
                     children: [
                       LinearProgressIndicator(
@@ -152,14 +161,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                             ? downloadProgress.clamp(0.0, 1.0)
                             : progress.clamp(0.0, 1.0),
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          otaController.otaMessage.value.toLowerCase().contains(
-                                    'fail',
-                                  ) ||
-                                  otaController.otaMessage.value
-                                      .toLowerCase()
-                                      .contains('error')
-                              ? Colors.red
-                              : AppColors.primaryColor,
+                          isError ? Colors.red : AppColors.primaryColor,
                         ),
                         minHeight: 6,
                         borderRadius: BorderRadius.circular(4),
@@ -223,28 +225,48 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                       //   ),
                     ],
                   )
-                else
+                else if (!isCancelled && !isError)
                   Column(
                     children: [
-                      SizedBox(height: 8),
-                      Text(
-                        'Update in progress',
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Preparing...',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      SizedBox(height: 12),
+                      const SizedBox(height: 12),
                       LinearProgressIndicator(
                         value: null,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.primaryColor,
+                        ),
                         minHeight: 6,
                         borderRadius: BorderRadius.circular(4),
                         backgroundColor: Colors.grey[300],
                       ),
                     ],
+                  )
+                else if (isCancelled || isError)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      otaController.otaMessage.value.isNotEmpty
+                          ? otaController.otaMessage.value
+                          : isCancelled
+                          ? 'Update cancelled'
+                          : 'Update failed',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isCancelled ? Colors.orange : Colors.red,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 const SizedBox(height: 24),
-                if (isOtaInProgress || isDownloading)
+                if (shouldShowProgress)
                   CustomButton(
                     text: 'Cancel',
                     textColor: AppColors.blackColor,
