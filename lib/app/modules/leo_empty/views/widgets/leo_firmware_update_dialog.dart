@@ -7,7 +7,10 @@ import '../../controllers/leo_ota_controller.dart';
 import 'wait_for_install_dialog.dart';
 
 class LeoFirmwareUpdateDialog extends StatefulWidget {
-  const LeoFirmwareUpdateDialog({super.key});
+  const LeoFirmwareUpdateDialog({super.key, this.autoDownloadFromCloud = true});
+
+  /// When true, dialog auto-downloads firmware from the cloud on open.
+  final bool autoDownloadFromCloud;
 
   @override
   State<LeoFirmwareUpdateDialog> createState() =>
@@ -40,6 +43,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
     // Auto-start cloud download when dialog opens and nothing is running
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (!widget.autoDownloadFromCloud) return;
       if (_autoStartedDownload) return;
       if (otaController.isOtaInProgress.value ||
           otaController.isDownloadingFirmware.value) {

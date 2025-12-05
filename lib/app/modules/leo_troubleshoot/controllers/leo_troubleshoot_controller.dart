@@ -74,7 +74,8 @@ class LeoTroubleshootController extends GetxController {
           showDialog(
             context: context,
             barrierDismissible: false,
-            builder: (_) => const LeoFirmwareUpdateDialog(),
+            builder: (_) =>
+                const LeoFirmwareUpdateDialog(autoDownloadFromCloud: false),
           );
         }
         return;
@@ -98,7 +99,8 @@ class LeoTroubleshootController extends GetxController {
             showDialog(
               context: context,
               barrierDismissible: false,
-              builder: (_) => const LeoFirmwareUpdateDialog(),
+              builder: (_) =>
+                  const LeoFirmwareUpdateDialog(autoDownloadFromCloud: false),
             );
           }
           return;
@@ -111,7 +113,8 @@ class LeoTroubleshootController extends GetxController {
           showDialog(
             context: context,
             barrierDismissible: false,
-            builder: (_) => const LeoFirmwareUpdateDialog(),
+            builder: (_) =>
+                const LeoFirmwareUpdateDialog(autoDownloadFromCloud: false),
           );
 
           // Start OTA update
