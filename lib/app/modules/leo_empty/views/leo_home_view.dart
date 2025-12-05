@@ -97,64 +97,11 @@ class LeoHomeView extends GetView<LeoHomeController> {
       return;
     }
 
-    // Show folder name input dialog for cloud download
-    final TextEditingController folderController = TextEditingController();
-    final result = await showDialog<String>(
+    // Show firmware update dialog immediately
+    showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Download Firmware'),
-        content: TextField(
-          controller: folderController,
-          decoration: const InputDecoration(
-            labelText: 'Firebase Storage Folder Name',
-            hintText: 'e.g., firmware/leo',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (folderController.text.isNotEmpty) {
-                Navigator.pop(context, folderController.text);
-              }
-            },
-            child: const Text('Download'),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (_) => const LeoFirmwareUpdateDialog(),
     );
-
-    // Check again if OTA started while user was entering folder name
-    if (otaController.isOtaInProgress.value ||
-        otaController.isDownloadingFirmware.value ||
-        otaController.isOtaProgressDialogOpen.value) {
-      // OTA started while entering folder name, just show progress dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const LeoFirmwareUpdateDialog(),
-      );
-      return;
-    }
-
-    if (result != null && result.isNotEmpty) {
-      // Show progress dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const LeoFirmwareUpdateDialog(),
-      );
-
-      // Download firmware and start OTA
-      await otaController.downloadFolder(result);
-      if (otaController.cloudBinFilePath.value.isNotEmpty) {
-        await otaController.startOtaUpdate(
-          otaController.cloudBinFilePath.value,
-        );
-      }
-    }
   }
 }

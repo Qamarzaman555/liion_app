@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
-import 'package:file_picker/file_picker.dart';
-
 import '../../controllers/leo_home_controller.dart';
 import '../../controllers/leo_ota_controller.dart';
 import 'wait_for_install_dialog.dart';
@@ -21,6 +19,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
   late LeoHomeController homeController;
   String? selectedFilePath;
   bool _hasShownWaitDialog = false;
+  bool _autoStartedDownload = false;
 
   @override
   void initState() {
@@ -37,6 +36,18 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
 
     // Mark OTA progress dialog as open
     otaController.isOtaProgressDialogOpen.value = true;
+
+    // Auto-start cloud download when dialog opens and nothing is running
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_autoStartedDownload) return;
+      if (otaController.isOtaInProgress.value ||
+          otaController.isDownloadingFirmware.value) {
+        return;
+      }
+      _autoStartedDownload = true;
+      _downloadFromCloud();
+    });
   }
 
   @override
@@ -63,53 +74,11 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
   }
 
   Future<void> _downloadFromCloud() async {
-    // Show folder name input dialog
-    final TextEditingController folderController = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Download Firmware'),
-        content: TextField(
-          controller: folderController,
-          decoration: const InputDecoration(
-            labelText: 'Firebase Storage Folder Name',
-            hintText: 'e.g., firmware/leo',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (folderController.text.isNotEmpty) {
-                Navigator.pop(context, folderController.text);
-              }
-            },
-            child: const Text('Download'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null && result.isNotEmpty) {
-      await otaController.downloadFolder(result);
-      if (otaController.cloudBinFilePath.value.isNotEmpty) {
-        selectedFilePath = otaController.cloudBinFilePath.value;
-        await _checkConnectionAndStartUpdate();
-      }
-    }
-  }
-
-  Future<void> _pickFileFromDevice() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['bin'],
-    );
-
-    if (result != null && result.files.single.path != null) {
-      selectedFilePath = result.files.single.path!;
+    // Automatically download from "Bin file" folder
+    const folderName = 'Bin file';
+    await otaController.downloadFolder(folderName);
+    if (otaController.cloudBinFilePath.value.isNotEmpty) {
+      selectedFilePath = otaController.cloudBinFilePath.value;
       await _checkConnectionAndStartUpdate();
     }
   }
@@ -202,99 +171,71 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      if (isOtaInProgress &&
-                          otaController.otaTotalPackets.value > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4.0),
-                          child: Text(
-                            'Packet ${otaController.otaCurrentPacket.value}/${otaController.otaTotalPackets.value}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ),
-                      if (isOtaInProgress &&
-                          otaController.otaMessage.value.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            otaController.otaMessage.value,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color:
-                                  otaController.otaMessage.value
-                                          .toLowerCase()
-                                          .contains('error') ||
-                                      otaController.otaMessage.value
-                                          .toLowerCase()
-                                          .contains('fail')
-                                  ? Colors.red
-                                  : Colors.grey[600],
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      if (!isOtaInProgress &&
-                          otaController.otaMessage.value.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            otaController.otaMessage.value,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.red,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
+                      // if (isOtaInProgress &&
+                      //     otaController.otaTotalPackets.value > 0)
+                      //   Padding(
+                      //     padding: const EdgeInsets.only(top: 4.0),
+                      //     child: Text(
+                      //       'Packet ${otaController.otaCurrentPacket.value}/${otaController.otaTotalPackets.value}',
+                      //       style: TextStyle(
+                      //         fontSize: 12,
+                      //         color: Colors.grey[600],
+                      //       ),
+                      //     ),
+                      //   ),
+                      // if (isOtaInProgress &&
+                      //     otaController.otaMessage.value.isNotEmpty)
+                      //   Padding(
+                      //     padding: const EdgeInsets.only(top: 8.0),
+                      //     child: Text(
+                      //       otaController.otaMessage.value,
+                      //       style: TextStyle(
+                      //         fontSize: 12,
+                      //         color:
+                      //             otaController.otaMessage.value
+                      //                     .toLowerCase()
+                      //                     .contains('error') ||
+                      //                 otaController.otaMessage.value
+                      //                     .toLowerCase()
+                      //                     .contains('fail')
+                      //             ? Colors.red
+                      //             : Colors.grey[600],
+                      //       ),
+                      //       textAlign: TextAlign.center,
+                      //     ),
+                      //   ),
+                      // if (!isOtaInProgress &&
+                      //     otaController.otaMessage.value.isNotEmpty)
+                      //   Padding(
+                      //     padding: const EdgeInsets.only(top: 8.0),
+                      //     child: Text(
+                      //       otaController.otaMessage.value,
+                      //       style: const TextStyle(
+                      //         fontSize: 12,
+                      //         color: Colors.red,
+                      //       ),
+                      //       textAlign: TextAlign.center,
+                      //     ),
+                      //   ),
                     ],
                   )
                 else
                   Column(
                     children: [
-                      CustomButton(
-                        text: 'Download from Cloud',
-                        backgroundColor: AppColors.primaryColor,
-                        textColor: AppColors.whiteColor,
-                        onPressed: _downloadFromCloud,
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.cloud_download, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text(
-                              'Download from Cloud',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.whiteColor,
-                              ),
-                            ),
-                          ],
+                      SizedBox(height: 8),
+                      Text(
+                        'Update in progress',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      CustomButton(
-                        text: 'Select from Device',
-                        backgroundColor: AppColors.primaryInvertColor,
-                        textColor: AppColors.whiteColor,
-                        onPressed: _pickFileFromDevice,
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.folder_open, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text(
-                              'Select from Device',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.whiteColor,
-                              ),
-                            ),
-                          ],
-                        ),
+                      SizedBox(height: 12),
+                      LinearProgressIndicator(
+                        value: null,
+                        minHeight: 6,
+                        borderRadius: BorderRadius.circular(4),
+                        backgroundColor: Colors.grey[300],
                       ),
                     ],
                   ),

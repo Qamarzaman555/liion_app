@@ -70,58 +70,61 @@ class BackendLoggingService private constructor() {
                 Log.d("BackendLogging", "Backend URL: $backendBaseUrl")
                 Log.d("BackendLogging", "App Version: $appVersion, Build: $buildNumber")
                 
+                // TEMPORARILY COMMENTED OUT FOR DEVELOPMENT - No backend communication
                 // Check network connectivity
-                if (!hasNetworkConnection()) {
-                    Log.w("BackendLogging", "No network connection available for backend logging")
-                    return@launch
-                }
+                // if (!hasNetworkConnection()) {
+                //     Log.w("BackendLogging", "No network connection available for backend logging")
+                //     return@launch
+                // }
 
                 // Test backend connectivity first
-                if (!testBackendConnection()) {
-                    Log.e("BackendLogging", "Cannot reach backend server at $backendBaseUrl")
-                    Log.e("BackendLogging", "For Android emulator: Use http://10.0.2.2:3000 (default)")
-                    Log.e("BackendLogging", "For physical device: Call setBackendUrl() with your computer's IP (e.g., http://192.168.1.100:3000)")
-                    return@launch
-                }
+                // if (!testBackendConnection()) {
+                //     Log.e("BackendLogging", "Cannot reach backend server at $backendBaseUrl")
+                //     Log.e("BackendLogging", "For Android emulator: Use http://10.0.2.2:3000 (default)")
+                //     Log.e("BackendLogging", "For physical device: Call setBackendUrl() with your computer's IP (e.g., http://192.168.1.100:3000)")
+                //     return@launch
+                // }
 
                 // Get device label
-                deviceKey = getDeviceLabel()
-                Log.d("BackendLogging", "Device key: $deviceKey")
+                // deviceKey = getDeviceLabel()
+                // Log.d("BackendLogging", "Device key: $deviceKey")
 
                 // First ensure device exists (check via GET /api/devices, create if not exists)
-                Log.d("BackendLogging", "Ensuring device exists before getting session ID. Device key: $deviceKey")
-                val deviceExists = ensureDeviceExists()
-                if (!deviceExists) {
-                    Log.e("BackendLogging", "Failed to ensure device exists. Device key: $deviceKey. Retrying...")
-                    // Try one more time after a short delay
-                    delay(2000)
-                    val retryResult = ensureDeviceExists()
-                    if (!retryResult) {
-                        Log.e("BackendLogging", "Retry failed. Cannot proceed without device. Device key: $deviceKey, Backend URL: $backendBaseUrl")
-                        return@launch
-                    } else {
-                        Log.d("BackendLogging", "Device created successfully on retry")
-                    }
-                } else {
-                    Log.d("BackendLogging", "Device exists, proceeding with session ID retrieval")
-                }
+                // Log.d("BackendLogging", "Ensuring device exists before getting session ID. Device key: $deviceKey")
+                // val deviceExists = ensureDeviceExists()
+                // if (!deviceExists) {
+                //     Log.e("BackendLogging", "Failed to ensure device exists. Device key: $deviceKey. Retrying...")
+                //     // Try one more time after a short delay
+                //     delay(2000)
+                //     val retryResult = ensureDeviceExists()
+                //     if (!retryResult) {
+                //         Log.e("BackendLogging", "Retry failed. Cannot proceed without device. Device key: $deviceKey, Backend URL: $backendBaseUrl")
+                //         return@launch
+                //     } else {
+                //         Log.d("BackendLogging", "Device created successfully on retry")
+                //     }
+                // } else {
+                //     Log.d("BackendLogging", "Device exists, proceeding with session ID retrieval")
+                // }
 
                 // Get next session ID by querying existing sessions
-                val nextSessionId = getNextSessionId()
+                // val nextSessionId = getNextSessionId()
 
-                sessionId = nextSessionId
-                Log.d("BackendLogging", "Session ID: $sessionId")
+                // sessionId = nextSessionId
+                // Log.d("BackendLogging", "Session ID: $sessionId")
 
                 // Create session via API (this will update session if it already exists)
-                val sessionCreated = createSession(nextSessionId, appVersion, buildNumber)
+                // val sessionCreated = createSession(nextSessionId, appVersion, buildNumber)
 
-                if (sessionCreated) {
-                    isInitialized = true
-                    Log.d("BackendLogging", "Logging session initialized successfully")
-                    log("INFO", "Logging session initialized")
-                } else {
-                    Log.e("BackendLogging", "Failed to create session")
-                }
+                // if (sessionCreated) {
+                //     isInitialized = true
+                //     Log.d("BackendLogging", "Logging session initialized successfully")
+                //     log("INFO", "Logging session initialized")
+                // } else {
+                //     Log.e("BackendLogging", "Failed to create session")
+                // }
+                
+                Log.d("BackendLogging", "Backend logging disabled for development - no devices/sessions will be created")
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error in initialize", e)
             }
@@ -343,8 +346,9 @@ class BackendLoggingService private constructor() {
                     return@launch
                 }
 
+                // TEMPORARILY COMMENTED OUT FOR DEVELOPMENT - Backend logging disabled
                 // Send log immediately (no batching)
-                sendLog(level, message)
+                // sendLog(level, message)
             } catch (e: Exception) {
                 Log.e("BackendLogging", "Error in log method", e)
             }

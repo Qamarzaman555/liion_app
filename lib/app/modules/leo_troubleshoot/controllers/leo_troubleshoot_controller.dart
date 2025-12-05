@@ -60,10 +60,10 @@ class LeoTroubleshootController extends GetxController {
   Future<void> updateFromFile() async {
     try {
       isUpdating.value = true;
-      
+
       // Get OTA controller first
       final otaController = Get.put(LeoOtaController());
-      
+
       // Check if OTA is already in progress - if so, just show progress dialog
       if (otaController.isOtaInProgress.value ||
           otaController.isDownloadingFirmware.value ||
@@ -79,7 +79,7 @@ class LeoTroubleshootController extends GetxController {
         }
         return;
       }
-      
+
       // Show file picker only if OTA is not in progress
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -88,7 +88,7 @@ class LeoTroubleshootController extends GetxController {
 
       if (result != null && result.files.single.path != null) {
         final filePath = result.files.single.path!;
-        
+
         // Double-check OTA is still not in progress (in case it started while picking file)
         if (otaController.isOtaInProgress.value ||
             otaController.isDownloadingFirmware.value) {
@@ -103,7 +103,7 @@ class LeoTroubleshootController extends GetxController {
           }
           return;
         }
-        
+
         // Get context from Get
         final context = Get.context;
         if (context != null) {
@@ -113,7 +113,7 @@ class LeoTroubleshootController extends GetxController {
             barrierDismissible: false,
             builder: (_) => const LeoFirmwareUpdateDialog(),
           );
-          
+
           // Start OTA update
           await otaController.startOtaUpdate(filePath);
         }
