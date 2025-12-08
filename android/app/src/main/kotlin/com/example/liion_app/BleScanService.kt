@@ -1204,8 +1204,8 @@ class BleScanService : Service() {
                 apply()
             }
             // TODO: remove this log
-            logger.logInfo("(session) Saved in-progress session state: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
-                    "$currentSessionInitialLevel% (${currentSessionAccumulatedMah.toInt()} mAh)")
+            // logger.logInfo("(session) Saved in-progress session state: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
+            //         "$currentSessionInitialLevel% (${currentSessionAccumulatedMah.toInt()} mAh)")
         } catch (e: Exception) {
             logger.logError("(session) Failed to save in-progress session state: ${e.message}")
         }
@@ -1619,12 +1619,12 @@ class BleScanService : Service() {
             val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             restartPendingIntent = PendingIntent.getService(this, 1001, intent, flags)
             val triggerAt = System.currentTimeMillis() + getKeepAliveInterval()
-            alarmManager?.let { am ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent)
-                } else {
-                    am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent)
-                }
+            val pendingIntent = restartPendingIntent ?: return
+            val am = alarmManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            } else {
+                am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             }
         } catch (_: Exception) {
             // Ignore scheduling errors
