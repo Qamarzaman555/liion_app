@@ -117,6 +117,10 @@ class BleScanService : Service() {
             return instance?.getSessionHistory() ?: emptyList()
         }
         
+        fun clearBatterySessionHistory(): Boolean {
+            return instance?.clearSessionHistory() ?: false
+        }
+        
         private var instance: BleScanService? = null
         
         fun rescan() {
@@ -1112,6 +1116,9 @@ class BleScanService : Service() {
         currentSessionInitialLevel = initialLevel
         currentSessionIsCharging = isCharging
         currentSessionAccumulatedMah = 0.0
+        
+        // Save the new session state
+        saveCurrentSessionState()
     }
     
     
@@ -1168,6 +1175,78 @@ class BleScanService : Service() {
         // Reset current session
         currentSessionInitialLevel = -1
         currentSessionAccumulatedMah = 0.0
+        
+        // Clear saved in-progress session state
+        clearCurrentSessionState()
+    }
+    
+    private fun saveCurrentSessionState() {
+        if (currentSessionInitialLevel < 0) {
+            // No active session, clear any saved state
+            clearCurrentSessionState()
+            return
+        }
+        
+        try {
+            prefs?.edit()?.apply {
+                putLong("current_session_start_time", currentSessionStartTime)
+                putInt("current_session_initial_level", currentSessionInitialLevel)
+                putBoolean("current_session_is_charging", currentSessionIsCharging)
+                putFloat("current_session_mah", currentSessionAccumulatedMah.toFloat())
+                apply()
+            }
+            logger.logInfo("(session) Saved in-progress session state: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
+                    "$currentSessionInitialLevel% (${currentSessionAccumulatedMah.toInt()} mAh)")
+        } catch (e: Exception) {
+            logger.logError("(session) Failed to save in-progress session state: ${e.message}")
+        }
+    }
+    
+    private fun loadCurrentSessionState(): Boolean {
+        return try {
+            val savedStartTime = prefs?.getLong("current_session_start_time", 0L) ?: 0L
+            val savedInitialLevel = prefs?.getInt("current_session_initial_level", -1) ?: -1
+            val savedIsCharging = prefs?.getBoolean("current_session_is_charging", false) ?: false
+            val savedMah = prefs?.getFloat("current_session_mah", 0f)?.toDouble() ?: 0.0
+            
+            if (savedStartTime > 0 && savedInitialLevel >= 0) {
+                // Check if the saved session is still valid (not too old - max 7 days)
+                val now = System.currentTimeMillis()
+                val ageDays = (now - savedStartTime) / (1000 * 60 * 60 * 24)
+                
+                if (ageDays < 7) {
+                    currentSessionStartTime = savedStartTime
+                    currentSessionInitialLevel = savedInitialLevel
+                    currentSessionIsCharging = savedIsCharging
+                    currentSessionAccumulatedMah = savedMah
+                    logger.logInfo("(session) Restored in-progress session state: ${if (savedIsCharging) "Charge" else "Discharge"} " +
+                            "$savedInitialLevel% (${savedMah.toInt()} mAh, started ${ageDays.toInt()} day(s) ago)")
+                    return true
+                } else {
+                    logger.logInfo("(session) Saved in-progress session is too old (${ageDays.toInt()} days), discarding")
+                    clearCurrentSessionState()
+                }
+            }
+            false
+        } catch (e: Exception) {
+            logger.logError("(session) Failed to load in-progress session state: ${e.message}")
+            false
+        }
+    }
+    
+    private fun clearCurrentSessionState() {
+        try {
+            prefs?.edit()?.apply {
+                remove("current_session_start_time")
+                remove("current_session_initial_level")
+                remove("current_session_is_charging")
+                remove("current_session_mah")
+                remove("current_session_last_save_time")
+                apply()
+            }
+        } catch (e: Exception) {
+            logger.logError("(session) Failed to clear in-progress session state: ${e.message}")
+        }
     }
     
     private fun saveSessions(): Boolean {
@@ -1288,6 +1367,38 @@ class BleScanService : Service() {
         return result
     }
     
+    fun clearSessionHistory(): Boolean {
+        return try {
+            logger.logInfo("(session) Clearing all battery sessions from SharedPreferences")
+            
+            // Clear in-memory sessions
+            batterySessions.clear()
+            
+            // Clear SharedPreferences
+            val count = prefs?.getInt("battery_sessions_count", 0) ?: 0
+            prefs?.edit()?.apply {
+                // Clear all session data
+                for (i in 0 until count.coerceAtMost(MAX_SESSIONS)) {
+                    remove("session_${i}_start")
+                    remove("session_${i}_end")
+                    remove("session_${i}_initial")
+                    remove("session_${i}_final")
+                    remove("session_${i}_charging")
+                    remove("session_${i}_duration")
+                    remove("session_${i}_mah")
+                }
+                remove("battery_sessions_count")
+                apply()
+            }
+            
+            logger.logInfo("(session) Successfully cleared all battery sessions from SharedPreferences")
+            true
+        } catch (e: Exception) {
+            logger.logError("(session) Failed to clear battery sessions: ${e.message}")
+            false
+        }
+    }
+    
     // ==================== End Battery Session Tracking ====================
 
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
@@ -1382,9 +1493,24 @@ class BleScanService : Service() {
                     status == BatteryManager.BATTERY_STATUS_FULL
             lastChargingState = isPhoneCharging
             
-            // Start battery session tracking immediately when service starts
-            if (phoneBatteryLevel >= 0) {
-                startNewSession(phoneBatteryLevel, isPhoneCharging)
+            // Try to restore in-progress session if it exists and charging state matches
+            val restoredSession = loadCurrentSessionState()
+            
+            if (restoredSession && currentSessionIsCharging == isPhoneCharging) {
+                // Restored session matches current charging state - continue tracking
+                logger.logInfo("(session) Continuing in-progress session: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
+                        "$currentSessionInitialLevel% -> $phoneBatteryLevel% (restored ${currentSessionAccumulatedMah.toInt()} mAh)")
+            } else {
+                if (restoredSession) {
+                    // Charging state changed - save the old session as completed
+                    logger.logInfo("(session) Charging state changed, ending restored session and starting new one")
+                    endCurrentSession()
+                }
+                
+                // Start new battery session tracking
+                if (phoneBatteryLevel >= 0) {
+                    startNewSession(phoneBatteryLevel, isPhoneCharging)
+                }
             }
         }
         
@@ -1528,6 +1654,12 @@ class BleScanService : Service() {
             // Also accumulate to current session if active
             if (currentSessionInitialLevel >= 0) {
                 currentSessionAccumulatedMah += mahDelta
+                // Periodically save session state (every 10 mAh or every 5 minutes)
+                val timeSinceLastSave = now - (prefs?.getLong("current_session_last_save_time", currentSessionStartTime) ?: currentSessionStartTime)
+                if (currentSessionAccumulatedMah >= 10.0 || timeSinceLastSave >= 5 * 60 * 1000) {
+                    saveCurrentSessionState()
+                    prefs?.edit()?.putLong("current_session_last_save_time", now)?.apply()
+                }
             }
             
             lastMetricsSampleTime = now
@@ -2258,3 +2390,4 @@ class BleScanService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 }
+

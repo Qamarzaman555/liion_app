@@ -292,6 +292,10 @@ class MainActivity : FlutterActivity() {
                         val sessions = BleScanService.getBatterySessionHistory()
                         result.success(sessions)
                     }
+                    "clearBatterySessionHistory" -> {
+                        val success = BleScanService.clearBatterySessionHistory()
+                        result.success(success)
+                    }
                     "startOtaUpdate" -> {
                         val filePath = call.argument<String>("filePath")
                         if (filePath != null) {

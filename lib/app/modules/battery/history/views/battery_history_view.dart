@@ -16,6 +16,43 @@ class BatteryHistoryView extends GetView<BatteryHistoryController> {
         backgroundColor: AppColors.whiteColor,
         elevation: 0,
         foregroundColor: Colors.black,
+        actions: [
+          Obx(() {
+            if (controller.sessions.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                final confirmed = await Get.dialog<bool>(
+                  AlertDialog(
+                    title: const Text('Clear Sessions'),
+                    content: const Text(
+                      'Are you sure you want to clear all battery session history? This action cannot be undone.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Get.back(result: false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Get.back(result: true),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true) {
+                  await controller.clearSessions();
+                }
+              },
+              tooltip: 'Clear all sessions',
+            );
+          }),
+        ],
       ),
       body: Obx(() {
         if (controller.isLoading.value) {

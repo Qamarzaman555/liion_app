@@ -592,6 +592,19 @@ class BleScanService {
     }
   }
 
+  /// Clear battery session history
+  static Future<bool> clearBatterySessionHistory() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'clearBatterySessionHistory',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to clear battery session history: ${e.message}');
+      return false;
+    }
+  }
+
   /// Start OTA update
   static Future<bool> startOtaUpdate(String filePath) async {
     try {

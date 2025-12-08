@@ -29,4 +29,15 @@ class BatteryHistoryController extends GetxController {
   Future<void> refreshLoadSessions() async {
     await loadSessions();
   }
+
+  Future<void> clearSessions() async {
+    try {
+      final success = await BleScanService.clearBatterySessionHistory();
+      if (success) {
+        sessions.clear();
+      }
+    } catch (e) {
+      print('Error clearing battery sessions: $e');
+    }
+  }
 }
