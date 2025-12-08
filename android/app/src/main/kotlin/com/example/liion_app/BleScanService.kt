@@ -54,8 +54,10 @@ class BleScanService : Service() {
         // Charge limit timer
         const val CHARGE_LIMIT_INTERVAL_MS = 30000L // 30 seconds
         
-        // Keep-alive interval (every 5 minutes)
+        // Keep-alive intervals (shorter on OnePlus to avoid kills)
         const val KEEP_ALIVE_INTERVAL_MS = 300000L
+        const val KEEP_ALIVE_INTERVAL_ONEPLUS_MS = 120000L
+        const val RESTART_ACTION = "com.example.liion_app.RESTART_BLE_SERVICE"
         
         val scannedDevices = mutableMapOf<String, String>()
         var isScanning = false
@@ -122,6 +124,9 @@ class BleScanService : Service() {
         }
         
         private var instance: BleScanService? = null
+        fun markServiceStopping() {
+            instance?.isServiceStopping = true
+        }
         
         fun rescan() {
             scannedDevices.clear()
@@ -253,6 +258,9 @@ class BleScanService : Service() {
     // Wake lock and keep-alive
     private var wakeLock: PowerManager.WakeLock? = null
     private var keepAliveRunnable: Runnable? = null
+    private var alarmManager: AlarmManager? = null
+    private var restartPendingIntent: PendingIntent? = null
+    private var isServiceStopping = false
     
     // Measure command timer
     private var measureRunnable: Runnable? = null
@@ -1447,6 +1455,11 @@ class BleScanService : Service() {
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         createNotificationChannel()
         
+        if (isOnePlus()) {
+            logger.logServiceState("OnePlus: initializing AlarmManager for restart keep-alive")
+            alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        }
+        
         // Initialize backend logging
         initializeLogging()
         
@@ -1567,6 +1580,7 @@ class BleScanService : Service() {
     private fun startKeepAlive() {
         stopKeepAlive()
         
+        val interval = getKeepAliveInterval()
         keepAliveRunnable = object : Runnable {
             override fun run() {
                 // This periodic task keeps the service alive
@@ -1578,16 +1592,62 @@ class BleScanService : Service() {
                     acquireWakeLock()
                 }
                 
+                // Keep restart alarm fresh (OnePlus tends to kill services)
+                setupServiceRestart()
+                
                 // Schedule next keep-alive
-                handler.postDelayed(this, KEEP_ALIVE_INTERVAL_MS)
+                handler.postDelayed(this, interval)
             }
         }
-        handler.postDelayed(keepAliveRunnable!!, KEEP_ALIVE_INTERVAL_MS)
+        handler.postDelayed(keepAliveRunnable!!, interval)
+        setupServiceRestart()
     }
     
     private fun stopKeepAlive() {
         keepAliveRunnable?.let { handler.removeCallbacks(it) }
         keepAliveRunnable = null
+    }
+
+    // OnePlus compatibility: AlarmManager-backed restart if the service is killed
+    private fun setupServiceRestart() {
+        if (!isOnePlus()) return
+        logger.logServiceState("OnePlus: scheduling AlarmManager restart")
+        try {
+            val intent = Intent(this, BleScanService::class.java).apply {
+                action = RESTART_ACTION
+            }
+            val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            restartPendingIntent = PendingIntent.getService(this, 1001, intent, flags)
+            val triggerAt = System.currentTimeMillis() + getKeepAliveInterval()
+            alarmManager?.let { am ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent)
+                } else {
+                    am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent)
+                }
+            }
+        } catch (_: Exception) {
+            // Ignore scheduling errors
+        }
+    }
+
+    private fun cancelServiceRestart() {
+        if (!isOnePlus()) return
+        logger.logServiceState("OnePlus: canceling AlarmManager restart")
+        restartPendingIntent?.let { pi ->
+            try {
+                alarmManager?.cancel(pi)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun getKeepAliveInterval(): Long {
+        return if (isOnePlus()) KEEP_ALIVE_INTERVAL_ONEPLUS_MS else KEEP_ALIVE_INTERVAL_MS
+    }
+
+    private fun isOnePlus(): Boolean {
+        return Build.MANUFACTURER.equals("OnePlus", ignoreCase = true)
     }
     
     private fun startBatteryMetricsPolling() {
@@ -1680,11 +1740,18 @@ class BleScanService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == RESTART_ACTION) {
+            logger.logInfo("Service restarted via AlarmManager (OnePlus compatibility)")
+            isServiceStopping = false
+        }
+
         val notification = createNotification("Scanning for Leo USB devices...")
         startForeground(NOTIFICATION_ID, notification)
         
         logger.logServiceState("Service started")
         
+        setupServiceRestart()
+
         if (bluetoothAdapter?.isEnabled == true) {
             startBleScan()
             
@@ -1895,9 +1962,10 @@ class BleScanService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "BLE Scan Service",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Scanning for Leo USB devices"
+                setShowBadge(false)
             }
             
             val notificationManager = getSystemService(NotificationManager::class.java)
@@ -1918,6 +1986,9 @@ class BleScanService : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_search)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 
@@ -2359,10 +2430,15 @@ class BleScanService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        logger.logServiceState("Service destroyed")
+        val preserveSession = isOnePlus() && !isServiceStopping
+        logger.logServiceState("Service destroyed (intentional stop: $isServiceStopping, preserveSession: $preserveSession)")
         
-        // End current session if active
-        if (currentSessionInitialLevel >= 0) {
+        // For OnePlus unexpected kills, keep the session open and persist state to resume on restart
+        if (preserveSession) {
+            logger.logServiceState("OnePlus: preserving session state on destroy")
+            saveCurrentSessionState()
+        } else if (currentSessionInitialLevel >= 0) {
+            logger.logServiceState("Service ended session at level $currentSessionInitialLevel%")
             endCurrentSession()
         }
         
@@ -2377,6 +2453,11 @@ class BleScanService : Service() {
         closeGatt()
         unregisterReceiver(bluetoothStateReceiver)
         unregisterReceiver(batteryReceiver)
+        if (isServiceStopping) {
+            cancelServiceRestart()
+        } else {
+            setupServiceRestart()
+        }
         instance = null
         super.onDestroy()
     }

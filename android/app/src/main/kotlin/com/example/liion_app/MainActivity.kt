@@ -488,6 +488,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun stopBleService() {
+        // Mark service as intentionally stopping to avoid AlarmManager restarts
+        BleScanService.markServiceStopping()
         val serviceIntent = Intent(this, BleScanService::class.java)
         stopService(serviceIntent)
     }
