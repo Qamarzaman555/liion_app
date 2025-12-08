@@ -1195,6 +1195,7 @@ class BleScanService : Service() {
                 putFloat("current_session_mah", currentSessionAccumulatedMah.toFloat())
                 apply()
             }
+            // TODO: remove this log
             logger.logInfo("(session) Saved in-progress session state: ${if (currentSessionIsCharging) "Charge" else "Discharge"} " +
                     "$currentSessionInitialLevel% (${currentSessionAccumulatedMah.toInt()} mAh)")
         } catch (e: Exception) {

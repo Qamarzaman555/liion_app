@@ -69,6 +69,10 @@ class BackendLoggingService private constructor() {
                 Log.d("BackendLogging", "Initializing backend logging service")
                 Log.d("BackendLogging", "Backend URL: $backendBaseUrl")
                 Log.d("BackendLogging", "App Version: $appVersion, Build: $buildNumber")
+
+                // Dev-mode: avoid creating cloud sessions while iterating locally
+                Log.i("BackendLogging", "Skipping backend session creation in dev mode")
+                return@launch
                 
                 // Check network connectivity
                 if (!hasNetworkConnection()) {
