@@ -1966,6 +1966,9 @@ class BleScanService : Service() {
             ).apply {
                 description = "Scanning for Leo USB devices"
                 setShowBadge(false)
+                enableVibration(false)
+                setSound(null, null)
+                enableLights(false)
             }
             
             val notificationManager = getSystemService(NotificationManager::class.java)
@@ -1989,6 +1992,7 @@ class BleScanService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(0) // Disable all defaults (sound, vibration, lights)
             .build()
     }
 
