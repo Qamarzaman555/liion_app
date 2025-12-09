@@ -60,6 +60,15 @@ class SettingsView extends GetView<SettingsController> {
                   Get.toNamed(AppRoutes.aboutView);
                 },
               ),
+
+              const SizedBox(height: 12),
+
+              CustomButton(
+                text: "Advanced Settings",
+                onPressed: () {
+                  Get.toNamed(AppRoutes.advanceSettings);
+                },
+              ),
               // const SizedBox(height: 12),
               // const SizedBox(height: 8),
               // _buildSettingsTile(

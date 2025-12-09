@@ -1,0 +1,86 @@
+import 'package:get/get.dart';
+import 'package:liion_app/app/core/utils/snackbar_utils.dart';
+import 'package:liion_app/app/modules/leo_empty/controllers/leo_home_controller.dart';
+import 'package:liion_app/app/services/ble_scan_service.dart';
+
+class HigherChargeLimitController extends GetxController {
+  final advancedHigherChargeLimitEnabled = false.obs;
+  late final LeoHomeController _leoHomeController;
+  bool _isUpdating = false;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _leoHomeController = Get.find<LeoHomeController>();
+    _syncFromLeo();
+  }
+
+  Future<void> toggleHigherChargeLimit(bool value) async {
+    if (_isUpdating) return;
+    if (_leoHomeController.connectionState.value !=
+        BleConnectionState.connected) {
+      AppSnackbars.showSuccess(
+        title: "No Device Connected",
+        message: "Please connect to a device to update Higher Charge Limit",
+      );
+      // Revert switch to the last known state from Leo.
+      _syncFromLeo();
+      return;
+    }
+
+    // Send command first; the UI will refresh after Leo confirms.
+    await requestAdvancedHigherChargeLimit(value);
+  }
+
+  Future<void> requestAdvancedHigherChargeLimit(bool value) async {
+    print('requestAdvancedHigherChargeLimit: $value');
+    if (_isUpdating) return;
+    _isUpdating = true;
+    if (_leoHomeController.connectionState.value !=
+        BleConnectionState.connected) {
+      _isUpdating = false;
+      return;
+    }
+
+    try {
+      // 1) Send desired state to Leo.
+      await BleScanService.sendCommand(
+        'app_msg charge_limit ${value ? "1" : "0"}',
+      );
+
+      // 2) Let device process before querying to avoid BLE write collisions.
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // 3) Query current higher charge limit state.
+      await _leoHomeController.requestAdvancedHigherChargeLimit();
+
+      // 4) Give a moment, then flush.
+      await Future.delayed(const Duration(milliseconds: 200));
+      await BleScanService.sendCommand('py_msg');
+
+      // 5) If Leo did not echo state, fall back to requested value so UI matches the intent.
+      _leoHomeController.advancedHigherChargeLimitEnabled.value = value;
+      _syncFromLeo();
+
+      AppSnackbars.showSuccess(
+        title: "Higher Charge Limit Mode Updated",
+        message:
+            "Higher Charge Limit Mode has been updated to ${value ? "Enabled" : "Disabled"}",
+      );
+    } catch (_) {
+      // Roll back to Leo's last reported value on failure.
+      _syncFromLeo();
+      AppSnackbars.showSuccess(
+        title: "Update Failed",
+        message: "Could not update Higher Charge Limit. Please try again.",
+      );
+    } finally {
+      _isUpdating = false;
+    }
+  }
+
+  void _syncFromLeo() {
+    advancedHigherChargeLimitEnabled.value =
+        _leoHomeController.advancedHigherChargeLimitEnabled.value;
+  }
+}

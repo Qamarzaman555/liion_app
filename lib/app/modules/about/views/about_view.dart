@@ -23,7 +23,7 @@ class AboutView extends GetView<AboutController> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 const AboutHeader(),
                 const SizedBox(height: 20),
                 _buildInfoRow(
