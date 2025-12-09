@@ -8,8 +8,5 @@ abstract class AppRoutes {
   static const leoTroubleshoot = '/leo-troubleshoot';
   static const leoManual = '/leo-manual';
   static const batteryHistoryView = '/battery-history';
-  static const ghostModeBeta = '/ghost-mode-beta';
-  static const silentMode = '/silent-mode';
-  static const higherChargeLimit = '/higher-charge-limit';
   static const ledTimeout = '/led-timeout';
 }

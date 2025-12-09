@@ -18,12 +18,6 @@ import '../modules/manual/views/manual_view.dart';
 import '../modules/manual/bindings/manual_binding.dart';
 import '../modules/battery/history/views/battery_history_view.dart';
 import '../modules/battery/history/battery_history_binding.dart';
-import '../modules/ghost_mode_beta/views/ghost_mode_beta_view.dart';
-import '../modules/ghost_mode_beta/bindings/ghost_mode_beta_binding.dart';
-import '../modules/silent_mode/views/silent_mode_view.dart';
-import '../modules/silent_mode/bindings/silent_mode_binding.dart';
-import '../modules/higher_charge_limit/views/higher_charge_limit_view.dart';
-import '../modules/higher_charge_limit/bindings/higher_charge_limit_binding.dart';
 import '../modules/led_timeout/views/led_timeout_view.dart';
 import '../modules/led_timeout/bindings/led_timeout_binding.dart';
 
@@ -75,21 +69,6 @@ class AppPages {
       name: AppRoutes.batteryHistoryView,
       page: () => const BatteryHistoryView(),
       binding: BatteryHistoryBinding(),
-    ),
-    GetPage(
-      name: AppRoutes.ghostModeBeta,
-      page: () => const GhostModeBetaView(),
-      binding: GhostModeBetaBinding(),
-    ),
-    GetPage(
-      name: AppRoutes.silentMode,
-      page: () => const SilentModeView(),
-      binding: SilentModeBinding(),
-    ),
-    GetPage(
-      name: AppRoutes.higherChargeLimit,
-      page: () => const HigherChargeLimitView(),
-      binding: HigherChargeLimitBinding(),
     ),
     GetPage(
       name: AppRoutes.ledTimeout,
