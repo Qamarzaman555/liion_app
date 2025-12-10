@@ -168,6 +168,9 @@ class BleScanService {
   static const EventChannel _chargeLimitChannel = EventChannel(
     'com.liion_app/charge_limit',
   );
+  static const EventChannel _ledTimeoutChannel = EventChannel(
+    'com.liion_app/led_timeout',
+  );
   static const EventChannel _batteryHealthChannel = EventChannel(
     'com.liion_app/battery_health',
   );
@@ -187,6 +190,7 @@ class BleScanService {
   static Stream<String>? _dataReceivedStream;
   static Stream<PhoneBatteryInfo>? _batteryStream;
   static Stream<ChargeLimitInfo>? _chargeLimitStream;
+  static Stream<int>? _ledTimeoutStream;
   static Stream<BatteryHealthInfo>? _batteryHealthStream;
   static Stream<MeasureData>? _measureDataStream;
   static Stream<BatteryMetrics>? _batteryMetricsStream;
@@ -332,6 +336,43 @@ class BleScanService {
       return result ?? false;
     } on PlatformException catch (e) {
       print('Failed to send command: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get the last known LED timeout (seconds) from the service cache.
+  static Future<int> getLedTimeout() async {
+    try {
+      final result = await _methodChannel.invokeMethod<int>('getLedTimeout');
+      return result ?? 300;
+    } on PlatformException catch (e) {
+      print('Failed to get LED timeout: ${e.message}');
+      return 300;
+    }
+  }
+
+  /// Request the service to fetch the LED timeout from the device.
+  static Future<bool> requestLedTimeout() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'requestLedTimeout',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to request LED timeout: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Update the LED timeout on the device via the service.
+  static Future<bool> setLedTimeout(int seconds) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setLedTimeout', {
+        'seconds': seconds,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to set LED timeout: ${e.message}');
       return false;
     }
   }
@@ -576,6 +617,16 @@ class BleScanService {
       return ChargeLimitInfo.fromMap(Map<String, dynamic>.from(event as Map));
     });
     return _chargeLimitStream!;
+  }
+
+  /// Stream of LED timeout updates from the service
+  static Stream<int> get ledTimeoutStream {
+    _ledTimeoutStream ??= _ledTimeoutChannel.receiveBroadcastStream().map((
+      event,
+    ) {
+      return event as int;
+    });
+    return _ledTimeoutStream!;
   }
 
   /// Get battery session history

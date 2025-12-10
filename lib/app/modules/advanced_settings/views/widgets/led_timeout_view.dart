@@ -38,9 +38,7 @@ class LedTimeoutView extends StatelessWidget {
           DialogHelper.showLedTimeoutDialog(
             context,
             initialValue: controller.timeoutSeconds.value,
-            onSubmit: (value) {
-              controller.updateTimeoutFromInput();
-            },
+            onSubmit: (value) => controller.setTimeout(value),
           );
         } else {
           AppSnackbars.showSuccess(

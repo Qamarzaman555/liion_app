@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
-import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class DialogHelper {
   static void showConfirmationDialog(
@@ -40,7 +39,7 @@ class DialogHelper {
   static void showLedTimeoutDialog(
     BuildContext context, {
     int? initialValue,
-    ValueChanged<int>? onSubmit,
+    Future<bool> Function(int value)? onSubmit,
   }) {
     final formKey = GlobalKey<FormState>();
     final controller = TextEditingController(
@@ -123,26 +122,20 @@ class DialogHelper {
             onPressed: () async {
               if (formKey.currentState?.validate() != true) return;
               final parsed = int.tryParse(controller.text.trim()) ?? 0;
-              onSubmit?.call(parsed);
-              final sent = await BleScanService.sendCommand(
-                'app_msg led_time_before_dim $parsed',
-              );
-              if (!sent) {
+              final success =
+                  await (onSubmit?.call(parsed) ?? Future.value(false));
+              if (success) {
+                AppSnackbars.showSuccess(
+                  title: 'LED Timeout Updated',
+                  message: 'LED Timeout has been updated to $parsed seconds',
+                );
+                Navigator.pop(context);
+              } else {
                 AppSnackbars.showSuccess(
                   title: 'Update Failed',
                   message: 'Could not send command. Please try again.',
                 );
-                return;
               }
-              await Future.delayed(const Duration(milliseconds: 200));
-              await BleScanService.sendCommand('app_msg led_time_before_dim');
-              await Future.delayed(const Duration(milliseconds: 200));
-              await BleScanService.sendCommand('py_msg');
-              AppSnackbars.showSuccess(
-                title: 'LED Timeout Updated',
-                message: 'LED Timeout has been updated to $parsed seconds',
-              );
-              Navigator.pop(context);
             },
             child: const Text(
               'Set',

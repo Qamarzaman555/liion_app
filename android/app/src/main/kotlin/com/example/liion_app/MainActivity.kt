@@ -28,6 +28,7 @@ class MainActivity : FlutterActivity() {
         private const val MEASURE_DATA_CHANNEL = "com.liion_app/measure_data"
         private const val BATTERY_METRICS_CHANNEL = "com.liion_app/battery_metrics"
         private const val OTA_PROGRESS_CHANNEL = "com.liion_app/ota_progress"
+        private const val LED_TIMEOUT_CHANNEL = "com.liion_app/led_timeout"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -36,6 +37,7 @@ class MainActivity : FlutterActivity() {
         private var dataReceivedSink: EventChannel.EventSink? = null
         private var batterySink: EventChannel.EventSink? = null
         private var chargeLimitSink: EventChannel.EventSink? = null
+        private var ledTimeoutSink: EventChannel.EventSink? = null
         private var batteryHealthSink: EventChannel.EventSink? = null
         private var measureDataSink: EventChannel.EventSink? = null
         private var batteryMetricsSink: EventChannel.EventSink? = null
@@ -49,6 +51,7 @@ class MainActivity : FlutterActivity() {
             dataReceivedSink = null
             batterySink = null
             chargeLimitSink = null
+            ledTimeoutSink = null
             batteryHealthSink = null
             batteryMetricsSink = null
             otaProgressSink = null
@@ -143,6 +146,14 @@ class MainActivity : FlutterActivity() {
                 ))
             } catch (e: Exception) {
                 chargeLimitSink = null
+            }
+        }
+        
+        fun sendLedTimeoutUpdate(timeoutSeconds: Int) {
+            try {
+                ledTimeoutSink?.success(timeoutSeconds)
+            } catch (e: Exception) {
+                ledTimeoutSink = null
             }
         }
         
@@ -315,6 +326,21 @@ class MainActivity : FlutterActivity() {
                     "isOtaUpdateInProgress" -> {
                         result.success(BleScanService.isOtaUpdateInProgress())
                     }
+                    "getLedTimeout" -> {
+                        result.success(BleScanService.ledTimeoutSeconds)
+                    }
+                    "requestLedTimeout" -> {
+                        result.success(BleScanService.requestLedTimeout())
+                    }
+                    "setLedTimeout" -> {
+                        val seconds = call.argument<Int>("seconds")
+                        if (seconds != null) {
+                            val success = BleScanService.setLedTimeout(seconds)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Seconds is required", null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -396,6 +422,18 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     chargeLimitSink = null
+                }
+            })
+        
+        // Event Channel for LED timeout updates
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, LED_TIMEOUT_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    ledTimeoutSink = events
+                    events?.success(BleScanService.ledTimeoutSeconds)
+                }
+                override fun onCancel(arguments: Any?) {
+                    ledTimeoutSink = null
                 }
             })
         

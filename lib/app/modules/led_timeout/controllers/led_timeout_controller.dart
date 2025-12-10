@@ -9,35 +9,55 @@ class LedTimeoutController extends GetxController {
   /// Form and text controller for validating user input.
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   late final TextEditingController timeoutTextController;
-
   @override
   void onInit() {
     super.onInit();
     timeoutTextController = TextEditingController(
       text: timeoutSeconds.value.toString(),
     );
+    _loadInitialTimeout();
   }
 
-  // @override
-  // void onClose() {
-  //   timeoutTextController.dispose();
-  //   super.onClose();
-  // }
+  @override
+  void onClose() {
+    timeoutTextController.dispose();
+    super.onClose();
+  }
 
-  Future<void> updateTimeoutFromInput() async {
-    if (formKey.currentState?.validate() != true) return;
+  Future<void> _loadInitialTimeout() async {
+    await _setValueFromService();
+  }
+
+  Future<bool> refreshTimeout() async {
+    final requested = await BleScanService.requestLedTimeout();
+    if (!requested) return false;
+    // Allow service to process and cache the value
+    await Future.delayed(const Duration(milliseconds: 200));
+    await _setValueFromService();
+    return true;
+  }
+
+  Future<bool> updateTimeoutFromInput() async {
+    if (formKey.currentState?.validate() != true) return false;
     final parsed = int.tryParse(timeoutTextController.text) ?? 0;
-    timeoutSeconds.value = parsed;
-    print('parsed: $parsed');
-    final sent = await BleScanService.sendCommand(
-      'app_msg led_time_before_dim $parsed',
-    );
+    return setTimeout(parsed);
+  }
+
+  Future<bool> setTimeout(int seconds) async {
+    timeoutSeconds.value = seconds;
+    timeoutTextController.text = seconds.toString();
+    final sent = await BleScanService.setLedTimeout(seconds);
     if (!sent) {
       print('Failed to send LED timeout command');
-      return;
+      return false;
     }
-    await Future.delayed(const Duration(milliseconds: 300));
-    await BleScanService.sendCommand('py_msg');
+    return true;
+  }
+
+  Future<void> _setValueFromService() async {
+    final cached = await BleScanService.getLedTimeout();
+    timeoutSeconds.value = cached;
+    timeoutTextController.text = cached.toString();
   }
 
   String? validateTimeout(String? value) {

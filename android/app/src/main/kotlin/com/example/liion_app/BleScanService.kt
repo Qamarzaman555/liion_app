@@ -29,6 +29,7 @@ class BleScanService : Service() {
         const val KEY_AUTO_RECONNECT = "auto_reconnect"
         const val KEY_CHARGE_LIMIT = "charge_limit"
         const val KEY_CHARGE_LIMIT_ENABLED = "charge_limit_enabled"
+        const val KEY_LED_TIMEOUT = "led_timeout_seconds"
         
         // Nordic UART Service UUIDs
         val SERVICE_UUID: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
@@ -102,6 +103,7 @@ class BleScanService : Service() {
         var chargingTimeSeconds: Long = 0
         var dischargingTimeSeconds: Long = 0
         var firmwareVersion: String = ""
+        var ledTimeoutSeconds: Int = 300
         
         // Battery session history
         data class BatterySession(
@@ -143,6 +145,14 @@ class BleScanService : Service() {
         
         fun sendCommand(command: String): Boolean {
             return instance?.writeCommand(command) ?: false
+        }
+        
+        fun setLedTimeout(seconds: Int): Boolean {
+            return instance?.updateLedTimeout(seconds) ?: false
+        }
+        
+        fun requestLedTimeout(): Boolean {
+            return instance?.requestLedTimeoutFromDevice() ?: false
         }
         
         fun startOtaUpdate(filePath: String): Boolean {
@@ -579,6 +589,11 @@ class BleScanService : Service() {
                     handler.postDelayed({
                         sendChargeLimitCommand()
                     }, 500)
+                    
+                    // Fetch LED timeout value after UART is ready
+                    handler.postDelayed({
+                        requestLedTimeoutFromDevice()
+                    }, 700)
                 }
             }
         }
@@ -595,6 +610,18 @@ class BleScanService : Service() {
                 MainActivity.sendChargeLimitConfirmed(chargeLimitConfirmed)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+        
+        // Handle LED timeout response: OK py_msg led_time_before_dim <seconds>
+        if (parts.size >= 4 && parts.getOrNull(2) == "led_time_before_dim") {
+            val rawValue = parts[3].trim()
+            val numericOnly = rawValue.filter { it.isDigit() }
+            val parsed = numericOnly.toIntOrNull()
+            if (parsed != null) {
+                ledTimeoutSeconds = parsed
+                prefs?.edit()?.putInt(KEY_LED_TIMEOUT, parsed)?.apply()
+                MainActivity.sendLedTimeoutUpdate(ledTimeoutSeconds)
             }
         }
         
@@ -748,6 +775,41 @@ class BleScanService : Service() {
         
         MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
         updateNotificationWithBattery()
+        return true
+    }
+    
+    private fun updateLedTimeout(seconds: Int): Boolean {
+        if (seconds < 0 || seconds > 99999) return false
+        
+        ledTimeoutSeconds = seconds
+        prefs?.edit()?.putInt(KEY_LED_TIMEOUT, seconds)?.apply()
+        MainActivity.sendLedTimeoutUpdate(ledTimeoutSeconds)
+        
+        if (isUartReady && connectionState == STATE_CONNECTED) {
+            val sent = writeCommand("app_msg led_time_before_dim $seconds")
+            if (!sent) return false
+            handler.postDelayed({
+                if (isUartReady && connectionState == STATE_CONNECTED) {
+                    writeCommand("py_msg")
+                }
+            }, 150)
+        }
+        
+        return true
+    }
+    
+    private fun requestLedTimeoutFromDevice(): Boolean {
+        if (!isUartReady || connectionState != STATE_CONNECTED) return false
+        
+        val requested = writeCommand("app_msg led_time_before_dim")
+        if (!requested) return false
+        
+        handler.postDelayed({
+            if (isUartReady && connectionState == STATE_CONNECTED) {
+                writeCommand("py_msg")
+            }
+        }, 150)
+        
         return true
     }
     
@@ -1469,6 +1531,7 @@ class BleScanService : Service() {
         // Load saved charge limit settings
         chargeLimit = prefs?.getInt(KEY_CHARGE_LIMIT, 90) ?: 90
         chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
+        ledTimeoutSeconds = prefs?.getInt(KEY_LED_TIMEOUT, 300) ?: 300
         
         // Load saved battery health values
         designedCapacityMah = prefs?.getInt("designed_capacity_mah", 0) ?: 0
