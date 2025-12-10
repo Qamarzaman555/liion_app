@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
-import 'package:liion_app/app/core/constants/app_assets.dart';
-import 'package:liion_app/app/core/widgets/custom_button.dart';
 import 'package:liion_app/app/modules/advanced_settings/views/widgets/100W_%20ghost_mode_view.dart';
 import 'package:liion_app/app/modules/advanced_settings/views/widgets/advance_higher_charge_mode_view.dart';
 import 'package:liion_app/app/modules/advanced_settings/views/widgets/advance_settings_header.dart';
 import 'package:liion_app/app/modules/advanced_settings/views/widgets/advanced_silent_mode_view.dart';
-import 'package:liion_app/app/routes/app_routes.dart';
+import 'package:liion_app/app/modules/advanced_settings/views/widgets/led_timeout_view.dart';
+import 'package:liion_app/app/modules/led_timeout/controllers/led_timeout_controller.dart';
 import '../controllers/advanced_settings_controller.dart';
 
 class AdvancedSettingsView extends GetView<AdvancedSettingsController> {
   const AdvancedSettingsView({super.key});
+
+ 
 
   @override
   Widget build(BuildContext context) {
@@ -38,30 +38,7 @@ class AdvancedSettingsView extends GetView<AdvancedSettingsController> {
 
             const SizedBox(height: 12),
 
-            CustomButton(
-              text: 'LED Timeout',
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'LED Timeout',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.whiteColor,
-                    ),
-                  ),
-                  SvgPicture.asset(
-                    SvgAssets.ledTimeBtnIcon,
-                    width: 24,
-                    height: 24,
-                  ),
-                ],
-              ),
-              onPressed: () {
-                Get.toNamed(AppRoutes.ledTimeout);
-              },
-            ),
+            LedTimeoutView(controller: Get.find<LedTimeoutController>()),
 
             const SizedBox(height: 40),
           ],

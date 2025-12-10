@@ -12,16 +12,50 @@ class AdvancedSettingsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+
     _leoHomeController = Get.find<LeoHomeController>();
-    _leoHomeController.requestAdvancedGhostMode();
-    _leoHomeController.requestAdvancedSilentMode();
-    _leoHomeController.requestAdvancedHigherChargeLimit();
+    _initializeAdvancedSettings();
 
     _leoHomeController.advancedGhostModeEnabled.value = ghostModeEnabled.value;
     _leoHomeController.advancedSilentModeEnabled.value =
         silentModeEnabled.value;
     _leoHomeController.advancedHigherChargeLimitEnabled.value =
         higherChargeLimitEnabled.value;
+  }
+
+  /// Initialize advanced settings by sequentially requesting each mode
+  /// to avoid BLE write collisions
+  Future<void> _initializeAdvancedSettings() async {
+    if (_leoHomeController.connectionState.value !=
+        BleConnectionState.connected) {
+      return;
+    }
+
+    // Request ghost mode
+    await _leoHomeController.requestAdvancedGhostMode();
+    await Future.delayed(const Duration(milliseconds: 200));
+    await BleScanService.sendCommand('py_msg');
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Request silent mode
+    await _leoHomeController.requestAdvancedSilentMode();
+    await Future.delayed(const Duration(milliseconds: 200));
+    await BleScanService.sendCommand('py_msg');
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Request higher charge limit
+    await _leoHomeController.requestAdvancedHigherChargeLimit();
+    await Future.delayed(const Duration(milliseconds: 200));
+    await BleScanService.sendCommand('py_msg');
+
+    await Future.delayed(const Duration(milliseconds: 200), () {
+      ghostModeEnabled.value =
+          _leoHomeController.advancedGhostModeEnabled.value;
+      silentModeEnabled.value =
+          _leoHomeController.advancedSilentModeEnabled.value;
+      higherChargeLimitEnabled.value =
+          _leoHomeController.advancedHigherChargeLimitEnabled.value;
+    });
   }
 
   Future<void> requestAdvancedGhostMode(bool value) async {
@@ -37,18 +71,21 @@ class AdvancedSettingsController extends GetxController {
     try {
       ghostModeEnabled.value = value;
       // 1) Send desired state to Leo.
-      await BleScanService.sendCommand(
+      final sent = await BleScanService.sendCommand(
         'app_msg ghost_mode ${value ? "1" : "0"}',
       );
+      if (!sent) {
+        throw Exception('Failed to send command');
+      }
 
       // 2) Let device process before querying to avoid BLE write collisions.
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 300));
 
       // 3) Query current ghost mode state.
       await _leoHomeController.requestAdvancedGhostMode();
 
       // 4) Give a moment, then flush.
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 300));
       await BleScanService.sendCommand('py_msg');
 
       AppSnackbars.showSuccess(
@@ -77,18 +114,21 @@ class AdvancedSettingsController extends GetxController {
     try {
       silentModeEnabled.value = value;
       // 1) Send desired state to Leo.
-      await BleScanService.sendCommand(
+      final sent = await BleScanService.sendCommand(
         'app_msg quiet_mode ${value ? "1" : "0"}',
       );
+      if (!sent) {
+        throw Exception('Failed to send command');
+      }
 
       // 2) Let device process before querying to avoid BLE write collisions.
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 300));
 
       // 3) Query current silent mode state.
       await _leoHomeController.requestAdvancedSilentMode();
 
       // 4) Give a moment, then flush.
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 300));
       await BleScanService.sendCommand('py_msg');
 
       AppSnackbars.showSuccess(
@@ -117,18 +157,21 @@ class AdvancedSettingsController extends GetxController {
     try {
       higherChargeLimitEnabled.value = value;
       // 1) Send desired state to Leo.
-      await BleScanService.sendCommand(
+      final sent = await BleScanService.sendCommand(
         'app_msg charge_limit ${value ? "1" : "0"}',
       );
+      if (!sent) {
+        throw Exception('Failed to send command');
+      }
 
       // 2) Let device process before querying to avoid BLE write collisions.
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 300));
 
       // 3) Query current higher charge limit state.
       await _leoHomeController.requestAdvancedHigherChargeLimit();
 
       // 4) Give a moment, then flush.
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 300));
       await BleScanService.sendCommand('py_msg');
 
       AppSnackbars.showSuccess(

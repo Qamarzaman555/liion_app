@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
+import 'package:liion_app/app/modules/led_timeout/controllers/led_timeout_controller.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/graph_hive_storage_service.dart';
@@ -145,20 +146,26 @@ class LeoHomeController extends GetxController {
         await Future.delayed(const Duration(seconds: 1), () {
           requestChargingMode();
         });
+        // await Future.delayed(const Duration(seconds: 1), () {
+        //   requestAdvancedGhostMode();
+        // });
+        // await Future.delayed(const Duration(seconds: 1), () async {
+        //   await BleScanService.sendCommand('py_msg');
+        // });
+        // await Future.delayed(const Duration(seconds: 1), () {
+        //   requestAdvancedSilentMode();
+        // });
+        // await Future.delayed(const Duration(seconds: 1), () async {
+        //   await BleScanService.sendCommand('py_msg');
+        // });
+        // await Future.delayed(const Duration(seconds: 1), () {
+        //   requestAdvancedHigherChargeLimit();
+        // });
+        // await Future.delayed(const Duration(seconds: 1), () async {
+        //   await BleScanService.sendCommand('py_msg');
+        // });
         await Future.delayed(const Duration(seconds: 1), () {
-          requestAdvancedGhostMode();
-        });
-        await Future.delayed(const Duration(seconds: 1), () async {
-          await BleScanService.sendCommand('py_msg');
-        });
-        await Future.delayed(const Duration(seconds: 1), () {
-          requestAdvancedSilentMode();
-        });
-        await Future.delayed(const Duration(seconds: 1), () async {
-          await BleScanService.sendCommand('py_msg');
-        });
-        await Future.delayed(const Duration(seconds: 1), () {
-          requestAdvancedHigherChargeLimit();
+          requestLedTimeout();
         });
         await Future.delayed(const Duration(seconds: 1), () async {
           await BleScanService.sendCommand('py_msg');
@@ -313,7 +320,7 @@ class LeoHomeController extends GetxController {
         }
       }
 
-      if (parts.length > 3 && parts[2] == "silent_mode") {
+      if (parts.length > 3 && parts[2] == "quiet_mode") {
         String safeValue = parts[3];
         safeValue = safeValue.replaceAll(RegExp(r'[^0-9]'), '');
         if (safeValue == "1") {
@@ -339,6 +346,24 @@ class LeoHomeController extends GetxController {
             'Higher charge limit disabled: $advancedHigherChargeLimitEnabled.value',
           );
         }
+      }
+
+      if (parts.length > 2 && parts[2] == "led_time_before_dim") {
+        // Expect responses like: OK py_msg led_time_before_dim 50
+        // Guard against short responses without a numeric value.
+        if (parts.length <= 3) return;
+
+        final rawValue = parts[3].trim();
+        final numericOnly = rawValue.replaceAll(RegExp(r'[^0-9]'), '');
+        final parsed = int.tryParse(numericOnly);
+        if (parsed == null) {
+          print('Ignoring non-numeric led_time_before_dim value: $rawValue');
+          return;
+        }
+
+        final ledController = Get.find<LedTimeoutController>();
+        ledController.timeoutSeconds.value = parsed;
+        ledController.timeoutTextController.text = parsed.toString();
       }
     } catch (e) {
       print('Error parsing data: $e');
@@ -585,6 +610,12 @@ class LeoHomeController extends GetxController {
   Future<void> requestAdvancedHigherChargeLimit() async {
     if (connectionState.value == BleConnectionState.connected) {
       await BleScanService.sendCommand('app_msg charge_limit');
+    }
+  }
+
+  Future<void> requestLedTimeout() async {
+    if (connectionState.value == BleConnectionState.connected) {
+      await BleScanService.sendCommand('app_msg led_time_before_dim');
     }
   }
 

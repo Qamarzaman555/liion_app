@@ -70,10 +70,5 @@ class AppPages {
       page: () => const BatteryHistoryView(),
       binding: BatteryHistoryBinding(),
     ),
-    GetPage(
-      name: AppRoutes.ledTimeout,
-      page: () => const LedTimeoutView(),
-      binding: LedTimeoutBinding(),
-    ),
   ];
 }
