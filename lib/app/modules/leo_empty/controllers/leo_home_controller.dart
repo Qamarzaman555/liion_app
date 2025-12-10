@@ -58,6 +58,7 @@ class LeoHomeController extends GetxController {
   StreamSubscription? _measureDataSubscription;
   Timer? _graphInactivityTimer;
   final isPastGraphLoading = false.obs;
+  Future<void> _commandSerial = Future.value();
 
   @override
   void onInit() {
@@ -136,27 +137,7 @@ class LeoHomeController extends GetxController {
       if (newState == BleConnectionState.connected) {
         connectedDeviceAddress.value = address;
         connectingDeviceAddress.value = null;
-        // Request mwh value when connected
-        await Future.delayed(const Duration(seconds: 1), () {
-          requestMwhValue();
-        });
-        await Future.delayed(const Duration(milliseconds: 100), () {
-          requestLedTimeout();
-        });
-
-        await Future.delayed(Duration(milliseconds: 100), () async {
-          await BleScanService.sendCommand('py_msg');
-        });
-        await Future.delayed(const Duration(milliseconds: 100), () {
-          requestLeoFirmwareVersion();
-        });
-        await Future.delayed(const Duration(milliseconds: 100), () {
-          requestChargingMode();
-        });
-
-        await Future.delayed(const Duration(milliseconds: 500), () {
-          initializeAdvancedSettings();
-        });
+        _scheduleInitialRequests();
       } else if (newState == BleConnectionState.connecting) {
         connectingDeviceAddress.value = address;
       } else if (newState == BleConnectionState.disconnected) {
@@ -607,6 +588,8 @@ class LeoHomeController extends GetxController {
   Future<void> requestLedTimeout() async {
     if (connectionState.value == BleConnectionState.connected) {
       await BleScanService.sendCommand('app_msg led_time_before_dim');
+      await Future.delayed(const Duration(milliseconds: 100));
+      await BleScanService.sendCommand('py_msg');
     }
   }
 
@@ -635,6 +618,45 @@ class LeoHomeController extends GetxController {
     await BleScanService.sendCommand('py_msg');
 
     await Future.delayed(const Duration(milliseconds: 200), () {});
+  }
+
+  Future<void> _scheduleInitialRequests() async {
+    // Requests are enqueued to a serialized chain so we never attempt
+    // concurrent BLE writes (prevents "prior command not finished" errors).
+    await _enqueueCommand(
+      () => requestLedTimeout(),
+      delayAfter: const Duration(milliseconds: 150),
+    );
+    await _enqueueCommand(
+      () => initializeAdvancedSettings(),
+      delayAfter: const Duration(milliseconds: 200),
+    );
+    await _enqueueCommand(
+      () => requestMwhValue(),
+      delayAfter: const Duration(milliseconds: 200),
+    );
+    await _enqueueCommand(
+      () => requestLeoFirmwareVersion(),
+      delayAfter: const Duration(milliseconds: 200),
+    );
+    await _enqueueCommand(
+      () => requestChargingMode(),
+      delayAfter: const Duration(milliseconds: 150),
+    );
+  }
+
+  Future<void> _enqueueCommand(
+    Future<void> Function() action, {
+    Duration delayAfter = Duration.zero,
+  }) {
+    _commandSerial = _commandSerial.then((_) async {
+      await action();
+      if (delayAfter > Duration.zero) {
+        await Future.delayed(delayAfter);
+      }
+    });
+
+    return _commandSerial;
   }
 
   /// Send custom command to Leo
