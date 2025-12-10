@@ -12,6 +12,7 @@ import '../controllers/leo_home_controller.dart';
 import 'widgets/bluetooth_connection_dialog.dart';
 import 'widgets/connection_buttons.dart';
 import 'widgets/metrics_summary.dart';
+import 'widgets/wait_for_install_dialog.dart';
 
 class LeoHomeView extends GetView<LeoHomeController> {
   const LeoHomeView({super.key});
@@ -83,6 +84,22 @@ class LeoHomeView extends GetView<LeoHomeController> {
   }
 
   void _showFirmwareUpdateDialog(BuildContext context) async {
+    final otaController = Get.put(LeoOtaController());
+
+    // If the post-OTA install timer is still running, show the timer dialog.
+    // Check both timer active state and if seconds are remaining (timer might be active but dialog dismissed)
+    if (otaController.isInstallTimerActive ||
+        otaController.isTimerDialogOpen.value ||
+        (otaController.wasOtaCompleted &&
+            otaController.secondsRemaining.value > 0)) {
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const WaitForInstallDialogBox(),
+      );
+      return;
+    }
+
     // Check internet connectivity
     try {
       final result = await InternetAddress.lookup(
@@ -103,9 +120,6 @@ class LeoHomeView extends GetView<LeoHomeController> {
       return;
     }
 
-    // Get OTA controller
-    final otaController = Get.put(LeoOtaController());
-
     // Check if OTA is already in progress
     if (otaController.isOtaInProgress.value ||
         otaController.isDownloadingFirmware.value ||
@@ -113,7 +127,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
       // OTA is already in progress, just show the progress dialog
       showDialog(
         context: context,
-        barrierDismissible: false,
+        barrierDismissible: true,
         builder: (_) => const LeoFirmwareUpdateDialog(),
       );
       return;
@@ -122,7 +136,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
     // Show firmware update dialog immediately
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (_) => const LeoFirmwareUpdateDialog(),
     );
   }

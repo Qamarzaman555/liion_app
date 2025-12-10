@@ -33,6 +33,7 @@ class LeoOtaController extends GetxController {
   // Getter/setter for wasOtaCompleted (needed for dialog access)
   bool get wasOtaCompleted => _wasOtaCompleted;
   set wasOtaCompleted(bool value) => _wasOtaCompleted = value;
+  bool get isInstallTimerActive => _installTimer?.isActive ?? false;
 
   StreamSubscription<Map<String, dynamic>>? _otaProgressSubscription;
   Timer? _progressPollingTimer;
@@ -109,6 +110,7 @@ class LeoOtaController extends GetxController {
   /// Close wait dialog and show done dialog
   void _closeWaitDialogAndShowDone() {
     _installTimer?.cancel();
+    _installTimer = null;
     isTimerDialogOpen.value = false;
     secondsRemaining.value = 60;
 
@@ -470,6 +472,7 @@ class LeoOtaController extends GetxController {
     isTimerDialogOpen.value = false;
     secondsRemaining.value = 60;
     _wasOtaCompleted = false;
+    _installTimer = null;
     _previousConnectionState = BleConnectionState.disconnected;
 
     // Force UI refresh

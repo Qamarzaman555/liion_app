@@ -40,9 +40,25 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
     // Mark OTA progress dialog as open
     otaController.isOtaProgressDialogOpen.value = true;
 
-    // Auto-start cloud download when dialog opens and nothing is running
+    // Auto-start cloud download when dialog opens and nothing is running.
+    // If the post-OTA install timer is active, redirect to the wait dialog instead.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+
+      // Check if timer is active, dialog is open, or timer was completed but still counting down
+      if (otaController.isInstallTimerActive ||
+          otaController.isTimerDialogOpen.value ||
+          (otaController.wasOtaCompleted &&
+              otaController.secondsRemaining.value > 0)) {
+        Navigator.of(context).pop();
+        showDialog(
+          context: context,
+          barrierDismissible: true,
+          builder: (context) => const WaitForInstallDialogBox(),
+        );
+        return;
+      }
+
       if (!widget.autoDownloadFromCloud) return;
       if (_autoStartedDownload) return;
       if (otaController.isOtaInProgress.value ||
@@ -124,7 +140,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                   Navigator.pop(context);
                   showDialog(
                     context: context,
-                    barrierDismissible: false,
+                    barrierDismissible: true,
                     builder: (context) => const WaitForInstallDialogBox(),
                   );
                 }

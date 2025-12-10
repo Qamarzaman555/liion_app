@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/controllers/leo_ota_controller.dart';
 import 'package:liion_app/app/modules/leo_empty/views/widgets/leo_firmware_update_dialog.dart';
+import 'package:liion_app/app/modules/leo_empty/views/widgets/wait_for_install_dialog.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -64,6 +65,23 @@ class LeoTroubleshootController extends GetxController {
       // Get OTA controller first
       final otaController = Get.put(LeoOtaController());
 
+      // If the post-OTA install timer is still running, show the timer dialog instead
+      // Check both timer active state and if seconds are remaining (timer might be active but dialog dismissed)
+      if (otaController.isInstallTimerActive ||
+          otaController.isTimerDialogOpen.value ||
+          (otaController.wasOtaCompleted &&
+              otaController.secondsRemaining.value > 0)) {
+        final context = Get.context;
+        if (context != null) {
+          showDialog(
+            context: context,
+            barrierDismissible: true,
+            builder: (_) => const WaitForInstallDialogBox(),
+          );
+        }
+        return;
+      }
+
       // Check if OTA is already in progress - if so, just show progress dialog
       if (otaController.isOtaInProgress.value ||
           otaController.isDownloadingFirmware.value ||
@@ -98,7 +116,7 @@ class LeoTroubleshootController extends GetxController {
           if (context != null) {
             showDialog(
               context: context,
-              barrierDismissible: false,
+              barrierDismissible: true,
               builder: (_) =>
                   const LeoFirmwareUpdateDialog(autoDownloadFromCloud: false),
             );
@@ -112,7 +130,7 @@ class LeoTroubleshootController extends GetxController {
           // Show progress dialog
           showDialog(
             context: context,
-            barrierDismissible: false,
+            barrierDismissible: true,
             builder: (_) =>
                 const LeoFirmwareUpdateDialog(autoDownloadFromCloud: false),
           );
