@@ -13,6 +13,7 @@ import 'widgets/bluetooth_connection_dialog.dart';
 import 'widgets/connection_buttons.dart';
 import 'widgets/metrics_summary.dart';
 import 'widgets/wait_for_install_dialog.dart';
+import 'widgets/ota_done_dialog.dart';
 
 class LeoHomeView extends GetView<LeoHomeController> {
   const LeoHomeView({super.key});
@@ -43,24 +44,30 @@ class LeoHomeView extends GetView<LeoHomeController> {
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LeoConnectionButtons(
-                  controller: controller,
-                  onConnectionButtonPressed: () =>
-                      _handleConnectionButtonTap(context),
-                  onFirmwareUpdateButtonPressed: () =>
-                      _showFirmwareUpdateDialog(context),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LeoConnectionButtons(
+                      controller: controller,
+                      onConnectionButtonPressed: () =>
+                          _handleConnectionButtonTap(context),
+                      onFirmwareUpdateButtonPressed: () =>
+                          _showFirmwareUpdateDialog(context),
+                    ),
+                    const SizedBox(height: 20),
+                    LeoMetricsSummary(controller: controller),
+                  ],
                 ),
-                const SizedBox(height: 20),
-                LeoMetricsSummary(controller: controller),
-              ],
+              ),
             ),
-          ),
+            // Listener for showing done dialog on reconnection
+            _OtaDoneDialogListener(),
+          ],
         ),
       ),
     );
@@ -139,5 +146,48 @@ class LeoHomeView extends GetView<LeoHomeController> {
       barrierDismissible: true,
       builder: (_) => const LeoFirmwareUpdateDialog(),
     );
+  }
+}
+
+/// Listener widget that shows the OTA done dialog when device reconnects
+/// after OTA completion, even if the wait dialog was dismissed
+class _OtaDoneDialogListener extends StatefulWidget {
+  @override
+  State<_OtaDoneDialogListener> createState() => _OtaDoneDialogListenerState();
+}
+
+class _OtaDoneDialogListenerState extends State<_OtaDoneDialogListener> {
+  bool _hasShownDialog = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final otaController = Get.put(LeoOtaController());
+
+    return Obx(() {
+      // If flag is set and we haven't shown the dialog yet, show it
+      if (otaController.shouldShowDoneDialog.value && !_hasShownDialog) {
+        print(
+          'OtaDoneDialogListener: shouldShowDoneDialog is true, showing done dialog',
+        );
+        _hasShownDialog = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            // Reset the flag
+            otaController.shouldShowDoneDialog.value = false;
+            // Show the done dialog
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const OTAUpdateDone(),
+            ).then((_) {
+              // Reset flag when dialog is closed
+              _hasShownDialog = false;
+            });
+          }
+        });
+      }
+
+      return const SizedBox.shrink();
+    });
   }
 }

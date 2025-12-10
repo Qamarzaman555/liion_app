@@ -91,7 +91,7 @@ class LeoTroubleshootController extends GetxController {
         if (context != null) {
           showDialog(
             context: context,
-            barrierDismissible: false,
+            barrierDismissible: true,
             builder: (_) =>
                 const LeoFirmwareUpdateDialog(autoDownloadFromCloud: false),
           );

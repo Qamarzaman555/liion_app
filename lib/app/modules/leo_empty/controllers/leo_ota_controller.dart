@@ -23,12 +23,16 @@ class LeoOtaController extends GetxController {
   final isOtaProgressDialogOpen = false.obs;
   final isTimerDialogOpen = false.obs;
   final secondsRemaining = 60.obs; // 1 minute timer
+  final shouldShowDoneDialog =
+      false.obs; // Flag to trigger done dialog on reconnection
   Timer? _installTimer;
 
   // Connection state tracking for reconnection detection
   StreamSubscription? _connectionSubscription;
   int _previousConnectionState = BleConnectionState.disconnected;
   bool _wasOtaCompleted = false;
+  bool _disconnectedDuringTimer =
+      false; // Track if device disconnected during timer period
 
   // Getter/setter for wasOtaCompleted (needed for dialog access)
   bool get wasOtaCompleted => _wasOtaCompleted;
@@ -60,16 +64,43 @@ class LeoOtaController extends GetxController {
     _connectionSubscription = BleScanService.connectionStream.listen((event) {
       final newState = event['state'] as int;
 
-      // Detect reconnection after OTA completion
+      print(
+        'Connection state changed: previous=$_previousConnectionState, new=$newState, wasOtaCompleted=$_wasOtaCompleted, timerActive=$isInstallTimerActive, secondsRemaining=${secondsRemaining.value}, disconnectedDuringTimer=$_disconnectedDuringTimer',
+      );
+
+      // Track disconnection during timer period (after OTA completion)
       if (_wasOtaCompleted &&
-          _previousConnectionState == BleConnectionState.disconnected &&
+          (isInstallTimerActive || secondsRemaining.value > 0) &&
+          _previousConnectionState == BleConnectionState.connected &&
+          newState == BleConnectionState.disconnected) {
+        print('Device disconnected during timer period');
+        _disconnectedDuringTimer = true;
+      }
+
+      // Detect reconnection after OTA completion
+      // Check if OTA was completed and timer is still running (either active or seconds remaining)
+      // Also check if device was disconnected during timer period
+      if (_wasOtaCompleted &&
           newState == BleConnectionState.connected &&
-          isTimerDialogOpen.value) {
+          (_disconnectedDuringTimer ||
+              _previousConnectionState == BleConnectionState.disconnected) &&
+          (isInstallTimerActive ||
+              isTimerDialogOpen.value ||
+              secondsRemaining.value > 0)) {
         print(
-          'Device reconnected after OTA - closing wait dialog and showing done dialog',
+          'Device reconnected after OTA - cancelling timer and showing done dialog',
         );
-        _closeWaitDialogAndShowDone();
-        isTimerDialogOpen.refresh();
+        // Cancel timer and trigger done dialog
+        _installTimer?.cancel();
+        _installTimer = null;
+        secondsRemaining.value = 0;
+        isTimerDialogOpen.value = false;
+        _disconnectedDuringTimer = false; // Reset flag
+        shouldShowDoneDialog.value = true; // Trigger done dialog to show
+        shouldShowDoneDialog.refresh();
+        print(
+          'Timer cancelled, shouldShowDoneDialog=${shouldShowDoneDialog.value}',
+        );
       }
 
       _previousConnectionState = newState;
@@ -88,11 +119,21 @@ class LeoOtaController extends GetxController {
 
   /// Start the install timer and show wait dialog
   /// Made public so dialog can start it when showing (in case device disconnects before acknowledgment)
-  void startInstallTimer() {
+  void startInstallTimer() async {
     _installTimer?.cancel();
     secondsRemaining.value = 60; // 1 minute
     isTimerDialogOpen.value = true;
     _wasOtaCompleted = true;
+
+    // Check current connection state - if already disconnected, mark it
+    final currentConnectionState = await BleScanService.getConnectionState();
+    _disconnectedDuringTimer =
+        (currentConnectionState == BleConnectionState.disconnected);
+    _previousConnectionState = currentConnectionState;
+
+    print(
+      'Starting install timer: currentConnectionState=$currentConnectionState, disconnectedDuringTimer=$_disconnectedDuringTimer',
+    );
 
     _installTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (secondsRemaining.value > 0) {
@@ -112,10 +153,9 @@ class LeoOtaController extends GetxController {
     _installTimer?.cancel();
     _installTimer = null;
     isTimerDialogOpen.value = false;
-    secondsRemaining.value = 60;
-
-    // This will be handled by the dialog itself
-    // We just need to trigger the done dialog to show
+    secondsRemaining.value = 0; // Set to 0 to indicate completion
+    shouldShowDoneDialog.value = true; // Trigger done dialog to show
+    shouldShowDoneDialog.refresh();
   }
 
   /// Start periodic progress polling as backup (in case stream has issues)
@@ -471,7 +511,9 @@ class LeoOtaController extends GetxController {
     isOtaProgressDialogOpen.value = false;
     isTimerDialogOpen.value = false;
     secondsRemaining.value = 60;
+    shouldShowDoneDialog.value = false;
     _wasOtaCompleted = false;
+    _disconnectedDuringTimer = false;
     _installTimer = null;
     _previousConnectionState = BleConnectionState.disconnected;
 
@@ -481,6 +523,7 @@ class LeoOtaController extends GetxController {
     otaMessage.refresh();
     isOtaProgressDialogOpen.refresh();
     isTimerDialogOpen.refresh();
+    shouldShowDoneDialog.refresh();
 
     print("OTA state reset");
   }

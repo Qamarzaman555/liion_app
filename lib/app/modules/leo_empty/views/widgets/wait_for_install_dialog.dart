@@ -35,9 +35,10 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
     return Obx(() {
       // Check if OTA failed (shouldn't happen normally, but handle it)
       final message = controller.otaMessage.value.toLowerCase();
-      final hasFailed = (message.contains('fail') || message.contains('error')) &&
+      final hasFailed =
+          (message.contains('fail') || message.contains('error')) &&
           !controller.isOtaInProgress.value;
-      
+
       // If OTA failed, close dialog immediately
       if (hasFailed && mounted && Navigator.canPop(context)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -49,14 +50,27 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
         return const SizedBox.shrink();
       }
 
-      // If timer completed (secondsRemaining == 0) or dialog was closed (reconnection), show done dialog
-      if (!_hasShownDoneDialog &&
-          (controller.secondsRemaining.value == 0 ||
-              !controller.isTimerDialogOpen.value)) {
+      // If timer completed (secondsRemaining == 0), dialog was closed (reconnection),
+      // or shouldShowDoneDialog flag is set (device reconnected), show done dialog
+      final shouldShowDone =
+          controller.secondsRemaining.value == 0 ||
+          !controller.isTimerDialogOpen.value ||
+          controller.shouldShowDoneDialog.value;
+
+      if (shouldShowDone) {
+        print(
+          'Wait dialog: shouldShowDone=$shouldShowDone, secondsRemaining=${controller.secondsRemaining.value}, isTimerDialogOpen=${controller.isTimerDialogOpen.value}, shouldShowDoneDialog=${controller.shouldShowDoneDialog.value}, hasShownDoneDialog=$_hasShownDoneDialog',
+        );
+      }
+
+      if (!_hasShownDoneDialog && shouldShowDone) {
         _hasShownDoneDialog = true;
+        print('Wait dialog: Showing done dialog');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && Navigator.canPop(context)) {
             Navigator.pop(context);
+            // Reset the flag before showing done dialog
+            controller.shouldShowDoneDialog.value = false;
             showDialog(
               context: context,
               barrierDismissible: false,
