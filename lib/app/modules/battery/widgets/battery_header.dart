@@ -14,7 +14,7 @@ class BatteryHeader extends GetView<BatteryController> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text(
-            "Battery",
+            "Phone",
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 24,
@@ -52,4 +52,3 @@ class BatteryHeader extends GetView<BatteryController> {
     );
   }
 }
-
