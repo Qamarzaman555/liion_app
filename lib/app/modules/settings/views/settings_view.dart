@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
 import 'package:liion_app/app/routes/app_routes.dart';
@@ -30,44 +32,47 @@ class SettingsView extends GetView<SettingsController> {
               ),
               const SizedBox(height: 20),
 
-              CustomButton(
-                text: "Manual",
-                onPressed: () {
-                  Get.toNamed(AppRoutes.leoManual);
-                },
+              _customSettingButton(
+                text: "FAQ",
+                icon: Icons.question_answer_outlined,
+                onPressed: () => controller.openFaq(),
               ),
               const SizedBox(height: 12),
-
-              CustomButton(
-                text: "Leo Troubleshoot",
-                onPressed: () {
-                  Get.toNamed(AppRoutes.leoTroubleshoot);
-                },
-              ),
-              const SizedBox(height: 12),
-
-              CustomButton(
+              _customSettingButton(
                 text: "Feedback",
-                onPressed: () {
-                  Get.toNamed(AppRoutes.feedbackView);
-                },
-              ),
-              const SizedBox(height: 12),
-
-              CustomButton(
-                text: "About",
-                onPressed: () {
-                  Get.toNamed(AppRoutes.aboutView);
-                },
+                icon: Icons.message_outlined,
+                onPressed: () => Get.toNamed(AppRoutes.feedbackView),
               ),
 
               const SizedBox(height: 12),
 
-              CustomButton(
+              _customSettingButton(
+                text: "Manual",
+                iconPath: SvgAssets.leoManualIcon,
+                onPressed: () => Get.toNamed(AppRoutes.leoManual),
+              ),
+              const SizedBox(height: 12),
+
+              _customSettingButton(
+                text: "Leo Troubleshoot",
+                icon: Icons.troubleshoot_outlined,
+                onPressed: () => Get.toNamed(AppRoutes.leoTroubleshoot),
+              ),
+
+              const SizedBox(height: 12),
+
+              _customSettingButton(
+                text: "Update Leo",
+                icon: Icons.repeat_rounded,
+                onPressed: () {},
+              ),
+
+              const SizedBox(height: 12),
+
+              _customSettingButton(
                 text: "Advanced Settings",
-                onPressed: () {
-                  Get.toNamed(AppRoutes.advanceSettings);
-                },
+                icon: Icons.settings,
+                onPressed: () => Get.toNamed(AppRoutes.advanceSettings),
               ),
               // const SizedBox(height: 12),
               // const SizedBox(height: 8),
@@ -134,41 +139,39 @@ class SettingsView extends GetView<SettingsController> {
     );
   }
 
-  Widget _buildSettingsTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
+  CustomButton _customSettingButton({
+    required String text,
+    String? iconPath,
+    IconData? icon,
+    required VoidCallback onPressed,
   }) {
-    return Card(
-      elevation: 0,
-      color: AppColors.cardBGColor,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        onTap: onTap,
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.primaryColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
+    return CustomButton(
+      text: text,
+      onPressed: onPressed,
+
+      borderRadius: 10,
+      backgroundColor: AppColors.primaryColor,
+      textColor: AppColors.whiteColor,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.whiteColor,
+            ),
           ),
-          child: Icon(icon, color: AppColors.primaryColor, size: 24),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF282828),
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF888888)),
-        ),
-        trailing: const Icon(Icons.chevron_right, color: Color(0xFF888888)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          if (iconPath != null)
+            SvgPicture.asset(
+              iconPath,
+              width: 24,
+              height: 24,
+              color: AppColors.whiteColor,
+            ),
+          if (icon != null) Icon(icon, color: AppColors.whiteColor, size: 24),
+        ],
       ),
     );
   }

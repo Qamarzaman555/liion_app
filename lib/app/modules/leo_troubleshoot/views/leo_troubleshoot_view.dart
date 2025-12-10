@@ -86,7 +86,6 @@ class LeoTroubleshootView extends GetView<LeoTroubleshootController> {
       text: text,
       onPressed: isLoading ? () {} : onPressed,
       isLoading: isLoading,
-      height: 70,
       borderRadius: 10,
       backgroundColor: AppColors.primaryColor,
       textColor: AppColors.whiteColor,

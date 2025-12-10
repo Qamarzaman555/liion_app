@@ -350,7 +350,6 @@ class LeoHomeController extends GetxController {
 
       if (parts.length > 2 && parts[2] == "led_time_before_dim") {
         // Expect responses like: OK py_msg led_time_before_dim 50
-        // Guard against short responses without a numeric value.
         if (parts.length <= 3) return;
 
         final rawValue = parts[3].trim();

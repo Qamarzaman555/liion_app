@@ -18,11 +18,11 @@ class LedTimeoutController extends GetxController {
     );
   }
 
-  @override
-  void onClose() {
-    timeoutTextController.dispose();
-    super.onClose();
-  }
+  // @override
+  // void onClose() {
+  //   timeoutTextController.dispose();
+  //   super.onClose();
+  // }
 
   Future<void> updateTimeoutFromInput() async {
     if (formKey.currentState?.validate() != true) return;
