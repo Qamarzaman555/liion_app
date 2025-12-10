@@ -22,4 +22,13 @@ class SettingsController extends GetxController {
       );
     }
   }
+
+  void updateAppFromPlayStore() async {
+    //const url = 'itms-beta://';
+    //const url = 'itms-beta://beta.itunes.apple.com/v1/app/6478390530';
+    const url =
+        'https://play.google.com/store/apps/details?id=nl.liionpower.app';
+    Uri uri = Uri.parse(url);
+    await launchUrl(uri);
+  }
 }

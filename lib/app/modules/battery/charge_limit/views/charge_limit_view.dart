@@ -111,7 +111,8 @@ Widget _buildTitle(ChargeLimitController controller) {
             if (!controller.isConnected.value) {
               AppSnackbars.showSuccess(
                 title: 'Not Connected',
-                message: 'Please connect to Leo to enable charge limit',
+                message:
+                    'Please connect to Leo to enable or disable charge limit',
               );
               return;
             }

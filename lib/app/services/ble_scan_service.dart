@@ -608,10 +608,9 @@ class BleScanService {
   /// Start OTA update
   static Future<bool> startOtaUpdate(String filePath) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>(
-        'startOtaUpdate',
-        {'filePath': filePath},
-      );
+      final result = await _methodChannel.invokeMethod<bool>('startOtaUpdate', {
+        'filePath': filePath,
+      });
       return result ?? false;
     } on PlatformException catch (e) {
       print('Failed to start OTA update: ${e.message}');
@@ -656,9 +655,9 @@ class BleScanService {
 
   /// Stream of OTA progress updates
   static Stream<Map<String, dynamic>> get otaProgressStream {
-    _otaProgressStream ??= _otaProgressChannel
-        .receiveBroadcastStream()
-        .map((event) => Map<String, dynamic>.from(event as Map));
+    _otaProgressStream ??= _otaProgressChannel.receiveBroadcastStream().map(
+      (event) => Map<String, dynamic>.from(event as Map),
+    );
     return _otaProgressStream!;
   }
 }

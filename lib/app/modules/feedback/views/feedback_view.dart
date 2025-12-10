@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/constants/app_texts.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
 import 'package:liion_app/app/modules/feedback/views/widgets/feedback_header.dart';
 import '../controllers/feedback_controller.dart';
@@ -114,7 +115,7 @@ class FeedbackView extends GetView<FeedbackController> {
                             fontSize: 12,
                             fontFamily: 'Inter',
                           ),
-                          hintText: 'Your feedback...',
+                          hintText: AppTexts.feedbackText,
                           hintStyle: const TextStyle(
                             color: AppColors.textfieldColor,
                           ),

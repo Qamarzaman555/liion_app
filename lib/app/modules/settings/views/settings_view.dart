@@ -62,9 +62,11 @@ class SettingsView extends GetView<SettingsController> {
               const SizedBox(height: 12),
 
               _customSettingButton(
-                text: "Update Leo",
+                text: "Update App",
                 icon: Icons.repeat_rounded,
-                onPressed: () {},
+                onPressed: () {
+                  controller.updateAppFromPlayStore();
+                },
               ),
 
               const SizedBox(height: 12),
