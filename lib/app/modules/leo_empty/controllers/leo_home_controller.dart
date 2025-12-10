@@ -56,6 +56,7 @@ class LeoHomeController extends GetxController {
   StreamSubscription? _adapterStateSubscription;
   StreamSubscription? _dataReceivedSubscription;
   StreamSubscription? _measureDataSubscription;
+  StreamSubscription? _advancedModesSubscription;
   Timer? _graphInactivityTimer;
   final isPastGraphLoading = false.obs;
   Future<void> _commandSerial = Future.value();
@@ -69,6 +70,7 @@ class LeoHomeController extends GetxController {
     _listenToConnectionStream();
     _listenToDataReceived();
     _listenToMeasureData();
+    _listenToAdvancedModes();
     _loadInitialState();
   }
 
@@ -84,6 +86,10 @@ class LeoHomeController extends GetxController {
     connectionState.value = await BleScanService.getConnectionState();
     connectedDeviceAddress.value =
         await BleScanService.getConnectedDeviceAddress();
+    final cachedAdvanced = await BleScanService.getAdvancedModes();
+    advancedGhostModeEnabled.value = cachedAdvanced.ghostMode;
+    advancedSilentModeEnabled.value = cachedAdvanced.silentMode;
+    advancedHigherChargeLimitEnabled.value = cachedAdvanced.higherChargeLimit;
 
     if (adapterState.value != BleAdapterState.on) {
       await BleScanService.requestEnableBluetooth();
@@ -183,10 +189,25 @@ class LeoHomeController extends GetxController {
     });
   }
 
+  void _listenToAdvancedModes() {
+    _advancedModesSubscription = BleScanService.advancedModesStream.listen((
+      modes,
+    ) {
+      advancedGhostModeEnabled.value = modes.ghostMode;
+      advancedSilentModeEnabled.value = modes.silentMode;
+      advancedHigherChargeLimitEnabled.value = modes.higherChargeLimit;
+    });
+  }
+
   void _parseReceivedData(String data) {
     try {
       List<String> parts = data.split(' ');
       print('Received data parts: $parts');
+
+      // Ignore very short messages to avoid RangeError on indexed access.
+      if (parts.length < 3) {
+        return;
+      }
 
       // Parse mwh value
       if (parts.length >= 2 && parts[1].toLowerCase() == 'mwh') {
@@ -273,46 +294,6 @@ class LeoHomeController extends GetxController {
 
           // Add to graph using the same value shown in UI
           _addGraphSample(current);
-        }
-      }
-
-      if (parts.length > 3 && parts[2] == "ghost_mode") {
-        String safeValue = parts[3];
-        safeValue = safeValue.replaceAll(RegExp(r'[^0-9]'), '');
-        if (safeValue == "1") {
-          advancedGhostModeEnabled.value = true;
-          print('Ghost mode enabled: $advancedGhostModeEnabled.value');
-        } else {
-          advancedGhostModeEnabled.value = false;
-          print('Ghost mode disabled: $advancedGhostModeEnabled.value');
-        }
-      }
-
-      if (parts.length > 3 && parts[2] == "quiet_mode") {
-        String safeValue = parts[3];
-        safeValue = safeValue.replaceAll(RegExp(r'[^0-9]'), '');
-        if (safeValue == "1") {
-          advancedSilentModeEnabled.value = true;
-          print('Silent mode enabled: $advancedSilentModeEnabled.value');
-        } else {
-          advancedSilentModeEnabled.value = false;
-          print('Silent mode disabled: $advancedSilentModeEnabled.value');
-        }
-      }
-
-      if (parts.length > 3 && parts[2] == "charge_limit") {
-        String safeValue = parts[3];
-        safeValue = safeValue.replaceAll(RegExp(r'[^0-9]'), '');
-        if (safeValue == "1") {
-          advancedHigherChargeLimitEnabled.value = true;
-          print(
-            'Higher charge limit enabled: $advancedHigherChargeLimitEnabled.value',
-          );
-        } else {
-          advancedHigherChargeLimitEnabled.value = false;
-          print(
-            'Higher charge limit disabled: $advancedHigherChargeLimitEnabled.value',
-          );
         }
       }
     } catch (e) {
@@ -547,19 +528,19 @@ class LeoHomeController extends GetxController {
 
   Future<void> requestAdvancedGhostMode() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.sendCommand('app_msg ghost_mode');
+      await BleScanService.requestAdvancedModes();
     }
   }
 
   Future<void> requestAdvancedSilentMode() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.sendCommand('app_msg quiet_mode');
+      await BleScanService.requestAdvancedModes();
     }
   }
 
   Future<void> requestAdvancedHigherChargeLimit() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.sendCommand('app_msg charge_limit');
+      await BleScanService.requestAdvancedModes();
     }
   }
 
@@ -582,25 +563,10 @@ class LeoHomeController extends GetxController {
     if (connectionState.value != BleConnectionState.connected) {
       return;
     }
-
-    // Request ghost mode
-    await requestAdvancedGhostMode();
-    await Future.delayed(const Duration(milliseconds: 200));
-    await BleScanService.sendCommand('py_msg');
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    // Request silent mode
-    await requestAdvancedSilentMode();
-    await Future.delayed(const Duration(milliseconds: 200));
-    await BleScanService.sendCommand('py_msg');
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    // Request higher charge limit
-    await requestAdvancedHigherChargeLimit();
-    await Future.delayed(const Duration(milliseconds: 200));
-    await BleScanService.sendCommand('py_msg');
-
-    await Future.delayed(const Duration(milliseconds: 200), () {});
+    final cachedModes = await BleScanService.getAdvancedModes();
+    advancedGhostModeEnabled.value = cachedModes.ghostMode;
+    advancedSilentModeEnabled.value = cachedModes.silentMode;
+    advancedHigherChargeLimitEnabled.value = cachedModes.higherChargeLimit;
   }
 
   Future<void> _scheduleInitialRequests() async {
@@ -609,10 +575,6 @@ class LeoHomeController extends GetxController {
     await _enqueueCommand(
       () => requestLedTimeout(),
       delayAfter: const Duration(milliseconds: 150),
-    );
-    await _enqueueCommand(
-      () => initializeAdvancedSettings(),
-      delayAfter: const Duration(milliseconds: 200),
     );
     await _enqueueCommand(
       () => requestMwhValue(),
@@ -720,6 +682,7 @@ class LeoHomeController extends GetxController {
     _adapterStateSubscription?.cancel();
     _dataReceivedSubscription?.cancel();
     _measureDataSubscription?.cancel();
+    _advancedModesSubscription?.cancel();
     _graphInactivityTimer?.cancel();
     super.onClose();
   }

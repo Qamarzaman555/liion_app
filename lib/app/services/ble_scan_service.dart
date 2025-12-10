@@ -63,6 +63,26 @@ class ChargeLimitInfo {
   }
 }
 
+class AdvancedModes {
+  final bool ghostMode;
+  final bool silentMode;
+  final bool higherChargeLimit;
+
+  AdvancedModes({
+    required this.ghostMode,
+    required this.silentMode,
+    required this.higherChargeLimit,
+  });
+
+  factory AdvancedModes.fromMap(Map<dynamic, dynamic> map) {
+    return AdvancedModes(
+      ghostMode: map['ghostMode'] as bool? ?? false,
+      silentMode: map['silentMode'] as bool? ?? false,
+      higherChargeLimit: map['higherChargeLimit'] as bool? ?? false,
+    );
+  }
+}
+
 class BatteryHealthInfo {
   final int designedCapacityMah;
   final double estimatedCapacityMah;
@@ -171,6 +191,9 @@ class BleScanService {
   static const EventChannel _ledTimeoutChannel = EventChannel(
     'com.liion_app/led_timeout',
   );
+  static const EventChannel _advancedModesChannel = EventChannel(
+    'com.liion_app/advanced_modes',
+  );
   static const EventChannel _batteryHealthChannel = EventChannel(
     'com.liion_app/battery_health',
   );
@@ -190,6 +213,7 @@ class BleScanService {
   static Stream<String>? _dataReceivedStream;
   static Stream<PhoneBatteryInfo>? _batteryStream;
   static Stream<ChargeLimitInfo>? _chargeLimitStream;
+  static Stream<AdvancedModes>? _advancedModesStream;
   static Stream<int>? _ledTimeoutStream;
   static Stream<BatteryHealthInfo>? _batteryHealthStream;
   static Stream<MeasureData>? _measureDataStream;
@@ -373,6 +397,81 @@ class BleScanService {
       return result ?? false;
     } on PlatformException catch (e) {
       print('Failed to set LED timeout: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get the latest advanced modes state from the service cache.
+  static Future<AdvancedModes> getAdvancedModes() async {
+    try {
+      final result = await _methodChannel.invokeMethod<Map>('getAdvancedModes');
+      if (result == null) {
+        return AdvancedModes(
+          ghostMode: false,
+          silentMode: false,
+          higherChargeLimit: false,
+        );
+      }
+      return AdvancedModes.fromMap(Map<String, dynamic>.from(result));
+    } on PlatformException catch (e) {
+      print('Failed to get advanced modes: ${e.message}');
+      return AdvancedModes(
+        ghostMode: false,
+        silentMode: false,
+        higherChargeLimit: false,
+      );
+    }
+  }
+
+  /// Toggle ghost mode via the foreground service.
+  static Future<bool> setGhostMode(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setGhostMode', {
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to set ghost mode: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Toggle silent mode via the foreground service.
+  static Future<bool> setSilentMode(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setSilentMode', {
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to set silent mode: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Toggle higher charge limit via the foreground service.
+  static Future<bool> setHigherChargeLimit(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setHigherChargeLimit',
+        {'enabled': enabled},
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to set higher charge limit: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Ask the service to re-query advanced modes from the device.
+  static Future<bool> requestAdvancedModes() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'requestAdvancedModes',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to request advanced modes: ${e.message}');
       return false;
     }
   }
@@ -627,6 +726,16 @@ class BleScanService {
       return event as int;
     });
     return _ledTimeoutStream!;
+  }
+
+  /// Stream of advanced mode updates (ghost, silent, higher charge limit)
+  static Stream<AdvancedModes> get advancedModesStream {
+    _advancedModesStream ??= _advancedModesChannel.receiveBroadcastStream().map(
+      (event) {
+        return AdvancedModes.fromMap(Map<String, dynamic>.from(event as Map));
+      },
+    );
+    return _advancedModesStream!;
   }
 
   /// Get battery session history

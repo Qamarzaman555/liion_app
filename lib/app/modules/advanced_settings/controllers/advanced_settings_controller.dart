@@ -18,6 +18,9 @@ class AdvancedSettingsController extends GetxController {
         _leoHomeController.advancedSilentModeEnabled.value;
     higherChargeLimitEnabled.value =
         _leoHomeController.advancedHigherChargeLimitEnabled.value;
+
+    // Refresh the latest states from the foreground service.
+    BleScanService.requestAdvancedModes();
   }
 
   Future<void> requestAdvancedGhostMode(bool value) async {
@@ -30,37 +33,15 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    try {
-      ghostModeEnabled.value = value;
-      // 1) Send desired state to Leo.
-      final sent = await BleScanService.sendCommand(
-        'app_msg ghost_mode ${value ? "1" : "0"}',
-      );
-      if (!sent) {
-        throw Exception('Failed to send command');
-      }
+    final success = await BleScanService.setGhostMode(value);
+    ghostModeEnabled.value = value;
 
-      // 2) Let device process before querying to avoid BLE write collisions.
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // 3) Query current ghost mode state.
-      await _leoHomeController.requestAdvancedGhostMode();
-
-      // 4) Give a moment, then flush.
-      await Future.delayed(const Duration(milliseconds: 300));
-      await BleScanService.sendCommand('py_msg');
-
-      AppSnackbars.showSuccess(
-        title: "Ghost Mode Updated",
-        message:
-            "Ghost Mode has been updated to ${value ? "Enabled" : "Disabled"}",
-      );
-    } catch (_) {
-      AppSnackbars.showSuccess(
-        title: "Update Failed",
-        message: "Could not update Ghost Mode. Please try again.",
-      );
-    }
+    AppSnackbars.showSuccess(
+      title: success ? "Ghost Mode Updated" : "Update Failed",
+      message: success
+          ? "Ghost Mode has been updated to ${value ? "Enabled" : "Disabled"}"
+          : "Could not update Ghost Mode. Please try again.",
+    );
   }
 
   Future<void> requestAdvancedSilentMode(bool value) async {
@@ -73,37 +54,15 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    try {
-      silentModeEnabled.value = value;
-      // 1) Send desired state to Leo.
-      final sent = await BleScanService.sendCommand(
-        'app_msg quiet_mode ${value ? "1" : "0"}',
-      );
-      if (!sent) {
-        throw Exception('Failed to send command');
-      }
+    final success = await BleScanService.setSilentMode(value);
+    silentModeEnabled.value = value;
 
-      // 2) Let device process before querying to avoid BLE write collisions.
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // 3) Query current silent mode state.
-      await _leoHomeController.requestAdvancedSilentMode();
-
-      // 4) Give a moment, then flush.
-      await Future.delayed(const Duration(milliseconds: 300));
-      await BleScanService.sendCommand('py_msg');
-
-      AppSnackbars.showSuccess(
-        title: "Silent Mode Updated",
-        message:
-            "Silent Mode has been updated to ${value ? "Enabled" : "Disabled"}",
-      );
-    } catch (_) {
-      AppSnackbars.showSuccess(
-        title: "Update Failed",
-        message: "Could not update Silent Mode. Please try again.",
-      );
-    }
+    AppSnackbars.showSuccess(
+      title: success ? "Silent Mode Updated" : "Update Failed",
+      message: success
+          ? "Silent Mode has been updated to ${value ? "Enabled" : "Disabled"}"
+          : "Could not update Silent Mode. Please try again.",
+    );
   }
 
   Future<void> requestAdvancedHigherChargeLimit(bool value) async {
@@ -116,36 +75,14 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    try {
-      higherChargeLimitEnabled.value = value;
-      // 1) Send desired state to Leo.
-      final sent = await BleScanService.sendCommand(
-        'app_msg charge_limit ${value ? "1" : "0"}',
-      );
-      if (!sent) {
-        throw Exception('Failed to send command');
-      }
+    final success = await BleScanService.setHigherChargeLimit(value);
+    higherChargeLimitEnabled.value = value;
 
-      // 2) Let device process before querying to avoid BLE write collisions.
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // 3) Query current higher charge limit state.
-      await _leoHomeController.requestAdvancedHigherChargeLimit();
-
-      // 4) Give a moment, then flush.
-      await Future.delayed(const Duration(milliseconds: 300));
-      await BleScanService.sendCommand('py_msg');
-
-      AppSnackbars.showSuccess(
-        title: "Higher Charge Limit Updated",
-        message:
-            "Higher Charge Limit has been updated to ${value ? "Enabled" : "Disabled"}",
-      );
-    } catch (_) {
-      AppSnackbars.showSuccess(
-        title: "Update Failed",
-        message: "Could not update Higher Charge Limit. Please try again.",
-      );
-    }
+    AppSnackbars.showSuccess(
+      title: success ? "Higher Charge Limit Updated" : "Update Failed",
+      message: success
+          ? "Higher Charge Limit has been updated to ${value ? "Enabled" : "Disabled"}"
+          : "Could not update Higher Charge Limit. Please try again.",
+    );
   }
 }

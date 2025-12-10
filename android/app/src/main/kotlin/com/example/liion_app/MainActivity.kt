@@ -29,6 +29,7 @@ class MainActivity : FlutterActivity() {
         private const val BATTERY_METRICS_CHANNEL = "com.liion_app/battery_metrics"
         private const val OTA_PROGRESS_CHANNEL = "com.liion_app/ota_progress"
         private const val LED_TIMEOUT_CHANNEL = "com.liion_app/led_timeout"
+        private const val ADVANCED_MODES_CHANNEL = "com.liion_app/advanced_modes"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -42,6 +43,7 @@ class MainActivity : FlutterActivity() {
         private var measureDataSink: EventChannel.EventSink? = null
         private var batteryMetricsSink: EventChannel.EventSink? = null
         private var otaProgressSink: EventChannel.EventSink? = null
+        private var advancedModesSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun clearAllSinks() {
@@ -55,6 +57,7 @@ class MainActivity : FlutterActivity() {
             batteryHealthSink = null
             batteryMetricsSink = null
             otaProgressSink = null
+            advancedModesSink = null
         }
         
         fun sendOtaProgress(progress: Int, inProgress: Boolean, message: String?) {
@@ -154,6 +157,18 @@ class MainActivity : FlutterActivity() {
                 ledTimeoutSink?.success(timeoutSeconds)
             } catch (e: Exception) {
                 ledTimeoutSink = null
+            }
+        }
+        
+        fun sendAdvancedModesUpdate(ghostMode: Boolean, silentMode: Boolean, higherChargeLimit: Boolean) {
+            try {
+                advancedModesSink?.success(mapOf(
+                    "ghostMode" to ghostMode,
+                    "silentMode" to silentMode,
+                    "higherChargeLimit" to higherChargeLimit
+                ))
+            } catch (e: Exception) {
+                advancedModesSink = null
             }
         }
         
@@ -341,6 +356,39 @@ class MainActivity : FlutterActivity() {
                             result.error("INVALID_ARGUMENT", "Seconds is required", null)
                         }
                     }
+                    "getAdvancedModes" -> {
+                        result.success(BleScanService.getAdvancedModes())
+                    }
+                    "setGhostMode" -> {
+                        val enabled = call.argument<Boolean>("enabled")
+                        if (enabled != null) {
+                            val success = BleScanService.setGhostMode(enabled)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Enabled is required", null)
+                        }
+                    }
+                    "setSilentMode" -> {
+                        val enabled = call.argument<Boolean>("enabled")
+                        if (enabled != null) {
+                            val success = BleScanService.setSilentMode(enabled)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Enabled is required", null)
+                        }
+                    }
+                    "setHigherChargeLimit" -> {
+                        val enabled = call.argument<Boolean>("enabled")
+                        if (enabled != null) {
+                            val success = BleScanService.setHigherChargeLimit(enabled)
+                            result.success(success)
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Enabled is required", null)
+                        }
+                    }
+                    "requestAdvancedModes" -> {
+                        result.success(BleScanService.requestAdvancedModes())
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -434,6 +482,18 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     ledTimeoutSink = null
+                }
+            })
+        
+        // Event Channel for advanced modes
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, ADVANCED_MODES_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    advancedModesSink = events
+                    events?.success(BleScanService.getAdvancedModes())
+                }
+                override fun onCancel(arguments: Any?) {
+                    advancedModesSink = null
                 }
             })
         

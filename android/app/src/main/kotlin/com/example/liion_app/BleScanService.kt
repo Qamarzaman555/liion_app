@@ -30,6 +30,9 @@ class BleScanService : Service() {
         const val KEY_CHARGE_LIMIT = "charge_limit"
         const val KEY_CHARGE_LIMIT_ENABLED = "charge_limit_enabled"
         const val KEY_LED_TIMEOUT = "led_timeout_seconds"
+        const val KEY_GHOST_MODE = "ghost_mode_enabled"
+        const val KEY_SILENT_MODE = "silent_mode_enabled"
+        const val KEY_HIGHER_CHARGE_LIMIT = "higher_charge_limit_enabled"
         
         // Nordic UART Service UUIDs
         val SERVICE_UUID: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
@@ -104,6 +107,9 @@ class BleScanService : Service() {
         var dischargingTimeSeconds: Long = 0
         var firmwareVersion: String = ""
         var ledTimeoutSeconds: Int = 300
+        var ghostModeEnabled: Boolean = false
+        var silentModeEnabled: Boolean = false
+        var higherChargeLimitEnabled: Boolean = false
         
         // Battery session history
         data class BatterySession(
@@ -144,7 +150,7 @@ class BleScanService : Service() {
         }
         
         fun sendCommand(command: String): Boolean {
-            return instance?.writeCommand(command) ?: false
+            return instance?.enqueueCommand(command) ?: false
         }
         
         fun setLedTimeout(seconds: Int): Boolean {
@@ -211,6 +217,30 @@ class BleScanService : Service() {
         
         fun setChargeLimitEnabled(enabled: Boolean): Boolean {
             return instance?.updateChargeLimitEnabled(enabled) ?: false
+        }
+        
+        fun getAdvancedModes(): Map<String, Boolean> {
+            return mapOf(
+                "ghostMode" to ghostModeEnabled,
+                "silentMode" to silentModeEnabled,
+                "higherChargeLimit" to higherChargeLimitEnabled
+            )
+        }
+        
+        fun setGhostMode(enabled: Boolean): Boolean {
+            return instance?.updateGhostMode(enabled) ?: false
+        }
+        
+        fun setSilentMode(enabled: Boolean): Boolean {
+            return instance?.updateSilentMode(enabled) ?: false
+        }
+        
+        fun setHigherChargeLimit(enabled: Boolean): Boolean {
+            return instance?.updateHigherChargeLimit(enabled) ?: false
+        }
+        
+        fun requestAdvancedModes(): Boolean {
+            return instance?.requestAdvancedModesFromDevice() ?: false
         }
         
         fun getChargeLimitInfo(): Map<String, Any> {
@@ -282,6 +312,15 @@ class BleScanService : Service() {
     private val BATTERY_METRICS_INTERVAL_MS = 1000L
     private var lastMetricsChargingState: Boolean? = null
     private var lastMetricsSampleTime: Long = 0
+    
+    // Command queue to serialize BLE writes
+    private val commandQueue: ArrayDeque<String> = ArrayDeque()
+    private var commandProcessing = false
+    private val COMMAND_GAP_MS = 250L
+    
+    // Advanced modes request throttling
+    private var advancedRequestInProgress = false
+    private var lastAdvancedRequestMs: Long = 0
     
     // Health readings history (last 5 readings)
     private val healthReadings = mutableListOf<Companion.HealthReading>()
@@ -594,6 +633,11 @@ class BleScanService : Service() {
                     handler.postDelayed({
                         requestLedTimeoutFromDevice()
                     }, 700)
+                    
+                    // Fetch advanced modes state after initial setup
+                    handler.postDelayed({
+                        requestAdvancedModesFromDevice()
+                    }, 1100)
                 }
             }
         }
@@ -604,12 +648,27 @@ class BleScanService : Service() {
         
         // Handle charge_limit response
         if (parts.size >= 4 && parts[2] == "charge_limit") {
-            try {
-                val value = parts[3].toIntOrNull() ?: return
-                chargeLimitConfirmed = value == 1
+            val numeric = parts[3].filter { it.isDigit() }.toIntOrNull()
+            if (numeric != null) {
+                chargeLimitConfirmed = numeric == 1
                 MainActivity.sendChargeLimitConfirmed(chargeLimitConfirmed)
-            } catch (e: Exception) {
-                e.printStackTrace()
+                handleAdvancedModeResponse("charge_limit", numeric)
+            }
+        }
+        
+        // Handle ghost_mode response
+        if (parts.size >= 4 && parts[2] == "ghost_mode") {
+            val numeric = parts[3].filter { it.isDigit() }.toIntOrNull()
+            if (numeric != null) {
+                handleAdvancedModeResponse("ghost_mode", numeric)
+            }
+        }
+        
+        // Handle quiet_mode response
+        if (parts.size >= 4 && parts[2] == "quiet_mode") {
+            val numeric = parts[3].filter { it.isDigit() }.toIntOrNull()
+            if (numeric != null) {
+                handleAdvancedModeResponse("quiet_mode", numeric)
             }
         }
         
@@ -648,6 +707,14 @@ class BleScanService : Service() {
             if (versionValue.isNotEmpty()) {
                 firmwareVersion = versionValue
             }
+        }
+    }
+
+    private fun handleAdvancedModeResponse(mode: String, value: Int) {
+        when (mode) {
+            "ghost_mode" -> updateAdvancedModeState(ghost = value == 1)
+            "quiet_mode" -> updateAdvancedModeState(silent = value == 1)
+            "charge_limit" -> updateAdvancedModeState(higherCharge = value == 1)
         }
     }
 
@@ -709,7 +776,7 @@ class BleScanService : Service() {
         }
     }
 
-    private fun writeCommand(command: String): Boolean {
+    private fun writeCommandImmediate(command: String): Boolean {
         if (!isUartReady || connectionState != STATE_CONNECTED) return false
 
         val txChar = txCharacteristic ?: return false
@@ -742,6 +809,26 @@ class BleScanService : Service() {
         }
     }
 
+    private fun enqueueCommand(command: String): Boolean {
+        if (!isUartReady || connectionState != STATE_CONNECTED) return false
+        commandQueue.add(command)
+        if (!commandProcessing) {
+            processCommandQueue()
+        }
+        return true
+    }
+
+    private fun processCommandQueue() {
+        if (commandQueue.isEmpty()) {
+            commandProcessing = false
+            return
+        }
+        commandProcessing = true
+        val command = commandQueue.removeFirst()
+        writeCommandImmediate(command)
+        handler.postDelayed({ processCommandQueue() }, COMMAND_GAP_MS)
+    }
+
     private fun sendChargeLimitCommand() {
         if (!isUartReady || connectionState != STATE_CONNECTED) return
         
@@ -750,7 +837,7 @@ class BleScanService : Service() {
         val timeValue = if (isPhoneCharging) chargingTimeSeconds else dischargingTimeSeconds
         
         val command = "app_msg limit $limitValue $phoneBatteryLevel $chargingFlag $timeValue"
-        writeCommand(command)
+        enqueueCommand(command)
     }
 
     private fun updateChargeLimit(limit: Int, enabled: Boolean): Boolean {
@@ -786,13 +873,13 @@ class BleScanService : Service() {
         MainActivity.sendLedTimeoutUpdate(ledTimeoutSeconds)
         
         if (isUartReady && connectionState == STATE_CONNECTED) {
-            val sent = writeCommand("app_msg led_time_before_dim $seconds")
+            val sent = enqueueCommand("app_msg led_time_before_dim $seconds")
             if (!sent) return false
             handler.postDelayed({
                 if (isUartReady && connectionState == STATE_CONNECTED) {
-                    writeCommand("py_msg")
+                    enqueueCommand("py_msg")
                 }
-            }, 150)
+            }, 250)
         }
         
         return true
@@ -801,14 +888,14 @@ class BleScanService : Service() {
     private fun requestLedTimeoutFromDevice(): Boolean {
         if (!isUartReady || connectionState != STATE_CONNECTED) return false
         
-        val requested = writeCommand("app_msg led_time_before_dim")
+        val requested = enqueueCommand("app_msg led_time_before_dim")
         if (!requested) return false
         
         handler.postDelayed({
             if (isUartReady && connectionState == STATE_CONNECTED) {
-                writeCommand("py_msg")
+                enqueueCommand("py_msg")
             }
-        }, 150)
+        }, 250)
         
         return true
     }
@@ -826,6 +913,113 @@ class BleScanService : Service() {
         
         MainActivity.sendChargeLimitUpdate(chargeLimit, chargeLimitEnabled)
         updateNotificationWithBattery()
+        return true
+    }
+    
+    private fun updateAdvancedModeState(
+        ghost: Boolean? = null,
+        silent: Boolean? = null,
+        higherCharge: Boolean? = null
+    ) {
+        ghost?.let {
+            ghostModeEnabled = it
+            prefs?.edit()?.putBoolean(KEY_GHOST_MODE, it)?.apply()
+        }
+        silent?.let {
+            silentModeEnabled = it
+            prefs?.edit()?.putBoolean(KEY_SILENT_MODE, it)?.apply()
+        }
+        higherCharge?.let {
+            higherChargeLimitEnabled = it
+            prefs?.edit()?.putBoolean(KEY_HIGHER_CHARGE_LIMIT, it)?.apply()
+        }
+        
+        MainActivity.sendAdvancedModesUpdate(
+            ghostModeEnabled,
+            silentModeEnabled,
+            higherChargeLimitEnabled
+        )
+    }
+    
+    private fun scheduleAdvancedRefresh(mode: String) {
+        handler.postDelayed({
+            if (isUartReady && connectionState == STATE_CONNECTED) {
+                enqueueCommand("app_msg $mode")
+                handler.postDelayed({
+                    if (isUartReady && connectionState == STATE_CONNECTED) {
+                        enqueueCommand("py_msg")
+                    }
+                }, 250)
+            }
+        }, 200)
+    }
+    
+    private fun updateGhostMode(enabled: Boolean): Boolean {
+        updateAdvancedModeState(ghost = enabled)
+        
+        if (isUartReady && connectionState == STATE_CONNECTED) {
+            val sent = enqueueCommand("app_msg ghost_mode ${if (enabled) 1 else 0}")
+            if (!sent) return false
+            scheduleAdvancedRefresh("ghost_mode")
+        }
+        
+        return true
+    }
+    
+    private fun updateSilentMode(enabled: Boolean): Boolean {
+        updateAdvancedModeState(silent = enabled)
+        
+        if (isUartReady && connectionState == STATE_CONNECTED) {
+            val sent = enqueueCommand("app_msg quiet_mode ${if (enabled) 1 else 0}")
+            if (!sent) return false
+            scheduleAdvancedRefresh("quiet_mode")
+        }
+        
+        return true
+    }
+    
+    private fun updateHigherChargeLimit(enabled: Boolean): Boolean {
+        updateAdvancedModeState(higherCharge = enabled)
+        
+        if (isUartReady && connectionState == STATE_CONNECTED) {
+            val sent = enqueueCommand("app_msg charge_limit ${if (enabled) 1 else 0}")
+            if (!sent) return false
+            scheduleAdvancedRefresh("charge_limit")
+        }
+        
+        return true
+    }
+    
+    private fun requestAdvancedModesFromDevice(): Boolean {
+        if (!isUartReady || connectionState != STATE_CONNECTED) return false
+        val now = System.currentTimeMillis()
+        if (advancedRequestInProgress || now - lastAdvancedRequestMs < 1500) {
+            return false
+        }
+        advancedRequestInProgress = true
+        lastAdvancedRequestMs = now
+        
+        var delayMs = 0L
+        val modes = listOf("ghost_mode", "quiet_mode", "charge_limit")
+        modes.forEachIndexed { index, mode ->
+            handler.postDelayed({
+                if (isUartReady && connectionState == STATE_CONNECTED) {
+                    enqueueCommand("app_msg $mode")
+                    handler.postDelayed({
+                        if (isUartReady && connectionState == STATE_CONNECTED) {
+                            enqueueCommand("py_msg")
+                        }
+                        if (index == modes.lastIndex) {
+                            advancedRequestInProgress = false
+                        }
+                    }, 300)
+                } else if (index == modes.lastIndex) {
+                    advancedRequestInProgress = false
+                }
+            }, delayMs)
+            delayMs += 450
+        }
+        
         return true
     }
 
@@ -877,7 +1071,7 @@ class BleScanService : Service() {
         measureRunnable = object : Runnable {
             override fun run() {
                 if (isUartReady && connectionState == STATE_CONNECTED) {
-                    writeCommand("measure")
+                    enqueueCommand("measure")
                 }
                 handler.postDelayed(this, MEASURE_INTERVAL_MS)
             }
@@ -1532,6 +1726,9 @@ class BleScanService : Service() {
         chargeLimit = prefs?.getInt(KEY_CHARGE_LIMIT, 90) ?: 90
         chargeLimitEnabled = prefs?.getBoolean(KEY_CHARGE_LIMIT_ENABLED, false) ?: false
         ledTimeoutSeconds = prefs?.getInt(KEY_LED_TIMEOUT, 300) ?: 300
+        ghostModeEnabled = prefs?.getBoolean(KEY_GHOST_MODE, false) ?: false
+        silentModeEnabled = prefs?.getBoolean(KEY_SILENT_MODE, false) ?: false
+        higherChargeLimitEnabled = prefs?.getBoolean(KEY_HIGHER_CHARGE_LIMIT, false) ?: false
         
         // Load saved battery health values
         designedCapacityMah = prefs?.getInt("designed_capacity_mah", 0) ?: 0
