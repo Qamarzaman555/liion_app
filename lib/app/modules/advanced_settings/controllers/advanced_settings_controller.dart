@@ -7,55 +7,17 @@ class AdvancedSettingsController extends GetxController {
   final ghostModeEnabled = false.obs;
   final silentModeEnabled = false.obs;
   final higherChargeLimitEnabled = false.obs;
-  late final LeoHomeController _leoHomeController;
+  final LeoHomeController _leoHomeController = Get.find<LeoHomeController>();
 
   @override
   void onInit() {
     super.onInit();
 
-    _leoHomeController = Get.find<LeoHomeController>();
-    _initializeAdvancedSettings();
-
-    _leoHomeController.advancedGhostModeEnabled.value = ghostModeEnabled.value;
-    _leoHomeController.advancedSilentModeEnabled.value =
-        silentModeEnabled.value;
-    _leoHomeController.advancedHigherChargeLimitEnabled.value =
-        higherChargeLimitEnabled.value;
-  }
-
-  /// Initialize advanced settings by sequentially requesting each mode
-  /// to avoid BLE write collisions
-  Future<void> _initializeAdvancedSettings() async {
-    if (_leoHomeController.connectionState.value !=
-        BleConnectionState.connected) {
-      return;
-    }
-
-    // Request ghost mode
-    await _leoHomeController.requestAdvancedGhostMode();
-    await Future.delayed(const Duration(milliseconds: 200));
-    await BleScanService.sendCommand('py_msg');
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    // Request silent mode
-    await _leoHomeController.requestAdvancedSilentMode();
-    await Future.delayed(const Duration(milliseconds: 200));
-    await BleScanService.sendCommand('py_msg');
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    // Request higher charge limit
-    await _leoHomeController.requestAdvancedHigherChargeLimit();
-    await Future.delayed(const Duration(milliseconds: 200));
-    await BleScanService.sendCommand('py_msg');
-
-    await Future.delayed(const Duration(milliseconds: 200), () {
-      ghostModeEnabled.value =
-          _leoHomeController.advancedGhostModeEnabled.value;
-      silentModeEnabled.value =
-          _leoHomeController.advancedSilentModeEnabled.value;
-      higherChargeLimitEnabled.value =
-          _leoHomeController.advancedHigherChargeLimitEnabled.value;
-    });
+    ghostModeEnabled.value = _leoHomeController.advancedGhostModeEnabled.value;
+    silentModeEnabled.value =
+        _leoHomeController.advancedSilentModeEnabled.value;
+    higherChargeLimitEnabled.value =
+        _leoHomeController.advancedHigherChargeLimitEnabled.value;
   }
 
   Future<void> requestAdvancedGhostMode(bool value) async {

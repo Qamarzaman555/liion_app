@@ -8,6 +8,7 @@ import 'package:liion_app/app/modules/advanced_settings/views/widgets/advance_se
 import 'package:liion_app/app/modules/advanced_settings/views/widgets/advanced_silent_mode_view.dart';
 import 'package:liion_app/app/modules/advanced_settings/views/widgets/led_timeout_view.dart';
 import 'package:liion_app/app/modules/led_timeout/controllers/led_timeout_controller.dart';
+import 'package:liion_app/app/modules/leo_empty/controllers/leo_home_controller.dart';
 import 'package:liion_app/app/routes/app_routes.dart';
 import '../controllers/advanced_settings_controller.dart';
 
@@ -16,6 +17,12 @@ class AdvancedSettingsView extends GetView<AdvancedSettingsController> {
 
   @override
   Widget build(BuildContext context) {
+    controller.ghostModeEnabled.value =
+        Get.find<LeoHomeController>().advancedGhostModeEnabled.value;
+    controller.silentModeEnabled.value =
+        Get.find<LeoHomeController>().advancedSilentModeEnabled.value;
+    controller.higherChargeLimitEnabled.value =
+        Get.find<LeoHomeController>().advancedHigherChargeLimitEnabled.value;
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
 

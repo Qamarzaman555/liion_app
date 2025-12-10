@@ -134,7 +134,9 @@ class DialogHelper {
                 );
                 return;
               }
-              await Future.delayed(const Duration(milliseconds: 300));
+              await Future.delayed(const Duration(milliseconds: 200));
+              await BleScanService.sendCommand('app_msg led_time_before_dim');
+              await Future.delayed(const Duration(milliseconds: 200));
               await BleScanService.sendCommand('py_msg');
               AppSnackbars.showSuccess(
                 title: 'LED Timeout Updated',

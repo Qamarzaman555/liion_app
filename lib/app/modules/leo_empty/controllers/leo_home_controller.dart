@@ -140,35 +140,22 @@ class LeoHomeController extends GetxController {
         await Future.delayed(const Duration(seconds: 1), () {
           requestMwhValue();
         });
-        await Future.delayed(const Duration(seconds: 1), () {
-          requestLeoFirmwareVersion();
-        });
-        await Future.delayed(const Duration(seconds: 1), () {
-          requestChargingMode();
-        });
-        // await Future.delayed(const Duration(seconds: 1), () {
-        //   requestAdvancedGhostMode();
-        // });
-        // await Future.delayed(const Duration(seconds: 1), () async {
-        //   await BleScanService.sendCommand('py_msg');
-        // });
-        // await Future.delayed(const Duration(seconds: 1), () {
-        //   requestAdvancedSilentMode();
-        // });
-        // await Future.delayed(const Duration(seconds: 1), () async {
-        //   await BleScanService.sendCommand('py_msg');
-        // });
-        // await Future.delayed(const Duration(seconds: 1), () {
-        //   requestAdvancedHigherChargeLimit();
-        // });
-        // await Future.delayed(const Duration(seconds: 1), () async {
-        //   await BleScanService.sendCommand('py_msg');
-        // });
-        await Future.delayed(const Duration(seconds: 1), () {
+        await Future.delayed(const Duration(milliseconds: 100), () {
           requestLedTimeout();
         });
-        await Future.delayed(const Duration(seconds: 1), () async {
+
+        await Future.delayed(Duration(milliseconds: 100), () async {
           await BleScanService.sendCommand('py_msg');
+        });
+        await Future.delayed(const Duration(milliseconds: 100), () {
+          requestLeoFirmwareVersion();
+        });
+        await Future.delayed(const Duration(milliseconds: 100), () {
+          requestChargingMode();
+        });
+
+        await Future.delayed(const Duration(milliseconds: 500), () {
+          initializeAdvancedSettings();
         });
       } else if (newState == BleConnectionState.connecting) {
         connectingDeviceAddress.value = address;
@@ -349,20 +336,25 @@ class LeoHomeController extends GetxController {
       }
 
       if (parts.length > 2 && parts[2] == "led_time_before_dim") {
+        print("1");
         // Expect responses like: OK py_msg led_time_before_dim 50
         if (parts.length <= 3) return;
+        print("2");
 
         final rawValue = parts[3].trim();
         final numericOnly = rawValue.replaceAll(RegExp(r'[^0-9]'), '');
         final parsed = int.tryParse(numericOnly);
         if (parsed == null) {
           print('Ignoring non-numeric led_time_before_dim value: $rawValue');
+          print("4");
           return;
         }
 
         final ledController = Get.find<LedTimeoutController>();
         ledController.timeoutSeconds.value = parsed;
         ledController.timeoutTextController.text = parsed.toString();
+        print("LedTimer: ${ledController.timeoutSeconds.value}");
+        print("LedTimer: ${ledController.timeoutTextController.text}");
       }
     } catch (e) {
       print('Error parsing data: $e');
@@ -616,6 +608,33 @@ class LeoHomeController extends GetxController {
     if (connectionState.value == BleConnectionState.connected) {
       await BleScanService.sendCommand('app_msg led_time_before_dim');
     }
+  }
+
+  /// Initialize advanced settings by sequentially requesting each mode
+  /// to avoid BLE write collisions
+  Future<void> initializeAdvancedSettings() async {
+    if (connectionState.value != BleConnectionState.connected) {
+      return;
+    }
+
+    // Request ghost mode
+    await requestAdvancedGhostMode();
+    await Future.delayed(const Duration(milliseconds: 200));
+    await BleScanService.sendCommand('py_msg');
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Request silent mode
+    await requestAdvancedSilentMode();
+    await Future.delayed(const Duration(milliseconds: 200));
+    await BleScanService.sendCommand('py_msg');
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Request higher charge limit
+    await requestAdvancedHigherChargeLimit();
+    await Future.delayed(const Duration(milliseconds: 200));
+    await BleScanService.sendCommand('py_msg');
+
+    await Future.delayed(const Duration(milliseconds: 200), () {});
   }
 
   /// Send custom command to Leo
