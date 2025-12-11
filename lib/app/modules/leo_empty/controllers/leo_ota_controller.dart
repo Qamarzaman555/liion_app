@@ -25,6 +25,8 @@ class LeoOtaController extends GetxController {
   final secondsRemaining = 60.obs; // 1 minute timer
   final shouldShowDoneDialog =
       false.obs; // Flag to trigger done dialog on reconnection
+  final isDoneDialogShowing = false.obs; // Prevent duplicate done dialogs
+  final hasWaitDialogShown = false.obs; // Prevent duplicate wait dialogs
   Timer? _installTimer;
 
   // Connection state tracking for reconnection detection
@@ -574,6 +576,8 @@ class LeoOtaController extends GetxController {
     isTimerDialogOpen.value = false;
     secondsRemaining.value = 60;
     shouldShowDoneDialog.value = false;
+    isDoneDialogShowing.value = false;
+    hasWaitDialogShown.value = false;
     _wasOtaCompleted = false;
     _disconnectedDuringTimer = false;
     _installTimer?.cancel();

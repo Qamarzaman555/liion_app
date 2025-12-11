@@ -103,10 +103,14 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
       '🔴 [OTA Dialog] dispose - isTimerDialogOpen: ${otaController.isTimerDialogOpen.value}, wasOtaCompleted: ${otaController.wasOtaCompleted}',
     );
 
-    // Only mark dialog as closed, don't reset state if OTA is still in progress
-    // This allows reopening the dialog to show current progress
-    otaController.isOtaProgressDialogOpen.value = false;
-    print('🔴 [OTA Dialog] Marked isOtaProgressDialogOpen = false');
+    // Only mark dialog as closed, don't reset state if OTA is still in progress.
+    // Defer the observable update to a microtask to avoid setState during dispose/build.
+    Future.microtask(() {
+      otaController.isOtaProgressDialogOpen.value = false;
+      print(
+        '🔴 [OTA Dialog] Marked isOtaProgressDialogOpen = false (microtask)',
+      );
+    });
 
     // Only reset OTA state when dialog closes AND OTA is not in progress AND timer is not active
     // This ensures state is cleaned up after completion/cancellation, but not during active OTA
@@ -195,6 +199,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                   print(
                     '🟢 [OTA Dialog] Closing progress dialog and showing wait dialog',
                   );
+                  otaController.hasWaitDialogShown.value = true;
                   Navigator.pop(context);
                   showDialog(
                     context: context,

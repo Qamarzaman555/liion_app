@@ -26,6 +26,16 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
       '🟡 [Wait Dialog] initState - wasOtaCompleted: ${controller.wasOtaCompleted}, shouldShowDoneDialog: ${controller.shouldShowDoneDialog.value}',
     );
 
+    // Mark dialog open after first frame to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      controller.hasWaitDialogShown.value = true;
+      controller.isTimerDialogOpen.value = true;
+      print(
+        '🟡 [Wait Dialog] postFrame set isTimerDialogOpen=true, secondsRemaining: ${controller.secondsRemaining.value}',
+      );
+    });
+
     // Ensure timer is started if it hasn't been started yet
     if (!controller.isInstallTimerActive && controller.wasOtaCompleted) {
       print(
@@ -48,11 +58,6 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
 
   @override
   Widget build(BuildContext context) {
-    controller.isTimerDialogOpen.value = true;
-    print(
-      '🟡 [Wait Dialog] build - isTimerDialogOpen set to true, secondsRemaining: ${controller.secondsRemaining.value}',
-    );
-
     // Listen for timer completion, reconnection, or failure
     return Obx(() {
       // Check if OTA failed (shouldn't happen normally, but handle it)
@@ -100,11 +105,14 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
             Navigator.pop(context);
             // Reset the flag before showing done dialog
             controller.shouldShowDoneDialog.value = false;
+            controller.isDoneDialogShowing.value = true;
             showDialog(
               context: context,
               barrierDismissible: false,
               builder: (context) => const OTAUpdateDone(),
-            );
+            ).then((_) {
+              controller.isDoneDialogShowing.value = false;
+            });
           }
         });
       }

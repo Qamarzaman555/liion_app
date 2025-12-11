@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'package:get/get.dart';
+import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
+import 'package:path_provider/path_provider.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
@@ -24,6 +27,8 @@ class LeoHomeController extends GetxController {
   final binFileFromLeoName = ''.obs;
   final lastReceivedData = ''.obs;
   final receivedDataLog = <String>[].obs;
+  final cloudBinFileName = ''.obs;
+  final isFirmwareDownloading = false.obs;
 
   String get leoFirmwareVersion => binFileFromLeoName.value;
   set leoFirmwareVersion(String value) {
@@ -102,6 +107,45 @@ class LeoHomeController extends GetxController {
     final devices = await BleScanService.getScannedDevices();
     scannedDevices.assignAll(devices);
     isScanning.value = await BleScanService.isServiceRunning();
+  }
+
+  /// Download firmware from Firebase at app start to compare versions.
+  Future<void> downloadFirmwareAtStart() async {
+    if (isFirmwareDownloading.value) return;
+
+    try {
+      isFirmwareDownloading.value = true;
+      cloudBinFileName.value = '';
+
+      final storage = firebase_storage.FirebaseStorage.instance;
+      final result = await storage.ref('Bin file').listAll();
+
+      if (result.items.isEmpty) {
+        return;
+      }
+
+      final tempDirPath = (await getTemporaryDirectory()).path;
+
+      for (var ref in result.items) {
+        final fileName = ref.name.replaceAll('.img', '');
+        final file = File('$tempDirPath/$fileName');
+        await ref.writeToFile(file);
+
+        // Capture the first downloaded filename for version comparison.
+        if (cloudBinFileName.value.isEmpty) {
+          cloudBinFileName.value = fileName;
+        }
+      }
+
+      // Fallback to first item if somehow not set.
+      if (cloudBinFileName.value.isEmpty) {
+        cloudBinFileName.value = result.items.first.name.replaceAll('.img', '');
+      }
+    } catch (e) {
+      print('Error downloading firmware at start: $e');
+    } finally {
+      isFirmwareDownloading.value = false;
+    }
   }
 
   void _listenToAdapterState() {

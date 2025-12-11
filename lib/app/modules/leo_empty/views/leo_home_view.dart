@@ -18,8 +18,12 @@ import 'widgets/ota_done_dialog.dart';
 class LeoHomeView extends GetView<LeoHomeController> {
   const LeoHomeView({super.key});
 
+  static bool _didTriggerInitialFirmwareDownload = false;
+
   @override
   Widget build(BuildContext context) {
+    _ensureInitialFirmwareDownload();
+
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
       resizeToAvoidBottomInset: false,
@@ -71,6 +75,16 @@ class LeoHomeView extends GetView<LeoHomeController> {
         ),
       ),
     );
+  }
+
+  void _ensureInitialFirmwareDownload() {
+    if (_didTriggerInitialFirmwareDownload) {
+      return;
+    }
+    _didTriggerInitialFirmwareDownload = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.downloadFirmwareAtStart();
+    });
   }
 
   void _handleConnectionButtonTap(BuildContext context) {
@@ -182,12 +196,13 @@ class _OtaDoneDialogListenerState extends State<_OtaDoneDialogListener> {
 
       // Check if timer started but wait dialog is not shown (progress dialog was dismissed)
       // This happens when progress reaches 100% but progress dialog was dismissed
-      // Only show if progress dialog is not open (it was dismissed before reaching 100%)
+      // Only show if wait dialog has not already been shown
       if (otaController.isTimerDialogOpen.value &&
           otaController.wasOtaCompleted &&
           otaController.isInstallTimerActive &&
           !otaController.isOtaProgressDialogOpen.value &&
-          !_hasShownWaitDialog) {
+          !_hasShownWaitDialog &&
+          !otaController.hasWaitDialogShown.value) {
         print(
           '🟡 [Done Dialog Listener] Timer started but progress dialog was dismissed - showing wait dialog',
         );
@@ -200,7 +215,9 @@ class _OtaDoneDialogListenerState extends State<_OtaDoneDialogListener> {
             // Double-check conditions before showing (in case wait dialog was shown by progress dialog transition)
             if (otaController.isTimerDialogOpen.value &&
                 !otaController.isOtaProgressDialogOpen.value &&
-                otaController.isInstallTimerActive) {
+                otaController.isInstallTimerActive &&
+                !otaController.hasWaitDialogShown.value) {
+              otaController.hasWaitDialogShown.value = true;
               showDialog(
                 context: context,
                 barrierDismissible: true,
@@ -209,6 +226,7 @@ class _OtaDoneDialogListenerState extends State<_OtaDoneDialogListener> {
                 // Reset flag when wait dialog is closed
                 print('🟡 [Done Dialog Listener] Wait dialog closed');
                 _hasShownWaitDialog = false;
+                otaController.hasWaitDialogShown.value = false;
               });
             } else {
               // Wait dialog was already shown by progress dialog transition
@@ -228,7 +246,8 @@ class _OtaDoneDialogListenerState extends State<_OtaDoneDialogListener> {
       //    The wait dialog will handle showing done dialog when it's open
       if (otaController.shouldShowDoneDialog.value &&
           !_hasShownDoneDialog &&
-          !otaController.isTimerDialogOpen.value) {
+          !otaController.isTimerDialogOpen.value &&
+          !otaController.isDoneDialogShowing.value) {
         print(
           '🟢 [Done Dialog Listener] shouldShowDoneDialog is true, showing done dialog',
         );
