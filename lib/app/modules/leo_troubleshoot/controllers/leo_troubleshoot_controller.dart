@@ -60,6 +60,7 @@ class LeoTroubleshootController extends GetxController {
 
   Future<void> updateFromFile() async {
     try {
+      print('🔵 [Troubleshoot] updateFromFile called');
       isUpdating.value = true;
 
       // Get OTA controller first
@@ -71,6 +72,7 @@ class LeoTroubleshootController extends GetxController {
           otaController.isTimerDialogOpen.value ||
           (otaController.wasOtaCompleted &&
               otaController.secondsRemaining.value > 0)) {
+        print('🟡 [Troubleshoot] Timer is active - showing wait dialog');
         final context = Get.context;
         if (context != null) {
           showDialog(
@@ -86,6 +88,12 @@ class LeoTroubleshootController extends GetxController {
       if (otaController.isOtaInProgress.value ||
           otaController.isDownloadingFirmware.value ||
           otaController.isOtaProgressDialogOpen.value) {
+        print(
+          '🟡 [Troubleshoot] OTA already in progress - showing existing progress dialog',
+        );
+        print(
+          '🟡 [Troubleshoot] isOtaInProgress: ${otaController.isOtaInProgress.value}, progress: ${otaController.otaProgress.value}',
+        );
         // OTA is already in progress, just show the progress dialog
         final context = Get.context;
         if (context != null) {
@@ -100,6 +108,7 @@ class LeoTroubleshootController extends GetxController {
       }
 
       // Show file picker only if OTA is not in progress
+      print('🔵 [Troubleshoot] Showing file picker');
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['bin'],
@@ -107,11 +116,16 @@ class LeoTroubleshootController extends GetxController {
 
       if (result != null && result.files.single.path != null) {
         final filePath = result.files.single.path!;
+        print('🔵 [Troubleshoot] File selected: $filePath');
 
         // Double-check OTA is still not in progress (in case it started while picking file)
         if (otaController.isOtaInProgress.value ||
-            otaController.isDownloadingFirmware.value) {
+            otaController.isDownloadingFirmware.value ||
+            otaController.isOtaProgressDialogOpen.value) {
           // OTA started while picking file, just show progress dialog
+          print(
+            '🟡 [Troubleshoot] OTA started while picking file - showing existing progress dialog',
+          );
           final context = Get.context;
           if (context != null) {
             showDialog(
@@ -128,6 +142,7 @@ class LeoTroubleshootController extends GetxController {
         final context = Get.context;
         if (context != null) {
           // Show progress dialog
+          print('🔵 [Troubleshoot] Starting new OTA - showing progress dialog');
           showDialog(
             context: context,
             barrierDismissible: true,
@@ -138,8 +153,11 @@ class LeoTroubleshootController extends GetxController {
           // Start OTA update
           await otaController.startOtaUpdate(filePath);
         }
+      } else {
+        print('🔵 [Troubleshoot] No file selected');
       }
     } catch (e) {
+      print('🔴 [Troubleshoot] Error: $e');
       AppSnackbars.showSuccess(
         title: 'Error',
         message: 'Failed to start OTA update: $e',

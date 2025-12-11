@@ -91,6 +91,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
   }
 
   void _showFirmwareUpdateDialog(BuildContext context) async {
+    print('🔵 [Home View] _showFirmwareUpdateDialog called');
     final otaController = Get.put(LeoOtaController());
 
     // If the post-OTA install timer is still running, show the timer dialog.
@@ -99,6 +100,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
         otaController.isTimerDialogOpen.value ||
         (otaController.wasOtaCompleted &&
             otaController.secondsRemaining.value > 0)) {
+      print('🟡 [Home View] Timer is active - showing wait dialog');
       showDialog(
         context: context,
         barrierDismissible: true,
@@ -107,7 +109,26 @@ class LeoHomeView extends GetView<LeoHomeController> {
       return;
     }
 
-    // Check internet connectivity
+    // Check if OTA is already in progress - show existing progress dialog
+    if (otaController.isOtaInProgress.value ||
+        otaController.isDownloadingFirmware.value ||
+        otaController.isOtaProgressDialogOpen.value) {
+      print(
+        '🟡 [Home View] OTA already in progress - showing existing progress dialog',
+      );
+      print(
+        '🟡 [Home View] isOtaInProgress: ${otaController.isOtaInProgress.value}, progress: ${otaController.otaProgress.value}',
+      );
+      // OTA is already in progress, just show the progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const LeoFirmwareUpdateDialog(),
+      );
+      return;
+    }
+
+    // Check internet connectivity only if starting new OTA
     try {
       final result = await InternetAddress.lookup(
         'google.com',
@@ -127,20 +148,8 @@ class LeoHomeView extends GetView<LeoHomeController> {
       return;
     }
 
-    // Check if OTA is already in progress
-    if (otaController.isOtaInProgress.value ||
-        otaController.isDownloadingFirmware.value ||
-        otaController.isOtaProgressDialogOpen.value) {
-      // OTA is already in progress, just show the progress dialog
-      showDialog(
-        context: context,
-        barrierDismissible: true,
-        builder: (_) => const LeoFirmwareUpdateDialog(),
-      );
-      return;
-    }
-
     // Show firmware update dialog immediately
+    print('🔵 [Home View] Starting new OTA - showing firmware update dialog');
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -149,39 +158,98 @@ class LeoHomeView extends GetView<LeoHomeController> {
   }
 }
 
-/// Listener widget that shows the OTA done dialog when device reconnects
-/// after OTA completion, even if the wait dialog was dismissed
+/// Listener widget that shows the wait dialog when timer starts
+/// if progress dialog was dismissed, and shows done dialog when device reconnects
 class _OtaDoneDialogListener extends StatefulWidget {
   @override
   State<_OtaDoneDialogListener> createState() => _OtaDoneDialogListenerState();
 }
 
 class _OtaDoneDialogListenerState extends State<_OtaDoneDialogListener> {
-  bool _hasShownDialog = false;
+  bool _hasShownDoneDialog = false;
+  bool _hasShownWaitDialog = false;
 
   @override
   Widget build(BuildContext context) {
     final otaController = Get.put(LeoOtaController());
 
     return Obx(() {
-      // If flag is set and we haven't shown the dialog yet, show it
-      if (otaController.shouldShowDoneDialog.value && !_hasShownDialog) {
+      // Reset wait dialog flag if timer is not active (timer completed or OTA reset)
+      if (!otaController.isInstallTimerActive &&
+          !otaController.wasOtaCompleted) {
+        _hasShownWaitDialog = false;
+      }
+
+      // Check if timer started but wait dialog is not shown (progress dialog was dismissed)
+      // This happens when progress reaches 100% but progress dialog was dismissed
+      // Only show if progress dialog is not open (it was dismissed before reaching 100%)
+      if (otaController.isTimerDialogOpen.value &&
+          otaController.wasOtaCompleted &&
+          otaController.isInstallTimerActive &&
+          !otaController.isOtaProgressDialogOpen.value &&
+          !_hasShownWaitDialog) {
         print(
-          'OtaDoneDialogListener: shouldShowDoneDialog is true, showing done dialog',
+          '🟡 [Done Dialog Listener] Timer started but progress dialog was dismissed - showing wait dialog',
         );
-        _hasShownDialog = true;
+        print(
+          '🟡 [Done Dialog Listener] secondsRemaining: ${otaController.secondsRemaining.value}',
+        );
+        _hasShownWaitDialog = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            // Double-check conditions before showing (in case wait dialog was shown by progress dialog transition)
+            if (otaController.isTimerDialogOpen.value &&
+                !otaController.isOtaProgressDialogOpen.value &&
+                otaController.isInstallTimerActive) {
+              showDialog(
+                context: context,
+                barrierDismissible: true,
+                builder: (context) => const WaitForInstallDialogBox(),
+              ).then((_) {
+                // Reset flag when wait dialog is closed
+                print('🟡 [Done Dialog Listener] Wait dialog closed');
+                _hasShownWaitDialog = false;
+              });
+            } else {
+              // Wait dialog was already shown by progress dialog transition
+              print(
+                '🟡 [Done Dialog Listener] Wait dialog already shown, skipping',
+              );
+              _hasShownWaitDialog = false;
+            }
+          }
+        });
+      }
+
+      // Only show done dialog if:
+      // 1. Flag is set
+      // 2. We haven't shown it yet
+      // 3. Wait dialog is NOT open (to prevent duplicate dialogs)
+      //    The wait dialog will handle showing done dialog when it's open
+      if (otaController.shouldShowDoneDialog.value &&
+          !_hasShownDoneDialog &&
+          !otaController.isTimerDialogOpen.value) {
+        print(
+          '🟢 [Done Dialog Listener] shouldShowDoneDialog is true, showing done dialog',
+        );
+        print(
+          '🟢 [Done Dialog Listener] isTimerDialogOpen: ${otaController.isTimerDialogOpen.value}, secondsRemaining: ${otaController.secondsRemaining.value}',
+        );
+        _hasShownDoneDialog = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             // Reset the flag
             otaController.shouldShowDoneDialog.value = false;
             // Show the done dialog
+            print('🟢 [Done Dialog Listener] Showing done dialog');
             showDialog(
               context: context,
               barrierDismissible: false,
               builder: (context) => const OTAUpdateDone(),
             ).then((_) {
               // Reset flag when dialog is closed
-              _hasShownDialog = false;
+              print('🟢 [Done Dialog Listener] Done dialog closed');
+              _hasShownDoneDialog = false;
             });
           }
         });

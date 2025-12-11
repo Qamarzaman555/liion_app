@@ -30,15 +30,35 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
     otaController = Get.put(LeoOtaController());
     homeController = Get.find<LeoHomeController>();
 
-    // Only reset wait dialog flag if OTA is not in progress
-    // This allows reopening the dialog to show current progress
-    if (!otaController.isOtaInProgress.value &&
-        !otaController.isDownloadingFirmware.value) {
-      _hasShownWaitDialog = false;
-    }
+    print(
+      '🔵 [OTA Dialog] initState - isOtaInProgress: ${otaController.isOtaInProgress.value}, isDownloadingFirmware: ${otaController.isDownloadingFirmware.value}',
+    );
+    print(
+      '🔵 [OTA Dialog] initState - progress: ${otaController.otaProgress.value}, isOtaProgressDialogOpen: ${otaController.isOtaProgressDialogOpen.value}',
+    );
 
-    // Mark OTA progress dialog as open
-    otaController.isOtaProgressDialogOpen.value = true;
+    // Defer observable mutations to avoid setState during build errors when reopening
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Only reset wait dialog flag if OTA is not in progress
+      // This allows reopening the dialog to show current progress
+      if (!otaController.isOtaInProgress.value &&
+          !otaController.isDownloadingFirmware.value) {
+        _hasShownWaitDialog = false;
+        print('🔵 [OTA Dialog] Reset _hasShownWaitDialog flag');
+      } else {
+        print(
+          '🔵 [OTA Dialog] OTA in progress - keeping _hasShownWaitDialog: $_hasShownWaitDialog',
+        );
+      }
+
+      // Mark OTA progress dialog as open
+      otaController.isOtaProgressDialogOpen.value = true;
+      print(
+        '🔵 [OTA Dialog] Marked isOtaProgressDialogOpen = true (post frame)',
+      );
+    });
 
     // Auto-start cloud download when dialog opens and nothing is running.
     // If the post-OTA install timer is active, redirect to the wait dialog instead.
@@ -50,6 +70,9 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
           otaController.isTimerDialogOpen.value ||
           (otaController.wasOtaCompleted &&
               otaController.secondsRemaining.value > 0)) {
+        print(
+          '🟡 [OTA Dialog] Timer is active - closing progress dialog and showing wait dialog',
+        );
         Navigator.of(context).pop();
         showDialog(
           context: context,
@@ -72,16 +95,34 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
 
   @override
   void dispose() {
+    print('🔴 [OTA Dialog] dispose called');
+    print(
+      '🔴 [OTA Dialog] dispose - isOtaInProgress: ${otaController.isOtaInProgress.value}, progress: ${otaController.otaProgress.value}',
+    );
+    print(
+      '🔴 [OTA Dialog] dispose - isTimerDialogOpen: ${otaController.isTimerDialogOpen.value}, wasOtaCompleted: ${otaController.wasOtaCompleted}',
+    );
+
     // Only mark dialog as closed, don't reset state if OTA is still in progress
     // This allows reopening the dialog to show current progress
     otaController.isOtaProgressDialogOpen.value = false;
+    print('🔴 [OTA Dialog] Marked isOtaProgressDialogOpen = false');
 
-    // Only reset OTA state when dialog closes AND OTA is not in progress
-    // This ensures state is cleaned up after completion/cancellation
+    // Only reset OTA state when dialog closes AND OTA is not in progress AND timer is not active
+    // This ensures state is cleaned up after completion/cancellation, but not during active OTA
     if (!otaController.isOtaInProgress.value &&
         !otaController.isDownloadingFirmware.value &&
-        otaController.otaProgress.value == 0.0) {
+        otaController.otaProgress.value == 0.0 &&
+        !otaController.isInstallTimerActive &&
+        !otaController.wasOtaCompleted) {
+      print(
+        '🔴 [OTA Dialog] Resetting OTA state (OTA not in progress, timer not active)',
+      );
       otaController.resetOtaState();
+    } else {
+      print(
+        '🔴 [OTA Dialog] NOT resetting OTA state (OTA may still be in progress or timer active)',
+      );
     }
 
     // Don't dispose the controller here as it's managed by GetX
@@ -131,12 +172,29 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
             if (progress >= 1.0 &&
                 otaController.isOtaProgressDialogOpen.value &&
                 !_hasShownWaitDialog) {
+              print(
+                '🟢 [OTA Dialog] Progress reached 100% - transitioning to wait dialog',
+              );
+              print(
+                '🟢 [OTA Dialog] isOtaInProgress: $isOtaInProgress, progress: $progress',
+              );
               _hasShownWaitDialog = true;
+
               // Start the install timer immediately when showing wait dialog
               // This handles the case where device disconnects before acknowledgment
-              otaController.startInstallTimer();
+              // Only start if timer is not already active
+              if (!otaController.isInstallTimerActive) {
+                print('🟢 [OTA Dialog] Starting install timer');
+                otaController.startInstallTimer();
+              } else {
+                print('🟡 [OTA Dialog] Timer already active - skipping start');
+              }
+
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted && Navigator.canPop(context)) {
+                  print(
+                    '🟢 [OTA Dialog] Closing progress dialog and showing wait dialog',
+                  );
                   Navigator.pop(context);
                   showDialog(
                     context: context,
@@ -303,8 +361,12 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                     backgroundColor: AppColors.transparentColor,
                     borderWidth: 2,
                     onPressed: () async {
+                      print('🔴 [OTA Dialog] Cancel button pressed');
                       if (isDownloading) {
                         // Can't cancel download, just close
+                        print(
+                          '🔴 [OTA Dialog] Downloading - just closing dialog',
+                        );
                         if (mounted) {
                           Navigator.pop(context);
                         }
@@ -312,6 +374,7 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                       }
 
                       // Cancel OTA update
+                      print('🔴 [OTA Dialog] Cancelling OTA update');
                       await otaController.cancelOtaUpdate();
 
                       // Wait a bit for state to update
@@ -350,9 +413,20 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
                     borderColor: AppColors.blackColor,
                     backgroundColor: AppColors.transparentColor,
                     onPressed: () {
-                      // Reset state when closing dialog
-                      if (!otaController.isOtaInProgress.value) {
+                      print('🔴 [OTA Dialog] Close/Done button pressed');
+                      print(
+                        '🔴 [OTA Dialog] isOtaInProgress: ${otaController.isOtaInProgress.value}, wasOtaCompleted: ${otaController.wasOtaCompleted}',
+                      );
+                      // Reset state when closing dialog only if OTA is not in progress and timer is not active
+                      if (!otaController.isOtaInProgress.value &&
+                          !otaController.isInstallTimerActive &&
+                          !otaController.wasOtaCompleted) {
+                        print('🔴 [OTA Dialog] Resetting OTA state');
                         otaController.resetOtaState();
+                      } else {
+                        print(
+                          '🔴 [OTA Dialog] NOT resetting OTA state (OTA may still be in progress or timer active)',
+                        );
                       }
                       Navigator.pop(context);
                     },

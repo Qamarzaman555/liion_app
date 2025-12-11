@@ -19,17 +19,39 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
   void initState() {
     super.initState();
     controller = Get.find<LeoOtaController>();
+    print(
+      '🟡 [Wait Dialog] initState - isTimerDialogOpen: ${controller.isTimerDialogOpen.value}, secondsRemaining: ${controller.secondsRemaining.value}',
+    );
+    print(
+      '🟡 [Wait Dialog] initState - wasOtaCompleted: ${controller.wasOtaCompleted}, shouldShowDoneDialog: ${controller.shouldShowDoneDialog.value}',
+    );
+
+    // Ensure timer is started if it hasn't been started yet
+    if (!controller.isInstallTimerActive && controller.wasOtaCompleted) {
+      print(
+        '🟡 [Wait Dialog] Timer not active but OTA completed - starting timer',
+      );
+      controller.startInstallTimer();
+    }
   }
 
   @override
   void dispose() {
+    print('🔴 [Wait Dialog] dispose called');
+    print(
+      '🔴 [Wait Dialog] dispose - secondsRemaining: ${controller.secondsRemaining.value}, shouldShowDoneDialog: ${controller.shouldShowDoneDialog.value}',
+    );
     super.dispose();
     controller.isTimerDialogOpen.value = false;
+    print('🔴 [Wait Dialog] Marked isTimerDialogOpen = false');
   }
 
   @override
   Widget build(BuildContext context) {
     controller.isTimerDialogOpen.value = true;
+    print(
+      '🟡 [Wait Dialog] build - isTimerDialogOpen set to true, secondsRemaining: ${controller.secondsRemaining.value}',
+    );
 
     // Listen for timer completion, reconnection, or failure
     return Obx(() {
@@ -41,6 +63,7 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
 
       // If OTA failed, close dialog immediately
       if (hasFailed && mounted && Navigator.canPop(context)) {
+        print('🔴 [Wait Dialog] OTA failed - closing dialog');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && Navigator.canPop(context)) {
             Navigator.pop(context);
@@ -54,20 +77,26 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
       // or shouldShowDoneDialog flag is set (device reconnected), show done dialog
       final shouldShowDone =
           controller.secondsRemaining.value == 0 ||
-          !controller.isTimerDialogOpen.value ||
           controller.shouldShowDoneDialog.value;
 
-      if (shouldShowDone) {
+      if (shouldShowDone && !_hasShownDoneDialog) {
+        print('🟢 [Wait Dialog] shouldShowDone=$shouldShowDone');
         print(
-          'Wait dialog: shouldShowDone=$shouldShowDone, secondsRemaining=${controller.secondsRemaining.value}, isTimerDialogOpen=${controller.isTimerDialogOpen.value}, shouldShowDoneDialog=${controller.shouldShowDoneDialog.value}, hasShownDoneDialog=$_hasShownDoneDialog',
+          '🟢 [Wait Dialog] secondsRemaining=${controller.secondsRemaining.value}, shouldShowDoneDialog=${controller.shouldShowDoneDialog.value}',
+        );
+        print(
+          '🟢 [Wait Dialog] isTimerDialogOpen=${controller.isTimerDialogOpen.value}, hasShownDoneDialog=$_hasShownDoneDialog',
         );
       }
 
       if (!_hasShownDoneDialog && shouldShowDone) {
         _hasShownDoneDialog = true;
-        print('Wait dialog: Showing done dialog');
+        print('🟢 [Wait Dialog] Showing done dialog');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && Navigator.canPop(context)) {
+            print(
+              '🟢 [Wait Dialog] Closing wait dialog and showing done dialog',
+            );
             Navigator.pop(context);
             // Reset the flag before showing done dialog
             controller.shouldShowDoneDialog.value = false;

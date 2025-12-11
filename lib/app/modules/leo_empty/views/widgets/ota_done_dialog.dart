@@ -16,6 +16,7 @@ class _OTAUpdateDoneState extends State<OTAUpdateDone> {
   void initState() {
     super.initState();
     controller = Get.find<LeoOtaController>();
+    print('🟢 [Done Dialog] initState - showing done dialog');
     // Reset OTA completion flag
     controller.wasOtaCompleted = false;
   }
@@ -34,6 +35,7 @@ class _OTAUpdateDoneState extends State<OTAUpdateDone> {
       actions: [
         TextButton(
           onPressed: () {
+            print('🟢 [Done Dialog] Okay button pressed - resetting OTA state');
             // Reset OTA state and close dialog
             controller.resetOtaState();
             Navigator.pop(context);
