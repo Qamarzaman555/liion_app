@@ -52,6 +52,9 @@ android {
 dependencies {
     // Kotlin coroutines for async operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    
+    // Firebase Firestore (explicit version to avoid missing artifact)
+    implementation("com.google.firebase:firebase-firestore-ktx:24.10.3")
 }
 
 flutter {
