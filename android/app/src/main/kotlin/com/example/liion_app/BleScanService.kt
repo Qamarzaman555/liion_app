@@ -2222,7 +2222,7 @@ class BleScanService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "BLE Scan Service",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Scanning for Leo USB devices"
                 setShowBadge(false)
@@ -2249,7 +2249,7 @@ class BleScanService : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_search)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setDefaults(0) // Disable all defaults (sound, vibration, lights)

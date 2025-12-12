@@ -389,6 +389,10 @@ class MainActivity : FlutterActivity() {
                     "requestAdvancedModes" -> {
                         result.success(BleScanService.requestAdvancedModes())
                     }
+                    "minimizeApp" -> {
+                        moveTaskToBack(true)
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }

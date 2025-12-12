@@ -820,4 +820,15 @@ class BleScanService {
     );
     return _otaProgressStream!;
   }
+
+  /// Minimize the app instead of killing it
+  static Future<bool> minimizeApp() async {
+    try {
+      await _methodChannel.invokeMethod('minimizeApp');
+      return true;
+    } on PlatformException catch (e) {
+      print('Failed to minimize app: ${e.message}');
+      return false;
+    }
+  }
 }
