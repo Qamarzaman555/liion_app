@@ -30,6 +30,7 @@ class MainActivity : FlutterActivity() {
         private const val OTA_PROGRESS_CHANNEL = "com.liion_app/ota_progress"
         private const val LED_TIMEOUT_CHANNEL = "com.liion_app/led_timeout"
         private const val ADVANCED_MODES_CHANNEL = "com.liion_app/advanced_modes"
+        private const val FILE_STREAMING_CHANNEL = "com.liion_app/file_streaming"
         private const val REQUEST_ENABLE_BT = 1001
         
         private var eventSink: EventChannel.EventSink? = null
@@ -44,6 +45,7 @@ class MainActivity : FlutterActivity() {
         private var batteryMetricsSink: EventChannel.EventSink? = null
         private var otaProgressSink: EventChannel.EventSink? = null
         private var advancedModesSink: EventChannel.EventSink? = null
+        private var fileStreamingSink: EventChannel.EventSink? = null
         private var pendingBluetoothResult: MethodChannel.Result? = null
         
         fun clearAllSinks() {
@@ -58,6 +60,7 @@ class MainActivity : FlutterActivity() {
             batteryMetricsSink = null
             otaProgressSink = null
             advancedModesSink = null
+            fileStreamingSink = null
         }
         
         fun sendOtaProgress(progress: Int, inProgress: Boolean, message: String?) {
@@ -105,6 +108,16 @@ class MainActivity : FlutterActivity() {
                 dataReceivedSink?.success(data)
             } catch (e: Exception) {
                 dataReceivedSink = null
+            }
+        }
+        
+        fun sendFileStreamingData(data: ByteArray) {
+            try {
+                // Convert ByteArray to List<Int> for Flutter compatibility
+                val dataList = data.map { it.toInt() and 0xFF }
+                fileStreamingSink?.success(dataList)
+            } catch (e: Exception) {
+                fileStreamingSink = null
             }
         }
         
@@ -543,6 +556,17 @@ class MainActivity : FlutterActivity() {
                 }
                 override fun onCancel(arguments: Any?) {
                     otaProgressSink = null
+                }
+            })
+        
+        // Event Channel for file streaming data
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, FILE_STREAMING_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    fileStreamingSink = events
+                }
+                override fun onCancel(arguments: Any?) {
+                    fileStreamingSink = null
                 }
             })
     }

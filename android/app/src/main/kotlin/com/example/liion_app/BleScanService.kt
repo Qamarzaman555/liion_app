@@ -45,6 +45,10 @@ class BleScanService : Service() {
         val OTA_DATA_CHAR_UUID: UUID = UUID.fromString("23408888-1f40-4cd8-9b89-ca8d45f8a5b0")
         val OTA_CONTROL_CHAR_UUID: UUID = UUID.fromString("7ad671aa-21c0-46a4-b722-270e3ae3d830")
         
+        // Data Transfer Service UUIDs (File Streaming)
+        val DATA_TRANSFER_SERVICE_UUID: UUID = UUID.fromString("41e2b910-d0e0-4880-8988-5d4a761b9dc7")
+        val DATA_TRANSMIT_CHAR_UUID: UUID = UUID.fromString("94d2c6e0-89b3-4133-92a5-15cced3ee729")
+        
         // Connection states
         const val STATE_DISCONNECTED = 0
         const val STATE_CONNECTING = 1
@@ -272,6 +276,9 @@ class BleScanService : Service() {
     private var otaDataCharacteristic: BluetoothGattCharacteristic? = null
     private var otaControlCharacteristic: BluetoothGattCharacteristic? = null
     private var isOtaInProgress = false
+    
+    // File streaming characteristics
+    private var fileStreamingCharacteristic: BluetoothGattCharacteristic? = null
     private var otaCancelRequested = false
     private var otaProgress = 0
     private var otaTotalPackets = 0
@@ -535,6 +542,9 @@ class BleScanService : Service() {
                     logger.logCommandResponse(receivedData)
                     handleReceivedData(receivedData)
                     MainActivity.sendDataReceived(receivedData)
+                } else if (characteristic.uuid == DATA_TRANSMIT_CHAR_UUID) {
+                    // Handle file streaming data
+                    MainActivity.sendFileStreamingData(value)
                 }
             }
         }
@@ -550,6 +560,11 @@ class BleScanService : Service() {
                     logger.logCommandResponse(receivedData)
                     handleReceivedData(receivedData)
                     MainActivity.sendDataReceived(receivedData)
+                } else if (characteristic.uuid == DATA_TRANSMIT_CHAR_UUID) {
+                    // Handle file streaming data
+                    characteristic.value?.let { value ->
+                        MainActivity.sendFileStreamingData(value)
+                    }
                 }
             }
         }
@@ -746,6 +761,9 @@ class BleScanService : Service() {
         
         // Setup OTA service
         setupOtaService(gatt)
+        
+        // Setup file streaming service
+        setupFileStreamingService(gatt)
     }
     
     private fun setupOtaService(gatt: BluetoothGatt) {
@@ -773,6 +791,51 @@ class BleScanService : Service() {
             android.util.Log.w("BleScanService", "OTA control characteristic not found. UUID: $OTA_CONTROL_CHAR_UUID")
         } else {
             android.util.Log.d("BleScanService", "OTA control characteristic found")
+        }
+    }
+    
+    private fun setupFileStreamingService(gatt: BluetoothGatt) {
+        val fileStreamingService = gatt.getService(DATA_TRANSFER_SERVICE_UUID)
+        
+        if (fileStreamingService == null) {
+            android.util.Log.w("BleScanService", "File streaming service not found. UUID: $DATA_TRANSFER_SERVICE_UUID")
+            android.util.Log.d("BleScanService", "Available services: ${gatt.services.map { it.uuid }}")
+            return
+        }
+        
+        android.util.Log.d("BleScanService", "File streaming service found")
+        
+        fileStreamingCharacteristic = fileStreamingService.getCharacteristic(DATA_TRANSMIT_CHAR_UUID)
+        
+        if (fileStreamingCharacteristic == null) {
+            android.util.Log.w("BleScanService", "File streaming characteristic not found. UUID: $DATA_TRANSMIT_CHAR_UUID")
+            android.util.Log.d("BleScanService", "Available characteristics in file streaming service: ${fileStreamingService.characteristics.map { it.uuid }}")
+            return
+        }
+        
+        android.util.Log.d("BleScanService", "File streaming characteristic found")
+        
+        // Enable notifications for file streaming
+        fileStreamingCharacteristic?.let { char ->
+            try {
+                gatt.setCharacteristicNotification(char, true)
+                
+                val descriptor = char.getDescriptor(CCCD_UUID)
+                descriptor?.let {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeDescriptor(it, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        @Suppress("DEPRECATION")
+                        gatt.writeDescriptor(it)
+                    }
+                }
+                android.util.Log.d("BleScanService", "File streaming notifications enabled")
+            } catch (e: SecurityException) {
+                android.util.Log.e("BleScanService", "Failed to enable file streaming notifications: ${e.message}")
+                e.printStackTrace()
+            }
         }
     }
 
