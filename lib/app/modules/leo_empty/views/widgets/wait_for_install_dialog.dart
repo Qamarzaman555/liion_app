@@ -94,7 +94,10 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
         );
       }
 
-      if (!_hasShownDoneDialog && shouldShowDone) {
+      if (!_hasShownDoneDialog &&
+          shouldShowDone &&
+          !controller.isDoneDialogShowing.value) {
+        controller.isDoneDialogShowing.value = true;
         _hasShownDoneDialog = true;
         print('🟢 [Wait Dialog] Showing done dialog');
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -112,6 +115,7 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
               builder: (context) => const OTAUpdateDone(),
             ).then((_) {
               controller.isDoneDialogShowing.value = false;
+              controller.shouldShowDoneDialog.value = false;
             });
           }
         });

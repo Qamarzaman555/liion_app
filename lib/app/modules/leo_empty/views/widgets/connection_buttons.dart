@@ -60,9 +60,11 @@ class LeoConnectionButtons extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Obx(() {
-          final statusText = _firmwareStatusText();
+          final statusText =  controller.firmwareStatusText();
           return CustomButton(
-            backgroundColor: AppColors.primaryInvertColor,
+            backgroundColor: statusText == "Leo is up-to-date"
+                ? AppColors.primaryInvertColor
+                : AppColors.primaryColor,
             text: statusText,
             onPressed: onFirmwareUpdateButtonPressed,
             child: Row(
@@ -82,20 +84,5 @@ class LeoConnectionButtons extends StatelessWidget {
         }),
       ],
     );
-  }
-
-  String _firmwareStatusText() {
-    if (controller.isFirmwareDownloading.value) {
-      return 'Checking updates...';
-    }
-
-    final cloudVersion = controller.cloudBinFileName.value.trim();
-    final leoVersion = controller.binFileFromLeoName.value.trim();
-
-    if (cloudVersion.isEmpty || leoVersion.isEmpty) {
-      return 'Checking updates...';
-    }
-
-    return cloudVersion == leoVersion ? 'Leo is up-to-date' : 'Update Leo';
   }
 }

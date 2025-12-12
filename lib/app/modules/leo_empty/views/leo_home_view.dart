@@ -218,6 +218,7 @@ class _OtaDoneDialogListenerState extends State<_OtaDoneDialogListener> {
                 otaController.isInstallTimerActive &&
                 !otaController.hasWaitDialogShown.value) {
               otaController.hasWaitDialogShown.value = true;
+
               showDialog(
                 context: context,
                 barrierDismissible: true,

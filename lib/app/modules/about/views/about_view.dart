@@ -56,10 +56,14 @@ class AboutView extends GetView<AboutController> {
                 ),
                 if (Get.find<LeoHomeController>().connectionState.value ==
                         BleConnectionState.connected &&
-                    controller.leoFirmwareVersion.value.isNotEmpty)
+                    Get.find<LeoHomeController>()
+                        .binFileFromLeoName
+                        .value
+                        .isNotEmpty)
                   _buildInfoRow(
                     title: 'Leo Firmware Version',
-                    value: controller.leoFirmwareVersion.value,
+                    value:
+                        Get.find<LeoHomeController>().binFileFromLeoName.value,
                     icon: SvgAssets.leoVersionInfoIcon,
                   ),
                 const SizedBox(height: 40),

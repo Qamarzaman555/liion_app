@@ -86,6 +86,19 @@ class LeoHomeController extends GetxController {
     _restoreGraphFromHive();
   }
 
+  String firmwareStatusText() {
+    if (isFirmwareDownloading.value) {
+      return 'Checking updates...';
+    }
+
+    final leoVersion = binFileFromLeoName.value.trim();
+    final cloudVersion = cloudBinFileName.value.trim();
+
+    return (cloudVersion == leoVersion || leoVersion.isEmpty)
+        ? 'Leo is up-to-date'
+        : 'Update Leo';
+  }
+
   Future<void> _loadInitialState() async {
     adapterState.value = await BleScanService.getAdapterState();
     connectionState.value = await BleScanService.getConnectionState();
@@ -187,7 +200,16 @@ class LeoHomeController extends GetxController {
       if (newState == BleConnectionState.connected) {
         connectedDeviceAddress.value = address;
         connectingDeviceAddress.value = null;
-        _scheduleInitialRequests();
+        // Request firmware version after OTA reconnection to get updated version
+        // Add delay to ensure BLE services are discovered and UART is ready
+        Future.delayed(const Duration(seconds: 5), () async {
+          try {
+            await requestLeoFirmwareVersion();
+          } catch (e) {
+            print('🟡 [OTA Controller] Could not request firmware version: $e');
+          }
+        });
+        await _scheduleInitialRequests();
       } else if (newState == BleConnectionState.connecting) {
         connectingDeviceAddress.value = address;
       } else if (newState == BleConnectionState.disconnected) {
