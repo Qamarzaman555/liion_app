@@ -25,15 +25,6 @@ class LeoHomeView extends GetView<LeoHomeController> {
     _ensureInitialFirmwareDownload();
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await controller.sendCommand("app_msg stream_file 518");
-          Future.delayed(const Duration(milliseconds: 100), () async {
-            await controller.sendCommand("py_msg");
-          });
-        },
-        child: const Icon(Icons.minimize),
-      ),
       backgroundColor: AppColors.whiteColor,
       resizeToAvoidBottomInset: false,
       appBar: PreferredSize(
