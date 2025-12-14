@@ -1375,8 +1375,9 @@ class BleScanService : Service() {
                 
                 // Store data to Firebase/local storage using snapshot of current list
                 val dataSnapshot = chargeDataList.toList()
+                val fileNumberToDelete = currentFile // Capture current file number for deletion after upload
                 if (!hasUnwantedCharacters) {
-                    storeDataToFirebase(dataSnapshot)
+                    storeDataToFirebase(dataSnapshot, fileNumberToDelete)
                 } else {
                     android.util.Log.w("BleScanService", "[FileStream] Skipping Firebase upload due to unwanted characters in data")
                 }
@@ -1440,7 +1441,7 @@ class BleScanService : Service() {
         }
     }
     
-    private fun storeDataToFirebase(dataSnapshot: List<ChargeData> = chargeDataList.toList()) {
+    private fun storeDataToFirebase(dataSnapshot: List<ChargeData> = chargeDataList.toList(), fileNumber: Int = currentFile) {
         handler.post {
             try {
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
@@ -1573,10 +1574,10 @@ class BleScanService : Service() {
                 
                 if (!isOnline) {
                     android.util.Log.w("BleScanService", "[FileStream] No internet connection. Saving data locally for later sync.")
-                    saveToLocalStorage(serialNumber, currentSession.toString(), fileName, firebaseObject)
+                    saveToLocalStorage(serialNumber, currentSession.toString(), fileName, firebaseObject, fileNumber)
                 } else {
                     android.util.Log.i("BleScanService", "[FileStream] Internet connection available. Uploading to Firebase...")
-                    uploadToFirebase(fileName, firebaseObject, currentSession.toString(), serialNumber, sentSessions)
+                    uploadToFirebase(fileName, firebaseObject, currentSession.toString(), serialNumber, sentSessions, fileNumber)
                 }
                 
             } catch (e: Exception) {
@@ -1591,7 +1592,8 @@ class BleScanService : Service() {
         firebaseObject: Map<String, Any>,
         sessionId: String,
         serialNumber: String,
-        sentSessions: MutableSet<String>
+        sentSessions: MutableSet<String>,
+        fileNumber: Int
     ) {
         try {
             val docId = fileName.split(".json").first()
@@ -1613,17 +1615,29 @@ class BleScanService : Service() {
                     // Remove from pending uploads if it was a retry
                     val pendingKey = "pending_upload_${serialNumber}_$sessionId"
                     prefs?.edit()?.remove(pendingKey)?.remove("${pendingKey}_data")?.apply()
+                    
+                    // Delete file from device after successful upload
+                    if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                        handler.postDelayed({
+                            enqueueCommand("app_msg rm_file $fileNumber")
+                            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
+                        }, 500) // Small delay to ensure Firebase operation completes
+                    } else if (fileNumber < 0) {
+                        android.util.Log.w("BleScanService", "[FileStream] Cannot delete file - invalid file number: $fileNumber")
+                    } else {
+                        android.util.Log.w("BleScanService", "[FileStream] Cannot delete file $fileNumber - not connected or UART not ready")
+                    }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
                     android.util.Log.e("BleScanService", "[FileStream] Saving data locally for later sync")
                     // If upload fails, save locally for retry
-                    saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject)
+                    saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber)
                 }
         } catch (e: Exception) {
             android.util.Log.e("BleScanService", "[FileStream] Error uploading to Firebase: ${e.message}")
             e.printStackTrace()
-            saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject)
+            saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber)
         }
     }
     
@@ -1631,7 +1645,8 @@ class BleScanService : Service() {
         serialNumber: String,
         sessionId: String,
         fileName: String,
-        firebaseObject: Map<String, Any>
+        firebaseObject: Map<String, Any>,
+        fileNumber: Int
     ) {
         try {
             // Store pending upload info
@@ -1640,6 +1655,7 @@ class BleScanService : Service() {
                 "sessionId" to sessionId,
                 "fileName" to fileName,
                 "serialNumber" to serialNumber,
+                "fileNumber" to fileNumber,
                 "timestamp" to System.currentTimeMillis()
             )
             
@@ -1762,12 +1778,23 @@ class BleScanService : Service() {
                             "${System.currentTimeMillis()}_${serialNumber}_$sessionId.json"
                         }
                         
+                        // Extract file number from metadata
+                        val fileNumber = if (metadataJson != null) {
+                            try {
+                                JSONObject(metadataJson).optInt("fileNumber", -1)
+                            } catch (e: Exception) {
+                                -1
+                            }
+                        } else {
+                            -1
+                        }
+                        
                         // Convert JSONObject back to Map for upload
                         val firebaseObject = JSONObject(firebaseJson)
                         val firebaseMap = jsonObjectToMap(firebaseObject)
                         
                         // Try to upload (async, so we'll check success in callback)
-                        uploadToFirebase(fileName, firebaseMap, sessionId, serialNumber, sentSessions)
+                        uploadToFirebase(fileName, firebaseMap, sessionId, serialNumber, sentSessions, fileNumber)
                         // Note: Success will be logged in uploadToFirebase callback
                         // For sync, we'll count it as attempted
                         successCount++
