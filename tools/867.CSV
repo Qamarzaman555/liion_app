@@ -1,0 +1,4 @@
+timestamp;session;current;volt;soc;wh;mode;charge phase;charge time;temperature;fault flags;flags;charge limit;startup count;charge profile
+11755.813;976;0.454;4.99;-1;924391;0;1;8;35.7;0;3;-1;0;0
+11766.813;;0.392;;;;;;;;;;;;
+

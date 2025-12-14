@@ -436,7 +436,7 @@ class BleDevice(CoreDevice):
 
     #  TODO find a new home for me
     @timing
-    def get_all_files(self, index_start=518, index_end=1079) -> str:
+    def get_all_files(self, index_start=722, index_end=1083) -> str:
         failed_count = 0
         success_count = 0
         for file_number in range(index_start, index_end):
