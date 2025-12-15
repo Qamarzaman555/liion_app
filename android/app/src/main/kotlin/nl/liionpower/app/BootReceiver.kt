@@ -1,4 +1,4 @@
-package com.example.liion_app
+package nl.liionpower.app
 
 import android.content.BroadcastReceiver
 import android.content.Context

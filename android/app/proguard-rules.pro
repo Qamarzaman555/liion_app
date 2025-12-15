@@ -3,8 +3,8 @@
 # proguardFiles setting in build.gradle.
 
 # Keep BackendLoggingService
--keep class com.example.liion_app.BackendLoggingService { *; }
--keepclassmembers class com.example.liion_app.BackendLoggingService {
+-keep class nl.liionpower.app.BackendLoggingService { *; }
+-keepclassmembers class nl.liionpower.app.BackendLoggingService {
     *;
 }
 

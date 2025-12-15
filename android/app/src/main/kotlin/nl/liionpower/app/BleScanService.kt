@@ -1,4 +1,4 @@
-package com.example.liion_app
+package nl.liionpower.app
 
 import android.app.*
 import android.bluetooth.*
@@ -77,7 +77,7 @@ class BleScanService : Service() {
         // Keep-alive intervals (shorter on OnePlus to avoid kills)
         const val KEEP_ALIVE_INTERVAL_MS = 300000L
         const val KEEP_ALIVE_INTERVAL_ONEPLUS_MS = 120000L
-        const val RESTART_ACTION = "com.example.liion_app.RESTART_BLE_SERVICE"
+        const val RESTART_ACTION = "nl.liionpower.app.RESTART_BLE_SERVICE"
         
         val scannedDevices = mutableMapOf<String, String>()
         var isScanning = false
