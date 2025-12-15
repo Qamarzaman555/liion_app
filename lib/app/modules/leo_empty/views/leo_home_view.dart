@@ -66,7 +66,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
                     ),
                     ThankYouNote(controller: controller),
                     const SizedBox(height: 20),
-                    LeoMetricsSummary(controller: controller),
+                    Obx(()=> controller.hasConnectedOnce.value ? LeoMetricsSummary(controller: controller) : const SizedBox.shrink()),
                   ],
                 ),
               ),

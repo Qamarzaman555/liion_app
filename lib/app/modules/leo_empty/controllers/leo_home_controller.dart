@@ -25,6 +25,7 @@ class LeoHomeController extends GetxController {
   final advancedSilentModeEnabled = false.obs;
   final advancedHigherChargeLimitEnabled = false.obs;
   final showThankYouNote = false.obs;
+  final hasConnectedOnce = false.obs;
 
   // Data from Leo
   final mwhValue = ''.obs;
@@ -215,6 +216,7 @@ class LeoHomeController extends GetxController {
       connectionState.value = newState;
 
       if (newState == BleConnectionState.connected) {
+        hasConnectedOnce.value = true;
         if (showThankYouNote.value) {
           await dismissThankYouNote();
         }

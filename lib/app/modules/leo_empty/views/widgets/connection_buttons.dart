@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
+import 'package:liion_app/app/modules/leo_empty/views/widgets/update_leo_text.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 import '../../controllers/leo_home_controller.dart';
@@ -60,26 +61,35 @@ class LeoConnectionButtons extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Obx(() {
-          final statusText =  controller.firmwareStatusText();
-          return CustomButton(
-            backgroundColor: statusText == "Leo is up-to-date"
-                ? AppColors.primaryInvertColor
-                : AppColors.primaryColor,
-            text: statusText,
-            onPressed: onFirmwareUpdateButtonPressed,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  statusText,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.whiteColor,
-                  ),
+          final statusText = controller.firmwareStatusText();
+          return Column(
+            children: [
+              CustomButton(
+                backgroundColor: statusText == "Leo is up-to-date"
+                    ? AppColors.primaryInvertColor
+                    : AppColors.primaryColor,
+                text: statusText,
+                onPressed: onFirmwareUpdateButtonPressed,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.whiteColor,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              if (statusText != "Leo is up-to-date" &&
+                  !controller.isFirmwareDownloading.value) ...[
+                const SizedBox(height: 10),
+                UpdateLeoText(),
               ],
-            ),
+            ],
           );
         }),
       ],
