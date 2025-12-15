@@ -18,10 +18,7 @@ class BatteryMetricsCard extends GetView<BatteryController> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 32,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 32),
         decoration: BoxDecoration(
           border: Border.all(color: Colors.black12, width: 0.7),
           borderRadius: BorderRadius.circular(12),
@@ -34,7 +31,7 @@ class BatteryMetricsCard extends GetView<BatteryController> {
             const SizedBox(height: 30),
             const BatteryHealthProgress(),
             const SizedBox(height: 20),
-            _buildCapacityRows(),
+            _buildCapacityRows(context),
           ],
         ),
       ),
@@ -100,31 +97,29 @@ class BatteryMetricsCard extends GetView<BatteryController> {
         const SizedBox(height: 12),
         Obx(
           () => BatteryMetricRow(
-            title: "mAh ${controller.isPhoneCharging.value ? "charging" : "discharging"}",
-            value: BatteryFormatters.formatMah(
-              controller.accumulatedMah.value,
-            ),
+            title:
+                "mAh ${controller.isPhoneCharging.value ? "charging" : "discharging"}",
+            value: BatteryFormatters.formatMah(controller.accumulatedMah.value),
             screenHeight: screenHeight,
           ),
         ),
         const SizedBox(height: 12),
-        Obx(
-          () {
-            final timeSeconds = controller.isPhoneCharging.value
-                ? controller.chargingTimeSeconds.value
-                : controller.dischargingTimeSeconds.value;
-            return BatteryMetricRow(
-              title: "Time ${controller.isPhoneCharging.value ? "charged" : "discharged"}",
-              value: BatteryFormatters.formatTime(timeSeconds),
-              screenHeight: screenHeight,
-            );
-          },
-        ),
+        Obx(() {
+          final timeSeconds = controller.isPhoneCharging.value
+              ? controller.chargingTimeSeconds.value
+              : controller.dischargingTimeSeconds.value;
+          return BatteryMetricRow(
+            title:
+                "Time ${controller.isPhoneCharging.value ? "charged" : "discharged"}",
+            value: BatteryFormatters.formatTime(timeSeconds),
+            screenHeight: screenHeight,
+          );
+        }),
       ],
     );
   }
 
-  Widget _buildCapacityRows() {
+  Widget _buildCapacityRows(BuildContext context) {
     return Column(
       children: [
         Obx(
@@ -143,8 +138,64 @@ class BatteryMetricsCard extends GetView<BatteryController> {
             ),
           ),
         ),
+        SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            // Reset health button
+            GestureDetector(
+              onTap: () => _showClearHealthDialog(context, controller),
+              child: const Text(
+                "Reset Health",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.lightGreen,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
-}
 
+  Future<void> _showClearHealthDialog(
+    BuildContext context,
+    BatteryController batteryController,
+  ) async {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          title: const Text(
+            'Clear Battery Health Data',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          content: const Text(
+            'Are you sure you want to clear the estimated capacity and battery health values? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await batteryController.resetHealthReadings();
+              },
+              child: const Text(
+                'Clear',
+                style: TextStyle(color: Colors.lightGreen),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}

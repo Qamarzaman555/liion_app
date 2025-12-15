@@ -610,6 +610,19 @@ class BleScanService {
     }
   }
 
+  /// Reset battery health readings
+  static Future<bool> resetBatteryHealthReadings() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>(
+        'resetBatteryHealthReadings',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      print('Failed to reset battery health readings: ${e.message}');
+      return false;
+    }
+  }
+
   /// Stream of battery health updates
   static Stream<BatteryHealthInfo> get batteryHealthStream {
     _batteryHealthStream ??= _batteryHealthChannel.receiveBroadcastStream().map(

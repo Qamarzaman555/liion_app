@@ -327,6 +327,10 @@ class MainActivity : FlutterActivity() {
                         BleScanService.stopBatteryHealthCalculation()
                         result.success(true)
                     }
+                    "resetBatteryHealthReadings" -> {
+                        val success = BleScanService.resetBatteryHealthReadings()
+                        result.success(success)
+                    }
                     "getBatterySessionHistory" -> {
                         val sessions = BleScanService.getBatterySessionHistory()
                         result.success(sessions)

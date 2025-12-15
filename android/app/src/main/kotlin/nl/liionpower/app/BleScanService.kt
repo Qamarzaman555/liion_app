@@ -231,6 +231,10 @@ class BleScanService : Service() {
             instance?.stopHealthCalculation()
         }
         
+        fun resetBatteryHealthReadings(): Boolean {
+            return instance?.resetHealthReadings() ?: false
+        }
+        
         fun setChargeLimit(limit: Int, enabled: Boolean): Boolean {
             return instance?.updateChargeLimit(limit, enabled) ?: false
         }
@@ -2220,20 +2224,30 @@ class BleScanService : Service() {
      * Get battery current in microamperes (µA).
      * Handles device-specific reporting differences (some devices return mA instead of µA).
      * Always returns value in microamperes for consistent calculations.
+     * 
+     * Detection logic: Use magnitude to determine unit
+     * - If absolute value < 10000: likely in mA (typical charging current 500-3000 mA), convert to µA
+     * - If absolute value >= 10000: likely already in µA (typical charging current 500000-3000000 µA)
+     * This is more reliable than string length and handles edge cases better (e.g., Vivo, OnePlus).
      */
     private fun getCurrentNowMicroAmps(): Int {
         return try {
             val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
             val currentRaw = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
             val absCurrent = kotlin.math.abs(currentRaw)
-            val stringLength = absCurrent.toString().length
             
-            // Detection logic: Use string length to determine unit (same as in sampleBatteryMetrics)
-            // - If length <= 4: value is in mA, convert to µA by multiplying by 1000
-            // - If length > 4: value is already in µA
-            if (stringLength <= 4) {
+            // Detection logic: Use magnitude to determine unit
+            // Typical charging currents: 500-3000 mA (500000-3000000 µA)
+            // If value is less than 10000, it's likely in mA and needs conversion
+            // If value is 10000 or more, it's likely already in µA
+            if (absCurrent < 10000 && absCurrent > 0) {
                 // Value is in milliamperes (mA), convert to microamperes (µA)
-                currentRaw * 1000
+                // Preserve sign for proper handling
+                if (currentRaw < 0) {
+                    -(absCurrent * 1000)
+                } else {
+                    absCurrent * 1000
+                }
             } else {
                 // Value is already in microamperes (µA)
                 currentRaw
@@ -2336,11 +2350,15 @@ class BleScanService : Service() {
         val elapsedSeconds = (now - lastHealthSampleTime) / 1000.0
         lastHealthSampleTime = now
         
-        if (currentMicroAmps > 0 && elapsedSeconds > 0) {
+        // Use absolute value since charging current is typically negative on some devices (Vivo, OnePlus)
+        // but we only care about the magnitude for calculating charge accumulated
+        val absCurrentMicroAmps = kotlin.math.abs(currentMicroAmps)
+        
+        if (absCurrentMicroAmps > 0 && elapsedSeconds > 0) {
             // Convert microamps to milliamps and accumulate (current * time = charge)
             // Current is in microamps, time is in seconds
             // mAh = (microamps / 1000) * (seconds / 3600) = microamps * seconds / 3,600,000
-            val chargeMah = (currentMicroAmps.toDouble() * elapsedSeconds) / 3600000.0
+            val chargeMah = (absCurrentMicroAmps.toDouble() * elapsedSeconds) / 3600000.0
             accumulatedCurrentMah += chargeMah
         }
     }
@@ -2470,6 +2488,43 @@ class BleScanService : Service() {
         // Calculate averages from loaded readings
         if (healthReadings.isNotEmpty()) {
             calculateAveragedHealth()
+        }
+    }
+    
+    fun resetHealthReadings(): Boolean {
+        return try {
+            // Clear in-memory readings
+            healthReadings.clear()
+            
+            // Reset calculated values
+            estimatedCapacityMah = 0.0
+            batteryHealthPercent = -1.0
+            
+            // Clear SharedPreferences
+            prefs?.edit()?.apply {
+                putInt("health_readings_count", 0)
+                // Clear all health reading entries
+                for (i in 0 until MAX_HEALTH_READINGS) {
+                    remove("health_reading_${i}_estimated")
+                    remove("health_reading_${i}_health")
+                    remove("health_reading_${i}_timestamp")
+                }
+                // Clear calculated values
+                putFloat("estimated_capacity_mah", 0f)
+                putFloat("battery_health_percent", -1f)
+                remove("health_calculation_time")
+                apply()
+            }
+            
+            logger.logInfo("Battery health readings reset")
+            
+            // Notify Flutter
+            MainActivity.sendBatteryHealthUpdate()
+            
+            true
+        } catch (e: Exception) {
+            logger.logError("Failed to reset health readings: ${e.message}")
+            false
         }
     }
     

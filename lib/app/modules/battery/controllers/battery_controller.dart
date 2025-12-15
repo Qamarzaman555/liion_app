@@ -106,6 +106,23 @@ class BatteryController extends GetxController {
     await BleScanService.stopBatteryHealthCalculation();
   }
 
+  Future<void> resetHealthReadings() async {
+    final success = await BleScanService.resetBatteryHealthReadings();
+    if (success) {
+      // Reload health info to reflect the reset
+      await _loadInitialHealth();
+      AppSnackbars.showSuccess(
+        title: 'Success',
+        message: 'Battery health readings reset',
+      );
+    } else {
+      AppSnackbars.showSuccess(
+        title: 'Error',
+        message: 'Failed to reset battery health readings',
+      );
+    }
+  }
+
   @override
   void onClose() {
     _batterySubscription?.cancel();
