@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:get/get.dart';
 import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
@@ -12,6 +13,8 @@ import 'package:liion_app/app/services/ble_scan_service.dart';
 import 'package:liion_app/app/modules/led_timeout/controllers/led_timeout_controller.dart';
 
 class LeoHomeController extends GetxController {
+  static const _thankYouNoteSeenKey = 'first_time_thank_you_seen';
+
   final scannedDevices = <Map<String, String>>[].obs;
   final isScanning = false.obs;
   final connectionState = BleConnectionState.disconnected.obs;
@@ -21,6 +24,7 @@ class LeoHomeController extends GetxController {
   final advancedGhostModeEnabled = false.obs;
   final advancedSilentModeEnabled = false.obs;
   final advancedHigherChargeLimitEnabled = false.obs;
+  final showThankYouNote = false.obs;
 
   // Data from Leo
   final mwhValue = ''.obs;
@@ -77,6 +81,7 @@ class LeoHomeController extends GetxController {
     _listenToMeasureData();
     _listenToAdvancedModes();
     _loadInitialState();
+    _loadThankYouNoteState();
   }
 
   @override
@@ -114,6 +119,18 @@ class LeoHomeController extends GetxController {
     }
 
     await _loadDevices();
+  }
+
+  Future<void> _loadThankYouNoteState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenNote = prefs.getBool(_thankYouNoteSeenKey) ?? false;
+    showThankYouNote.value = !hasSeenNote;
+  }
+
+  Future<void> dismissThankYouNote() async {
+    showThankYouNote.value = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_thankYouNoteSeenKey, true);
   }
 
   Future<void> _loadDevices() async {
@@ -198,6 +215,9 @@ class LeoHomeController extends GetxController {
       connectionState.value = newState;
 
       if (newState == BleConnectionState.connected) {
+        if (showThankYouNote.value) {
+          await dismissThankYouNote();
+        }
         connectedDeviceAddress.value = address;
         connectingDeviceAddress.value = null;
         // Request firmware version after OTA reconnection to get updated version

@@ -14,6 +14,7 @@ import 'widgets/connection_buttons.dart';
 import 'widgets/metrics_summary.dart';
 import 'widgets/wait_for_install_dialog.dart';
 import 'widgets/ota_done_dialog.dart';
+import 'widgets/thank_you_note.dart';
 
 class LeoHomeView extends GetView<LeoHomeController> {
   const LeoHomeView({super.key});
@@ -63,6 +64,7 @@ class LeoHomeView extends GetView<LeoHomeController> {
                       onFirmwareUpdateButtonPressed: () =>
                           _showFirmwareUpdateDialog(context),
                     ),
+                    ThankYouNote(controller: controller),
                     const SizedBox(height: 20),
                     LeoMetricsSummary(controller: controller),
                   ],
