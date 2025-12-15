@@ -604,6 +604,8 @@ class LeoHomeController extends GetxController {
 
   Future<void> requestLeoFirmwareVersion() async {
     if (connectionState.value == BleConnectionState.connected) {
+      await BleScanService.sendCommand('measure');
+      await Future.delayed(const Duration(milliseconds: 300));
       await BleScanService.sendCommand('swversion');
     }
   }
