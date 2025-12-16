@@ -143,10 +143,10 @@ class FeedbackController extends GetxController {
       final leoHomeController = Get.find<LeoHomeController>();
 
       // Email configuration
-      // const String username = 'app.liionpower@gmail.com';
-      String username = 'qamarzk12345@gmail.com'; //My Email
-      // const String password = 'ecoc rfit mwza rtnb';
-      String password = 'bjdd hnva wbfd jfsb';
+      const String username = 'app.liionpower@gmail.com';
+      // String username = 'qamarzk12345@gmail.com'; //My Email
+      const String password = 'ecoc rfit mwza rtnb';
+      // String password = 'bjdd hnva wbfd jfsb';
       final smtpServer = gmail(username, password);
 
       // Get device information - try current values first, then fallback to stored values
@@ -202,8 +202,8 @@ class FeedbackController extends GetxController {
       // Create email message
       final message = Message()
         ..from = Address(username, 'Liion Power App')
-        // ..recipients.add('app@liionpower.tech')
-        ..recipients.add('qamarzk12345@gmail.com')
+        ..recipients.add('app@liionpower.tech')
+        // ..recipients.add('qamarzk12345@gmail.com')
         ..subject = 'Feedback from Liion App'
         ..text =
             '''
