@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AIzaSyCMMz9NO-pNey4PbDClwLVbKTTH5RhaZuI</string>
+	<string>AIzaSyChOL5vwcf9Qhf1W8bHzfUAgBm7cgYEEG8</string>
 	<key>GCM_SENDER_ID</key>
-	<string>575356527960</string>
+	<string>517661999690</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.liionApp</string>
+	<string>nl.liionpower.app</string>
 	<key>PROJECT_ID</key>
-	<string>liion-power-227c6</string>
+	<string>liion-power-app</string>
 	<key>STORAGE_BUCKET</key>
-	<string>liion-power-227c6.firebasestorage.app</string>
+	<string>liion-power-app.appspot.com</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:575356527960:ios:d80311765b49a64540f12d</string>
+	<string>1:517661999690:ios:fa0211e4beecc6c3159cb3</string>
 </dict>
 </plist>

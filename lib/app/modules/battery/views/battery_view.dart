@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
@@ -23,8 +25,10 @@ class BatteryView extends GetView<BatteryController> {
               const BatteryHeader(),
               const SizedBox(height: 12),
               _buildChargeLimitButton(),
-              const BatteryMetricsCard(),
-              _buildHistoryButton(),
+              if (Platform.isAndroid) ...[
+                const BatteryMetricsCard(),
+                _buildHistoryButton(),
+              ],
             ],
           ),
         ),

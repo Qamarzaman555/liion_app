@@ -12,21 +12,33 @@ import 'app/services/ble_scan_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Initialize Firebase only if not already initialized (prevents duplicate init on hot reload)
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    // Firebase already initialized, ignore error
+    print('Firebase initialization skipped: $e');
+  }
 
   // Initialize Hive for local graph persistence.
   await Hive.initFlutter();
   Hive.registerAdapter(GraphValuesDataHiveAdapter());
 
-  // Request permissions and start service on Android
+  // Request permissions and start service on Android and iOS
   if (Platform.isAndroid) {
-    await _requestPermissionsAndStartService();
+    await _requestPermissionsAndStartServiceAndroid();
+  } else if (Platform.isIOS) {
+    await _startServiceIOS();
   }
 
   runApp(const MyApp());
 }
 
-Future<void> _requestPermissionsAndStartService() async {
+Future<void> _requestPermissionsAndStartServiceAndroid() async {
   // Request BLE and notification permissions
   final statuses = await [
     Permission.bluetoothScan,
@@ -43,6 +55,12 @@ Future<void> _requestPermissionsAndStartService() async {
     // Check and request battery optimization exemption
     _checkBatteryOptimization();
   }
+}
+
+Future<void> _startServiceIOS() async {
+  // iOS CoreBluetooth handles permissions automatically when Bluetooth is used
+  // Just start the service - iOS will prompt for Bluetooth permission if needed
+  await BleScanService.startService();
 }
 
 Future<void> _checkBatteryOptimization() async {
