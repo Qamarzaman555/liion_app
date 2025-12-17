@@ -50,6 +50,9 @@ import UIKit
     setupEventChannels(messenger: messenger)
     wireManagerCallbacks()
 
+    // Initialize backend logging service
+    initializeBackendLogging()
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -252,6 +255,14 @@ import UIKit
         "name": name
       ])
     }
+    bleManager.onDeviceRemoved = { [weak self] address in
+      // Send removal event with address and removed flag
+      self?.deviceSink?([
+        "address": address,
+        "name": "", // Empty name indicates removal
+        "removed": true
+      ])
+    }
     bleManager.onConnectionChange = { [weak self] state, address in
       self?.connectionSink?([
         "state": state,
@@ -301,6 +312,13 @@ import UIKit
       ])
     }
     // batteryMetrics intentionally no-op
+  }
+  
+  // MARK: - Backend Logging
+  private func initializeBackendLogging() {
+    let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    BackendLoggingService.shared.initialize(appVersion: appVersion, buildNumber: buildNumber)
   }
 }
 

@@ -16,6 +16,9 @@ final class BleManager: NSObject {
     ])
   }
 
+  // MARK: - Logging
+  private lazy var logger = BackendLoggingService.shared
+
   // MARK: - Constants
   private let deviceFilter = "Leo Usb"
   private let commandGapMs: UInt64 = 250
@@ -36,6 +39,7 @@ final class BleManager: NSObject {
 
   // MARK: - State
   private let queue = DispatchQueue(label: "nl.liionpower.app.ble", qos: .userInitiated)
+  // MARK: - Core Bluetooth
   private var central: CBCentralManager!
   private var peripheral: CBPeripheral?
   private var txChar: CBCharacteristic?
@@ -44,12 +48,22 @@ final class BleManager: NSObject {
   private var otaControlChar: CBCharacteristic?
   private var fileStreamingChar: CBCharacteristic?
 
+  // MARK: - Device / connection tracking
   private var scannedDevices: [String: String] = [:] // address -> name (matching Android)
+  private var deviceLastSeen: [String: Date] = [:] // Track when devices were last seen
   private var connectionState: Int = 0 // 0=disc,1=connecting,2=connected
   private var isScanning = false
   private var shouldScan = false // Track if we want to scan (service started)
   private var isUartReady = false
   private var pendingConnectAddress: String? = nil // Track connection attempts (matching Android)
+  private var deviceTimeoutTimer: Timer? // Timer to clean up stale devices
+
+  // MARK: - Charge limit / battery tracking
+  private var phoneBatteryLevel: Int = -1
+  private var isPhoneChargingFlag: Bool = false
+  private var chargingTimeSeconds: Int = 0
+  private var dischargingTimeSeconds: Int = 0
+  private var timeTrackingTimer: Timer?
 
   private var commandQueue: [String] = []
   private var commandProcessing = false
@@ -102,9 +116,12 @@ final class BleManager: NSObject {
   private let maxReconnectAttempts = 10
   private let reconnectDelay: TimeInterval = 2.0
   private let reconnectBackoff: TimeInterval = 1.0
+  private let deviceTimeoutInterval: TimeInterval = 10.0 // Remove devices not seen for 10 seconds
+  private let scanCooldownAfterDisconnect: TimeInterval = 0.5 // Cooldown before restarting scan after disconnect
 
   // MARK: - Event callbacks (wired to Flutter EventChannels in AppDelegate)
   var onDeviceDiscovered: ((String, String) -> Void)?
+  var onDeviceRemoved: ((String) -> Void)? // Callback for device removal
   var onConnectionChange: ((Int, String?) -> Void)?
   var onAdapterState: ((Int) -> Void)?
   var onDataReceived: ((String) -> Void)?
@@ -118,16 +135,19 @@ final class BleManager: NSObject {
   // MARK: - Public API
   func startService() {
     print("🔵 [BleManager] ========== Starting BLE Service ==========")
+    logger.logServiceState("Starting BLE Service")
     queue.async { [weak self] in
       guard let self else { return }
       shouldScan = true
       print("🔵 [BleManager] Service started. Auto-reconnect: \(shouldAutoReconnect)")
+      logger.logServiceState("Service started. Auto-reconnect: \(shouldAutoReconnect)")
       if let savedAddr = lastDeviceAddress, let savedName = lastDeviceName {
         print("🔵 [BleManager] Saved device: \(savedName) (\(savedAddr))")
       } else {
         print("🔵 [BleManager] No saved device")
       }
       startChargeLimitTimer()
+      startDeviceTimeoutTimer()
       UIDevice.current.isBatteryMonitoringEnabled = true
       sendBatteryUpdate()
       // Start scanning if Bluetooth is ready, otherwise wait for delegate callback
@@ -148,13 +168,16 @@ final class BleManager: NSObject {
 
   func stopService() {
     print("🔴 [BleManager] ========== Stopping BLE Service ==========")
+    logger.logServiceState("Stopping BLE Service")
     queue.async { [weak self] in
       guard let self else { return }
       shouldScan = false
       stopScanInternal()
       disconnect()
       stopChargeLimitTimer()
+      stopDeviceTimeoutTimer()
       print("🔴 [BleManager] Service stopped")
+      logger.logServiceState("Service stopped")
     }
   }
 
@@ -162,7 +185,15 @@ final class BleManager: NSObject {
     queue.async { [weak self] in
       guard let self else { return }
       print("🟡 [BleManager] Rescan requested - clearing device list")
+      let removedAddresses = Array(scannedDevices.keys)
       scannedDevices.removeAll() // Clear list on rescan (matching Android)
+      deviceLastSeen.removeAll() // Clear last seen times
+      // Notify Flutter about all removed devices
+      DispatchQueue.main.async { [weak self] in
+        for address in removedAddresses {
+          self?.onDeviceRemoved?(address)
+        }
+      }
       shouldScan = true
       if central.state == .poweredOn {
         restartScan() // Stop and restart scan (matching Android restartScan())
@@ -225,6 +256,7 @@ final class BleManager: NSObject {
       // User-initiated connection - enable auto-reconnect (matching Android)
       let deviceName = scannedDevices[address] ?? "Leo Usb"
       print("🟡 [BleManager] User-initiated connection to: \(deviceName) (\(address))")
+      logger.logConnect(address: address, name: deviceName)
       shouldAutoReconnect = true
       reconnectAttempts = 0
       cancelReconnect()
@@ -295,6 +327,18 @@ final class BleManager: NSObject {
         reconnectAttempts = 0
         clearSavedDevice()
         print("🔴 [BleManager] Auto-reconnect disabled, saved device cleared")
+        
+        // Clear stale devices and restart scan immediately to show actual nearby devices
+        // This ensures the scan list shows real devices in range
+        let removedAddresses = Array(scannedDevices.keys)
+        scannedDevices.removeAll()
+        deviceLastSeen.removeAll()
+        // Notify Flutter about all removed devices
+        DispatchQueue.main.async { [weak self] in
+          for address in removedAddresses {
+            self?.onDeviceRemoved?(address)
+          }
+        }
       }
       
       pendingConnectAddress = nil
@@ -311,6 +355,16 @@ final class BleManager: NSObject {
       
       updateConnectionState(0, address: nil)
       peripheral = nil
+      
+      // Restart scanning when disconnected to show actual nearby devices
+      // Cooldown period to let BLE stack reset after disconnect
+      queue.asyncAfter(deadline: .now() + scanCooldownAfterDisconnect) { [weak self] in
+        guard let self = self else { return }
+        if self.connectionState == 0 && central.state == .poweredOn && self.shouldScan {
+          self.restartScan()
+          print("🟢 [BleManager] Scan restarted after disconnect to refresh device list")
+        }
+      }
       
       print("🔴 [BleManager] Disconnected successfully")
     }
@@ -468,9 +522,10 @@ final class BleManager: NSObject {
     
     isScanning = true
     print("🔵 [BleManager] Starting BLE scan for '\(deviceFilter)' devices...")
-    // Use low latency scan mode (matching Android SCAN_MODE_LOW_LATENCY)
+    // Use efficient scan options to prevent OS from killing the app
+    // Allow duplicates to keep device list active, but iOS will throttle automatically
     central.scanForPeripherals(withServices: nil, options: [
-      CBCentralManagerScanOptionAllowDuplicatesKey: false
+      CBCentralManagerScanOptionAllowDuplicatesKey: true // Allow duplicates to keep list active
     ])
   }
 
@@ -515,13 +570,32 @@ final class BleManager: NSObject {
     let data = (command + "\n").data(using: .utf8) ?? Data()
     let type: CBCharacteristicWriteType = tx.properties.contains(.write) ? .withResponse : .withoutResponse
     p.writeValue(data, for: tx, type: type)
+    logger.logCommand(command)
   }
 
   private func sendChargeLimitCommand() {
+    // Mirror Android behaviour:
+    // app_msg limit <limitValue> <phoneBatteryLevel> <chargingFlag> <timeValue>
+
+    // Refresh phone battery info
     let battery = getPhoneBattery()
     let level = battery["level"] as? Int ?? -1
-    let charging = (battery["isCharging"] as? Bool) == true ? 1 : 0
-    let command = "app_msg limit \(chargeLimitEnabled ? chargeLimit : 0) \(level) \(charging) 0"
+    let isCharging = (battery["isCharging"] as? Bool) == true
+
+    // Detect charging state change and reset timers like Android
+    if isCharging != isPhoneChargingFlag {
+      chargingTimeSeconds = 0
+      dischargingTimeSeconds = 0
+    }
+
+    phoneBatteryLevel = level
+    isPhoneChargingFlag = isCharging
+
+    let limitValue = chargeLimitEnabled ? chargeLimit : 0
+    let chargingFlag = isCharging ? 1 : 0
+    let timeValue = isCharging ? chargingTimeSeconds : dischargingTimeSeconds
+
+    let command = "app_msg limit \(limitValue) \(phoneBatteryLevel) \(chargingFlag) \(timeValue)"
     enqueueCommand(command)
   }
 
@@ -538,6 +612,8 @@ final class BleManager: NSObject {
           self?.sendChargeLimitCommand()
         }
       }
+      // Start 1-second tracking of charging / discharging durations (matching Android)
+      self?.startTimeTracking()
     }
   }
 
@@ -545,6 +621,7 @@ final class BleManager: NSObject {
     DispatchQueue.main.async { [weak self] in
       self?.chargeLimitTimer?.invalidate()
       self?.chargeLimitTimer = nil
+      self?.stopTimeTracking()
     }
   }
 
@@ -576,6 +653,7 @@ final class BleManager: NSObject {
     
     let savedName = lastDeviceName ?? "Unknown"
     print("🟡 [BleManager] Attempting auto-connect to saved device: \(savedName) (\(savedAddress))")
+    logger.logAutoConnect(address: savedAddress)
     
     // Android attempts connect even if device not in scannedDevices
     // Always try to connect (matching Android connectToDevice behavior)
@@ -606,25 +684,33 @@ final class BleManager: NSObject {
       startScanInternal()
     }
     
-    // After max attempts, add longer cooldown
+    // After max attempts, add longer cooldown to let BLE stack cool down properly
     let delay: TimeInterval
     if reconnectAttempts >= maxReconnectAttempts {
       reconnectAttempts = 0
-      delay = 30.0 // 30 second cooldown
-      print("🟡 [BleManager] Max reconnect attempts reached, waiting 30s before retry")
+      delay = 30.0 // 30 second cooldown to prevent BLE stack overload
+      print("🟡 [BleManager] Max reconnect attempts reached, waiting 30s before retry (BLE stack cooldown)")
       // Restart scan to refresh device cache (matching Android)
       restartScan()
     } else {
-      delay = reconnectDelay + (Double(reconnectAttempts) * reconnectBackoff)
+      // Progressive backoff with proper cooldown to prevent BLE stack overload
+      // Minimum 2 seconds between attempts to properly cool down BLE stack
+      let baseDelay = reconnectDelay + (Double(reconnectAttempts) * reconnectBackoff)
+      delay = max(baseDelay, 2.0) // Increased minimum cooldown for better BLE stack stability
     }
     
     reconnectAttempts += 1
     print("🟡 [BleManager] Scheduling reconnect attempt #\(reconnectAttempts) to \(address) in \(String(format: "%.1f", delay))s")
+    logger.logReconnect(attempt: reconnectAttempts, address: address)
     
     reconnectTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
       self?.queue.async {
         guard let self = self else { return }
         if self.shouldAutoReconnect && self.connectionState == 0 && self.central.state == .poweredOn {
+          // Ensure scan is still active before attempting connection
+          if !self.isScanning && self.shouldScan {
+            self.startScanInternal()
+          }
           // Try to connect (matching Android - always attempts connectToDevice)
           if let uuid = UUID(uuidString: address) {
             self.connectInternal(address: address, uuid: uuid)
@@ -647,6 +733,91 @@ final class BleManager: NSObject {
   private func clearSavedDevice() {
     lastDeviceAddress = nil
     lastDeviceName = nil
+  }
+  
+  // MARK: - Device timeout management
+  private func startDeviceTimeoutTimer() {
+    DispatchQueue.main.async { [weak self] in
+      self?.deviceTimeoutTimer?.invalidate()
+      self?.deviceTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        self?.queue.async {
+          self?.cleanupStaleDevices()
+        }
+      }
+    }
+  }
+  
+  private func stopDeviceTimeoutTimer() {
+    DispatchQueue.main.async { [weak self] in
+      self?.deviceTimeoutTimer?.invalidate()
+      self?.deviceTimeoutTimer = nil
+    }
+  }
+  
+  private func cleanupStaleDevices() {
+    let now = Date()
+    var removedAddresses: [String] = []
+    
+    // Only clean up devices when not connected to avoid removing the connected device
+    if connectionState != 2 {
+      for (address, lastSeen) in deviceLastSeen {
+        if now.timeIntervalSince(lastSeen) > deviceTimeoutInterval {
+          scannedDevices.removeValue(forKey: address)
+          deviceLastSeen.removeValue(forKey: address)
+          removedAddresses.append(address)
+          print("🟡 [BleManager] Removed stale device: \(address) (not seen for \(Int(now.timeIntervalSince(lastSeen)))s)")
+        }
+      }
+    } else {
+      // When connected, only remove devices that aren't the connected device
+      let connectedAddress = peripheral?.identifier.uuidString
+      for (address, lastSeen) in deviceLastSeen {
+        if address != connectedAddress && now.timeIntervalSince(lastSeen) > deviceTimeoutInterval {
+          scannedDevices.removeValue(forKey: address)
+          deviceLastSeen.removeValue(forKey: address)
+          removedAddresses.append(address)
+          print("🟡 [BleManager] Removed stale device: \(address) (not seen for \(Int(now.timeIntervalSince(lastSeen)))s)")
+        }
+      }
+    }
+    
+    // Notify Flutter about removed devices
+    if !removedAddresses.isEmpty {
+      print("🟡 [BleManager] Cleaned up \(removedAddresses.count) stale device(s). Remaining: \(scannedDevices.count)")
+      DispatchQueue.main.async { [weak self] in
+        for address in removedAddresses {
+          self?.onDeviceRemoved?(address)
+        }
+      }
+    }
+  }
+}
+
+// MARK: - Time tracking helpers (charging / discharging seconds)
+private extension BleManager {
+  func startTimeTracking() {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.timeTrackingTimer?.invalidate()
+      self.timeTrackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        guard let self else { return }
+        self.queue.async { [weak self] in
+          guard let self else { return }
+          if self.isPhoneChargingFlag {
+            self.chargingTimeSeconds += 1
+          } else {
+            self.dischargingTimeSeconds += 1
+          }
+        }
+      }
+    }
+  }
+
+  func stopTimeTracking() {
+    DispatchQueue.main.async { [weak self] in
+      self?.timeTrackingTimer?.invalidate()
+      self?.timeTrackingTimer = nil
+    }
   }
 }
 
@@ -680,9 +851,11 @@ extension BleManager: CBCentralManagerDelegate {
     let address = peripheral.identifier.uuidString
     let isNew = !scannedDevices.keys.contains(address)
     scannedDevices[address] = name
+    deviceLastSeen[address] = Date() // Update last seen time
     
     print("🟢 [BleManager] Discovered Leo device: \(name) (\(address)) RSSI: \(RSSI)")
     print("🟢 [BleManager] Total devices in list: \(scannedDevices.count)")
+    logger.logScan("Found device: \(name) (\(address))")
     
     DispatchQueue.main.async { [weak self] in
       self?.onDeviceDiscovered?(address, name)
@@ -733,6 +906,7 @@ extension BleManager: CBCentralManagerDelegate {
     let address = peripheral.identifier.uuidString
     let deviceName = peripheral.name ?? "Leo Usb"
     print("🟢 [BleManager] ✅ Connected to: \(deviceName) (\(address))")
+    logger.logConnected(address: address, name: deviceName)
     
     connectionState = 2 // STATE_CONNECTED
     pendingConnectAddress = nil
@@ -749,6 +923,13 @@ extension BleManager: CBCentralManagerDelegate {
     scannedDevices[address] = deviceName
     
     cancelReconnect()
+    
+    // Keep scanning active when connected to discover nearby devices
+    // This ensures scan list stays active and shows other devices in range
+    if !isScanning && shouldScan {
+      startScanInternal()
+      print("🟢 [BleManager] Scan continues while connected to show nearby devices")
+    }
     
     updateConnectionState(2, address: address)
     
@@ -786,6 +967,7 @@ extension BleManager: CBCentralManagerDelegate {
     print("🔴 [BleManager] ⚠️ Disconnected from: \(deviceName) (\(previousAddress))")
     print("🔴 [BleManager] Was connected: \(wasConnected), Error: \(errorMsg)")
     print("🔴 [BleManager] Auto-reconnect enabled: \(shouldAutoReconnect)")
+    logger.logDisconnect("Disconnected (wasConnected: \(wasConnected), error: \(errorMsg))")
     
     connectionState = 0 // STATE_DISCONNECTED
     isUartReady = false
@@ -802,22 +984,43 @@ extension BleManager: CBCentralManagerDelegate {
     if errorMsg.contains("timed out") || errorMsg.contains("timeout") {
       print("🔴 [BleManager] Device timed out, removing from scanned list")
       scannedDevices.removeValue(forKey: previousAddress)
+      deviceLastSeen.removeValue(forKey: previousAddress)
+      // Notify Flutter about device removal
+      DispatchQueue.main.async { [weak self] in
+        self?.onDeviceRemoved?(previousAddress)
+      }
     } else {
       // Keep device in list for other disconnect reasons (matching Android)
       scannedDevices[previousAddress] = deviceName
+      deviceLastSeen[previousAddress] = Date() // Update last seen time
     }
     
     pendingConnectAddress = nil
     
     updateConnectionState(0, address: nil)
     
+    // Restart scanning immediately when disconnected to refresh device list
+    // Cooldown period to let BLE stack cool down properly before restarting scan
+    queue.asyncAfter(deadline: .now() + scanCooldownAfterDisconnect) { [weak self] in
+      guard let self = self else { return }
+      if self.connectionState == 0 && central.state == .poweredOn && self.shouldScan {
+        self.restartScan()
+        print("🟢 [BleManager] Scan restarted after disconnect to refresh device list")
+      }
+    }
+    
     // Only auto-reconnect if enabled and not user-initiated disconnect (matching Android)
+    // For non-manual disconnects, use proper cooldown to let BLE stack reset
     if shouldAutoReconnect && central.state == .poweredOn && previousAddress != nil {
       // Android checks: status != GATT_SUCCESS || wasConnected
       // On iOS, we reconnect if wasConnected or if there's an error
       if wasConnected || error != nil {
         print("🟡 [BleManager] Scheduling auto-reconnect...")
-        scheduleReconnect(address: previousAddress)
+        // Longer cooldown for non-manual disconnects to properly cool down BLE stack
+        let cooldown: TimeInterval = wasConnected ? 2.0 : 1.0
+        queue.asyncAfter(deadline: .now() + cooldown) { [weak self] in
+          self?.scheduleReconnect(address: previousAddress)
+        }
       }
     } else {
       print("🔴 [BleManager] Auto-reconnect disabled or Bluetooth off - not reconnecting")
@@ -873,6 +1076,7 @@ extension BleManager: CBPeripheralDelegate {
     if characteristic.uuid == rxCharUUID {
       let received = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       handleReceivedData(received)
+      logger.logCommandResponse(received)
       DispatchQueue.main.async { [weak self] in
         self?.onDataReceived?(received)
       }
