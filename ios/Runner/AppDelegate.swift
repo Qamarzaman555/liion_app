@@ -6,6 +6,7 @@ import UIKit
   
   private let backgroundService = BackgroundService.shared
   private let loggingService = BackendLoggingService.shared
+  private let bleService = BLEService.shared
   private let backgroundServiceChannel = BackgroundServiceChannel()
   
   override func application(
@@ -27,6 +28,9 @@ import UIKit
     loggingService.initialize(appVersion: appVersion, buildNumber: buildNumber)
     loggingService.logInfo("App launched - v\(appVersion) (\(buildNumber))")
     
+    // Start BLE service
+    bleService.start()
+    
     // Start background service to keep app alive
     backgroundService.start()
     
@@ -35,6 +39,7 @@ import UIKit
   
   override func applicationWillTerminate(_ application: UIApplication) {
     loggingService.logWarning("App will terminate")
+    bleService.stop()
     backgroundService.stop()
     loggingService.stop()
   }
