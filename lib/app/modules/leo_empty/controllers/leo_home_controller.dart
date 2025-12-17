@@ -10,6 +10,7 @@ import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/graph_hive_storage_service.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
+import 'package:liion_app/app/services/ios_ble_scan_service.dart';
 import 'package:liion_app/app/modules/led_timeout/controllers/led_timeout_controller.dart';
 
 class LeoHomeController extends GetxController {
@@ -106,17 +107,52 @@ class LeoHomeController extends GetxController {
   }
 
   Future<void> _loadInitialState() async {
-    adapterState.value = await BleScanService.getAdapterState();
-    connectionState.value = await BleScanService.getConnectionState();
-    connectedDeviceAddress.value =
-        await BleScanService.getConnectedDeviceAddress();
-    final cachedAdvanced = await BleScanService.getAdvancedModes();
+    // Get adapter state
+    if (Platform.isIOS) {
+      final enabled = await IOSBleScanService.isBluetoothEnabled();
+      adapterState.value = enabled ? BleAdapterState.on : BleAdapterState.off;
+    } else {
+      adapterState.value = await BleScanService.getAdapterState();
+    }
+
+    // Get connection state
+    if (Platform.isIOS) {
+      final connected = await IOSBleScanService.isConnected();
+      connectionState.value = connected
+          ? BleConnectionState.connected
+          : BleConnectionState.disconnected;
+    } else {
+      connectionState.value = await BleScanService.getConnectionState();
+    }
+
+    // Get connected device address
+    if (Platform.isIOS) {
+      final device = await IOSBleScanService.getConnectedDevice();
+      connectedDeviceAddress.value = device?['address'];
+    } else {
+      connectedDeviceAddress.value =
+          await BleScanService.getConnectedDeviceAddress();
+    }
+
+    // Get advanced modes (Android only)
+    final cachedAdvanced = Platform.isAndroid
+        ? await BleScanService.getAdvancedModes()
+        : AdvancedModes(
+            ghostMode: false,
+            silentMode: false,
+            higherChargeLimit: false,
+          );
     advancedGhostModeEnabled.value = cachedAdvanced.ghostMode;
     advancedSilentModeEnabled.value = cachedAdvanced.silentMode;
     advancedHigherChargeLimitEnabled.value = cachedAdvanced.higherChargeLimit;
 
+    // Request enable Bluetooth if needed
     if (adapterState.value != BleAdapterState.on) {
-      await BleScanService.requestEnableBluetooth();
+      if (Platform.isIOS) {
+        await IOSBleScanService.isBluetoothEnabled();
+      } else {
+        await BleScanService.requestEnableBluetooth();
+      }
     }
 
     await _loadDevices();
@@ -135,9 +171,13 @@ class LeoHomeController extends GetxController {
   }
 
   Future<void> _loadDevices() async {
-    final devices = await BleScanService.getScannedDevices();
+    final devices = Platform.isIOS
+        ? await IOSBleScanService.getDiscoveredDevices()
+        : await BleScanService.getScannedDevices();
     scannedDevices.assignAll(devices);
-    isScanning.value = await BleScanService.isServiceRunning();
+    isScanning.value = Platform.isIOS
+        ? true
+        : await BleScanService.isServiceRunning();
   }
 
   /// Download firmware from Firebase at app start to compare versions.
@@ -180,9 +220,10 @@ class LeoHomeController extends GetxController {
   }
 
   void _listenToAdapterState() {
-    _adapterStateSubscription = BleScanService.adapterStateStream.listen((
-      state,
-    ) {
+    final stream = Platform.isIOS
+        ? IOSBleScanService.getAdapterStateStream()
+        : BleScanService.adapterStateStream;
+    _adapterStateSubscription = stream.listen((state) {
       adapterState.value = state;
 
       if (state == BleAdapterState.on) {
@@ -196,7 +237,10 @@ class LeoHomeController extends GetxController {
   }
 
   void _listenToDeviceStream() {
-    _deviceSubscription = BleScanService.deviceStream.listen((device) {
+    final stream = Platform.isIOS
+        ? IOSBleScanService.getDeviceStream()
+        : BleScanService.deviceStream;
+    _deviceSubscription = stream.listen((device) {
       final exists = scannedDevices.any(
         (d) => d['address'] == device['address'],
       );
@@ -207,9 +251,10 @@ class LeoHomeController extends GetxController {
   }
 
   void _listenToConnectionStream() async {
-    _connectionSubscription = BleScanService.connectionStream.listen((
-      event,
-    ) async {
+    final stream = Platform.isIOS
+        ? IOSBleScanService.getConnectionStream()
+        : BleScanService.connectionStream;
+    _connectionSubscription = stream.listen((event) async {
       final newState = event['state'] as int;
       final address = event['address'] as String?;
 
@@ -242,9 +287,10 @@ class LeoHomeController extends GetxController {
   }
 
   void _listenToDataReceived() {
-    _dataReceivedSubscription = BleScanService.dataReceivedStream.listen((
-      data,
-    ) {
+    final stream = Platform.isAndroid
+        ? BleScanService.dataReceivedStream
+        : Stream<String>.empty();
+    _dataReceivedSubscription = stream.listen((data) {
       lastReceivedData.value = data;
       receivedDataLog.insert(
         0,
@@ -262,7 +308,10 @@ class LeoHomeController extends GetxController {
   }
 
   void _listenToMeasureData() {
-    _measureDataSubscription = BleScanService.measureDataStream.listen((data) {
+    final stream = Platform.isAndroid
+        ? BleScanService.measureDataStream
+        : Stream<MeasureData>.empty();
+    _measureDataSubscription = stream.listen((data) {
       final voltage = double.tryParse(data.voltage);
       final current = double.tryParse(data.current);
 
@@ -278,9 +327,10 @@ class LeoHomeController extends GetxController {
   }
 
   void _listenToAdvancedModes() {
-    _advancedModesSubscription = BleScanService.advancedModesStream.listen((
-      modes,
-    ) {
+    final stream = Platform.isAndroid
+        ? BleScanService.advancedModesStream
+        : Stream<AdvancedModes>.empty();
+    _advancedModesSubscription = stream.listen((modes) {
       advancedGhostModeEnabled.value = modes.ghostMode;
       advancedSilentModeEnabled.value = modes.silentMode;
       advancedHigherChargeLimitEnabled.value = modes.higherChargeLimit;
@@ -598,45 +648,59 @@ class LeoHomeController extends GetxController {
   /// Request mWh value from Leo
   Future<void> requestMwhValue() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.sendCommand('mwh');
+      if (Platform.isAndroid) {
+        await BleScanService.sendCommand('mwh');
+      }
     }
   }
 
   Future<void> requestLeoFirmwareVersion() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.sendCommand('measure');
-      await Future.delayed(const Duration(milliseconds: 300));
-      await BleScanService.sendCommand('swversion');
+      if (Platform.isAndroid) {
+        await BleScanService.sendCommand('measure');
+        await Future.delayed(const Duration(milliseconds: 300));
+        await BleScanService.sendCommand('swversion');
+      }
     }
   }
 
   Future<void> requestChargingMode() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.sendCommand('chmode');
+      if (Platform.isAndroid) {
+        await BleScanService.sendCommand('chmode');
+      }
     }
   }
 
   Future<void> requestAdvancedGhostMode() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.requestAdvancedModes();
+      if (Platform.isAndroid) {
+        await BleScanService.requestAdvancedModes();
+      }
     }
   }
 
   Future<void> requestAdvancedSilentMode() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.requestAdvancedModes();
+      if (Platform.isAndroid) {
+        await BleScanService.requestAdvancedModes();
+      }
     }
   }
 
   Future<void> requestAdvancedHigherChargeLimit() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.requestAdvancedModes();
+      if (Platform.isAndroid) {
+        await BleScanService.requestAdvancedModes();
+      }
     }
   }
 
   Future<void> requestLedTimeout() async {
     if (connectionState.value == BleConnectionState.connected) {
-      await BleScanService.requestLedTimeout();
+      if (Platform.isAndroid) {
+        await BleScanService.requestLedTimeout();
+      }
       // Also sync the UI controller with the latest cached value.
       try {
         final ledController = Get.find<LedTimeoutController>();
@@ -653,7 +717,13 @@ class LeoHomeController extends GetxController {
     if (connectionState.value != BleConnectionState.connected) {
       return;
     }
-    final cachedModes = await BleScanService.getAdvancedModes();
+    final cachedModes = Platform.isAndroid
+        ? await BleScanService.getAdvancedModes()
+        : AdvancedModes(
+            ghostMode: false,
+            silentMode: false,
+            higherChargeLimit: false,
+          );
     advancedGhostModeEnabled.value = cachedModes.ghostMode;
     advancedSilentModeEnabled.value = cachedModes.silentMode;
     advancedHigherChargeLimitEnabled.value = cachedModes.higherChargeLimit;
@@ -699,7 +769,10 @@ class LeoHomeController extends GetxController {
     if (connectionState.value != BleConnectionState.connected) {
       return false;
     }
-    return await BleScanService.sendCommand(command);
+    if (Platform.isAndroid) {
+      return await BleScanService.sendCommand(command);
+    }
+    return false;
   }
 
   // Update charging mode
@@ -714,7 +787,9 @@ class LeoHomeController extends GetxController {
 
     try {
       // Send mode change command to Leo
-      await BleScanService.sendCommand("chmode ${mode.index}\n");
+      if (Platform.isAndroid) {
+        await BleScanService.sendCommand("chmode ${mode.index}\n");
+      }
     } catch (e) {
       // Revert the mode if the command fails
       currentMode.value = ChargingMode.smart;
@@ -731,24 +806,42 @@ class LeoHomeController extends GetxController {
 
   Future<void> rescan() async {
     if (adapterState.value != BleAdapterState.on) {
-      final enabled = await BleScanService.requestEnableBluetooth();
+      final enabled = Platform.isIOS
+          ? await IOSBleScanService.isBluetoothEnabled()
+          : await BleScanService.requestEnableBluetooth();
       if (!enabled) return;
     }
 
     isScanning.value = true;
     scannedDevices.clear();
-    await BleScanService.rescan();
+
+    if (Platform.isIOS) {
+      await IOSBleScanService.rescan();
+    } else {
+      await BleScanService.rescan();
+    }
+
     await Future.delayed(const Duration(milliseconds: 500));
-    isScanning.value = await BleScanService.isServiceRunning();
+    isScanning.value = Platform.isIOS
+        ? true
+        : await BleScanService.isServiceRunning();
   }
 
   Future<void> connectToDevice(String address) async {
     connectingDeviceAddress.value = address;
-    await BleScanService.connect(address);
+    if (Platform.isIOS) {
+      await IOSBleScanService.connect(address);
+    } else {
+      await BleScanService.connect(address);
+    }
   }
 
   Future<void> disconnectDevice() async {
-    await BleScanService.disconnect();
+    if (Platform.isIOS) {
+      await IOSBleScanService.disconnect();
+    } else {
+      await BleScanService.disconnect();
+    }
   }
 
   bool isDeviceConnected(String address) {

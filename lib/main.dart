@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'app/modules/leo_empty/models/graph_values_hive_model.dart';
 import 'app/routes/app_pages.dart';
 import 'app/services/ble_scan_service.dart';
+import 'app/services/ios_ble_scan_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,11 @@ void main() async {
   // Request permissions and start service on Android
   if (Platform.isAndroid) {
     await _requestPermissionsAndStartService();
+  }
+
+  // Start iOS BLE service
+  if (Platform.isIOS) {
+    await _startIOSService();
   }
 
   runApp(const MyApp());
@@ -38,7 +44,7 @@ Future<void> _requestPermissionsAndStartService() async {
   // Check if BLE permissions are granted
   if (statuses[Permission.bluetoothScan]!.isGranted &&
       statuses[Permission.bluetoothConnect]!.isGranted) {
-    await BleScanService.startService();
+    await BleScanService.startService(); // Android service
 
     // Check and request battery optimization exemption
     _checkBatteryOptimization();
@@ -54,6 +60,21 @@ Future<void> _checkBatteryOptimization() async {
     // Request user to disable battery optimization
     await BleScanService.requestDisableBatteryOptimization();
   }
+}
+
+Future<void> _startIOSService() async {
+  // Request BLE and location permissions for iOS
+  await [
+    Permission.bluetoothScan,
+    Permission.bluetoothConnect,
+    Permission.locationWhenInUse,
+    Permission.locationAlways,
+  ].request();
+
+  // Start iOS BLE service (always starts, no foreground notification needed)
+  await IOSBleScanService.startService(); // iOS service
+
+  print('[iOS] BLE Service started');
 }
 
 class MyApp extends StatelessWidget {
