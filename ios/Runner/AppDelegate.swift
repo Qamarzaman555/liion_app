@@ -52,8 +52,31 @@ import UIKit
 
     // Initialize backend logging service
     initializeBackendLogging()
+    
+    // Restore BLE state if app was terminated and restarted by system
+    // This is important for background BLE operations
+    if let centralManagerIdentifiers = launchOptions?[.bluetoothCentrals] as? [String] {
+      print("🟢 [AppDelegate] App restarted by system for BLE state restoration")
+      // The BleManager will handle restoration automatically via CBCentralManagerDelegate
+    }
+    
+    // Auto-start BLE service if auto-reconnect was enabled (similar to Android BootReceiver)
+    // This ensures the service starts when app launches, even if killed by OS
+    let shouldAutoReconnect = UserDefaults.standard.bool(forKey: "auto_reconnect")
+    if shouldAutoReconnect {
+      print("🟢 [AppDelegate] Auto-reconnect was enabled, starting BLE service on app launch")
+      bleManager.startService()
+    }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+  
+  // Handle BLE state restoration when app is relaunched by system
+  override func application(
+    _ application: UIApplication,
+    willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    return super.application(application, willFinishLaunchingWithOptions: launchOptions)
   }
 
   // MARK: - Channels
@@ -256,11 +279,10 @@ import UIKit
       ])
     }
     bleManager.onDeviceRemoved = { [weak self] address in
-      // Send removal event with address and removed flag
+      // Send removal event with address and empty name (Dart expects all String values)
       self?.deviceSink?([
         "address": address,
-        "name": "", // Empty name indicates removal
-        "removed": true
+        "name": "" // Empty name indicates removal
       ])
     }
     bleManager.onConnectionChange = { [weak self] state, address in
