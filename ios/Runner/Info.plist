@@ -45,5 +45,20 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>processing</string>
+		<string>audio</string>
+	</array>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs location access to keep the service running in the background and provide continuous functionality.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs location access to provide continuous functionality.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>This app needs location access to keep the service running in the background.</string>
+	<key>UIRequiresPersistentWiFi</key>
+	<false/>
 </dict>
 </plist>
