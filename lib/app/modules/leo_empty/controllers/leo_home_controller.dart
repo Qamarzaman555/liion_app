@@ -20,6 +20,7 @@ class LeoHomeController extends GetxController {
   final isScanning = false.obs;
   final connectionState = BleConnectionState.disconnected.obs;
   final connectedDeviceAddress = Rxn<String>();
+  final connectedDeviceName = Rxn<String>(); // Store connected device name
   final connectingDeviceAddress = Rxn<String>();
   final adapterState = BleAdapterState.off.obs;
   final advancedGhostModeEnabled = false.obs;
@@ -125,10 +126,11 @@ class LeoHomeController extends GetxController {
       connectionState.value = await BleScanService.getConnectionState();
     }
 
-    // Get connected device address
+    // Get connected device address and name
     if (Platform.isIOS) {
       final device = await IOSBleScanService.getConnectedDevice();
       connectedDeviceAddress.value = device?['address'];
+      connectedDeviceName.value = device?['name']; // Load device name for iOS
     } else {
       connectedDeviceAddress.value =
           await BleScanService.getConnectedDeviceAddress();
@@ -257,6 +259,8 @@ class LeoHomeController extends GetxController {
     _connectionSubscription = stream.listen((event) async {
       final newState = event['state'] as int;
       final address = event['address'] as String?;
+      final name =
+          event['name'] as String?; // Extract device name from connection event
 
       connectionState.value = newState;
 
@@ -266,6 +270,7 @@ class LeoHomeController extends GetxController {
           await dismissThankYouNote();
         }
         connectedDeviceAddress.value = address;
+        connectedDeviceName.value = name; // Store connected device name
         connectingDeviceAddress.value = null;
         // Request firmware version after OTA reconnection to get updated version
         // Add delay to ensure BLE services are discovered and UART is ready
@@ -281,6 +286,7 @@ class LeoHomeController extends GetxController {
         connectingDeviceAddress.value = address;
       } else if (newState == BleConnectionState.disconnected) {
         connectedDeviceAddress.value = null;
+        connectedDeviceName.value = null; // Clear device name on disconnect
         connectingDeviceAddress.value = null;
       }
     });

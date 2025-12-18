@@ -53,7 +53,10 @@ class _BluetoothConnectionDialogState extends State<BluetoothConnectionDialog>
           final isConnected =
               controller.connectionState.value == BleConnectionState.connected;
           final connectedAddress = controller.connectedDeviceAddress.value;
-          final connectedName = _connectedDeviceName(connectedAddress, devices);
+          final connectedName =
+              controller.connectedDeviceName.value ??
+              _connectedDeviceName(connectedAddress, devices);
+          print('connectedName: $connectedName');
           final filteredDevices = connectedAddress == null
               ? devices
               : devices

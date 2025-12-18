@@ -299,6 +299,7 @@ class IOSBleScanService {
           _connectionStreamController?.add({
             'state': connected ? 2 : 0, // connected : disconnected
             'address': device?['address'],
+            'name': device?['name'], // Include device name for UI display
           });
         }
       } catch (e) {

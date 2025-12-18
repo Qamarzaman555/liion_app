@@ -415,9 +415,21 @@ class BLEService: NSObject {
             return nil
         }
         
+        let deviceId = peripheral.identifier.uuidString
+        
+        // Use saved device name if peripheral.name is nil (especially during auto-connect)
+        let deviceName: String
+        if let peripheralName = peripheral.name, !peripheralName.isEmpty {
+            deviceName = peripheralName
+        } else if let savedName = getLastConnectedDeviceName(), deviceId == getLastConnectedDeviceId() {
+            deviceName = savedName
+        } else {
+            deviceName = "Unknown"
+        }
+        
         return [
-            "id": peripheral.identifier.uuidString,
-            "name": peripheral.name ?? "Unknown",
+            "id": deviceId,
+            "name": deviceName,
             "state": connectionStateToString(peripheral.state)
         ]
     }
