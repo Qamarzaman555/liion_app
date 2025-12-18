@@ -112,6 +112,36 @@ class BackgroundServiceChannel {
         case "getPhoneBattery":
             getPhoneBattery(result: result)
             
+        case "getAdvancedModes":
+            getAdvancedModes(result: result)
+            
+        case "setGhostMode":
+            setGhostMode(call: call, result: result)
+            
+        case "setSilentMode":
+            setSilentMode(call: call, result: result)
+            
+        case "setHigherChargeLimit":
+            setHigherChargeLimit(call: call, result: result)
+            
+        case "requestAdvancedModes":
+            requestAdvancedModes(result: result)
+            
+        case "setLedTimeout":
+            setLedTimeout(call: call, result: result)
+            
+        case "requestLedTimeout":
+            requestLedTimeout(result: result)
+            
+        case "getLedTimeoutInfo":
+            getLedTimeoutInfo(result: result)
+            
+        case "getMeasureData":
+            getMeasureData(result: result)
+            
+        case "getLastReceivedData":
+            getLastReceivedData(result: result)
+            
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -352,6 +382,102 @@ class BackgroundServiceChannel {
     private func getPhoneBattery(result: @escaping FlutterResult) {
         let info = bleService.getPhoneBatteryInfo()
         result(info)
+    }
+    
+    // MARK: - Advanced Modes Method Handlers
+    
+    private func getAdvancedModes(result: @escaping FlutterResult) {
+        let modes = bleService.getAdvancedModes()
+        result(modes)
+    }
+    
+    private func setGhostMode(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let enabled = args["enabled"] as? Bool else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "enabled (Bool) parameter is required",
+                details: nil
+            ))
+            return
+        }
+        
+        let modeResult = bleService.setGhostMode(enabled: enabled)
+        result(modeResult)
+    }
+    
+    private func setSilentMode(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let enabled = args["enabled"] as? Bool else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "enabled (Bool) parameter is required",
+                details: nil
+            ))
+            return
+        }
+        
+        let modeResult = bleService.setSilentMode(enabled: enabled)
+        result(modeResult)
+    }
+    
+    private func setHigherChargeLimit(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let enabled = args["enabled"] as? Bool else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "enabled (Bool) parameter is required",
+                details: nil
+            ))
+            return
+        }
+        
+        let modeResult = bleService.setHigherChargeLimit(enabled: enabled)
+        result(modeResult)
+    }
+    
+    private func requestAdvancedModes(result: @escaping FlutterResult) {
+        let requestResult = bleService.requestAdvancedModes()
+        result(requestResult)
+    }
+    
+    // MARK: - LED Timeout Method Handlers
+    
+    private func setLedTimeout(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let seconds = args["seconds"] as? Int else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "seconds (Int) parameter is required",
+                details: nil
+            ))
+            return
+        }
+        
+        let timeoutResult = bleService.setLedTimeout(seconds: seconds)
+        result(timeoutResult)
+    }
+    
+    private func requestLedTimeout(result: @escaping FlutterResult) {
+        let requestResult = bleService.requestLedTimeout()
+        result(requestResult)
+    }
+    
+    private func getLedTimeoutInfo(result: @escaping FlutterResult) {
+        let info = bleService.getLedTimeoutInfo()
+        result(info)
+    }
+    
+    // MARK: - Measure Data Handler
+    
+    private func getMeasureData(result: @escaping FlutterResult) {
+        let data = bleService.getMeasureData()
+        result(data)
+    }
+    
+    private func getLastReceivedData(result: @escaping FlutterResult) {
+        let data = bleService.getLastReceivedData()
+        result(data)
     }
 }
 

@@ -136,17 +136,19 @@ class LeoHomeController extends GetxController {
           await BleScanService.getConnectedDeviceAddress();
     }
 
-    // Get advanced modes (Android only)
-    final cachedAdvanced = Platform.isAndroid
-        ? await BleScanService.getAdvancedModes()
-        : AdvancedModes(
-            ghostMode: false,
-            silentMode: false,
-            higherChargeLimit: false,
-          );
-    advancedGhostModeEnabled.value = cachedAdvanced.ghostMode;
-    advancedSilentModeEnabled.value = cachedAdvanced.silentMode;
-    advancedHigherChargeLimitEnabled.value = cachedAdvanced.higherChargeLimit;
+    // Get advanced modes (both Android and iOS)
+    if (Platform.isAndroid) {
+      final cachedAdvanced = await BleScanService.getAdvancedModes();
+      advancedGhostModeEnabled.value = cachedAdvanced.ghostMode;
+      advancedSilentModeEnabled.value = cachedAdvanced.silentMode;
+      advancedHigherChargeLimitEnabled.value = cachedAdvanced.higherChargeLimit;
+    } else if (Platform.isIOS) {
+      final cachedAdvanced = await IOSBleScanService.getAdvancedModes();
+      advancedGhostModeEnabled.value = cachedAdvanced['ghostMode'] ?? false;
+      advancedSilentModeEnabled.value = cachedAdvanced['silentMode'] ?? false;
+      advancedHigherChargeLimitEnabled.value =
+          cachedAdvanced['higherChargeLimit'] ?? false;
+    }
 
     // Request enable Bluetooth if needed
     if (adapterState.value != BleAdapterState.on) {
@@ -295,7 +297,7 @@ class LeoHomeController extends GetxController {
   void _listenToDataReceived() {
     final stream = Platform.isAndroid
         ? BleScanService.dataReceivedStream
-        : Stream<String>.empty();
+        : IOSBleScanService.getDataReceivedStream();
     _dataReceivedSubscription = stream.listen((data) {
       lastReceivedData.value = data;
       receivedDataLog.insert(
@@ -314,33 +316,62 @@ class LeoHomeController extends GetxController {
   }
 
   void _listenToMeasureData() {
-    final stream = Platform.isAndroid
-        ? BleScanService.measureDataStream
-        : Stream<MeasureData>.empty();
-    _measureDataSubscription = stream.listen((data) {
-      final voltage = double.tryParse(data.voltage);
-      final current = double.tryParse(data.current);
+    if (Platform.isAndroid) {
+      // Android: Use EventChannel stream
+      _measureDataSubscription = BleScanService.measureDataStream.listen((
+        data,
+      ) {
+        final voltage = double.tryParse(data.voltage);
+        final current = double.tryParse(data.current);
 
-      voltageValue.value = voltage != null
-          ? '${voltage.toStringAsFixed(3)}V'
-          : data.voltage;
-      currentValue.value = current != null
-          ? '${current.toStringAsFixed(3)}A'
-          : data.current;
+        voltageValue.value = voltage != null
+            ? '${voltage.toStringAsFixed(3)}V'
+            : data.voltage;
+        currentValue.value = current != null
+            ? '${current.toStringAsFixed(3)}A'
+            : data.current;
 
-      _updatePower(voltage, current);
-    });
+        _updatePower(voltage, current);
+      });
+    } else if (Platform.isIOS) {
+      // iOS: Use polling stream
+      _measureDataSubscription = IOSBleScanService.getMeasureDataStream()
+          .listen((data) {
+            final voltage = double.tryParse(data['voltage'] ?? '');
+            final current = double.tryParse(data['current'] ?? '');
+
+            voltageValue.value = voltage != null
+                ? '${voltage.toStringAsFixed(3)}V'
+                : (data['voltage'] ?? '');
+            currentValue.value = current != null
+                ? '${current.toStringAsFixed(3)}A'
+                : (data['current'] ?? '');
+
+            _updatePower(voltage, current);
+          });
+    }
   }
 
   void _listenToAdvancedModes() {
-    final stream = Platform.isAndroid
-        ? BleScanService.advancedModesStream
-        : Stream<AdvancedModes>.empty();
-    _advancedModesSubscription = stream.listen((modes) {
-      advancedGhostModeEnabled.value = modes.ghostMode;
-      advancedSilentModeEnabled.value = modes.silentMode;
-      advancedHigherChargeLimitEnabled.value = modes.higherChargeLimit;
-    });
+    if (Platform.isAndroid) {
+      // Android: Use EventChannel stream
+      _advancedModesSubscription = BleScanService.advancedModesStream.listen((
+        modes,
+      ) {
+        advancedGhostModeEnabled.value = modes.ghostMode;
+        advancedSilentModeEnabled.value = modes.silentMode;
+        advancedHigherChargeLimitEnabled.value = modes.higherChargeLimit;
+      });
+    } else if (Platform.isIOS) {
+      // iOS: Use polling stream
+      _advancedModesSubscription = IOSBleScanService.getAdvancedModesStream()
+          .listen((modes) {
+            advancedGhostModeEnabled.value = modes['ghostMode'] ?? false;
+            advancedSilentModeEnabled.value = modes['silentMode'] ?? false;
+            advancedHigherChargeLimitEnabled.value =
+                modes['higherChargeLimit'] ?? false;
+          });
+    }
   }
 
   void _parseReceivedData(String data) {
@@ -682,6 +713,8 @@ class LeoHomeController extends GetxController {
     if (connectionState.value == BleConnectionState.connected) {
       if (Platform.isAndroid) {
         await BleScanService.requestAdvancedModes();
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.requestAdvancedModes();
       }
     }
   }
@@ -690,6 +723,8 @@ class LeoHomeController extends GetxController {
     if (connectionState.value == BleConnectionState.connected) {
       if (Platform.isAndroid) {
         await BleScanService.requestAdvancedModes();
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.requestAdvancedModes();
       }
     }
   }
@@ -698,6 +733,8 @@ class LeoHomeController extends GetxController {
     if (connectionState.value == BleConnectionState.connected) {
       if (Platform.isAndroid) {
         await BleScanService.requestAdvancedModes();
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.requestAdvancedModes();
       }
     }
   }
@@ -706,6 +743,8 @@ class LeoHomeController extends GetxController {
     if (connectionState.value == BleConnectionState.connected) {
       if (Platform.isAndroid) {
         await BleScanService.requestLedTimeout();
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.requestLedTimeout();
       }
       // Also sync the UI controller with the latest cached value.
       try {
@@ -723,16 +762,19 @@ class LeoHomeController extends GetxController {
     if (connectionState.value != BleConnectionState.connected) {
       return;
     }
-    final cachedModes = Platform.isAndroid
-        ? await BleScanService.getAdvancedModes()
-        : AdvancedModes(
-            ghostMode: false,
-            silentMode: false,
-            higherChargeLimit: false,
-          );
-    advancedGhostModeEnabled.value = cachedModes.ghostMode;
-    advancedSilentModeEnabled.value = cachedModes.silentMode;
-    advancedHigherChargeLimitEnabled.value = cachedModes.higherChargeLimit;
+
+    if (Platform.isAndroid) {
+      final cachedModes = await BleScanService.getAdvancedModes();
+      advancedGhostModeEnabled.value = cachedModes.ghostMode;
+      advancedSilentModeEnabled.value = cachedModes.silentMode;
+      advancedHigherChargeLimitEnabled.value = cachedModes.higherChargeLimit;
+    } else if (Platform.isIOS) {
+      final cachedModes = await IOSBleScanService.getAdvancedModes();
+      advancedGhostModeEnabled.value = cachedModes['ghostMode'] ?? false;
+      advancedSilentModeEnabled.value = cachedModes['silentMode'] ?? false;
+      advancedHigherChargeLimitEnabled.value =
+          cachedModes['higherChargeLimit'] ?? false;
+    }
   }
 
   Future<void> _scheduleInitialRequests() async {

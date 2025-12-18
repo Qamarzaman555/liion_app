@@ -11,9 +11,15 @@ class IOSBleScanService {
 
   // Stream controllers for iOS (polling-based)
   static Timer? _scanTimer;
+  static Timer? _measureDataTimer;
+  static Timer? _dataReceivedTimer;
+  static Timer? _advancedModesTimer;
   static StreamController<Map<String, String>>? _deviceStreamController;
   static StreamController<Map<String, dynamic>>? _connectionStreamController;
   static StreamController<int>? _adapterStateStreamController;
+  static StreamController<Map<String, String>>? _measureDataStreamController;
+  static StreamController<String>? _dataReceivedStreamController;
+  static StreamController<Map<String, bool>>? _advancedModesStreamController;
 
   // Track previous states for change detection
   static bool _previousConnectionState = false;
@@ -337,17 +343,20 @@ class IOSBleScanService {
 
   /// Set charge limit
   /// Returns a map with success status and the rounded limit value
-  static Future<Map<String, dynamic>> setChargeLimit(int limit, bool enabled) async {
+  static Future<Map<String, dynamic>> setChargeLimit(
+    int limit,
+    bool enabled,
+  ) async {
     try {
       final result = await _channel.invokeMethod<Map>('setChargeLimit', {
         'limit': limit,
         'enabled': enabled,
       });
-      
+
       if (result == null) {
         return {'success': false, 'limit': limit};
       }
-      
+
       return {
         'success': result['success'] as bool? ?? false,
         'limit': result['limit'] as int? ?? limit, // iOS returns rounded value
@@ -442,6 +451,239 @@ class IOSBleScanService {
   }
 
   // ============================================================================
+  // ADVANCED MODES
+  // ============================================================================
+
+  /// Get advanced modes state
+  static Future<Map<String, bool>> getAdvancedModes() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('getAdvancedModes');
+      if (result == null) {
+        return {
+          'ghostMode': false,
+          'silentMode': false,
+          'higherChargeLimit': false,
+        };
+      }
+
+      return {
+        'ghostMode': result['ghostMode'] as bool? ?? false,
+        'silentMode': result['silentMode'] as bool? ?? false,
+        'higherChargeLimit': result['higherChargeLimit'] as bool? ?? false,
+      };
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get advanced modes: ${e.message}');
+      return {
+        'ghostMode': false,
+        'silentMode': false,
+        'higherChargeLimit': false,
+      };
+    }
+  }
+
+  /// Set ghost mode
+  static Future<bool> setGhostMode(bool enabled) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('setGhostMode', {
+        'enabled': enabled,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to set ghost mode: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Set silent mode
+  static Future<bool> setSilentMode(bool enabled) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('setSilentMode', {
+        'enabled': enabled,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to set silent mode: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Set higher charge limit
+  static Future<bool> setHigherChargeLimit(bool enabled) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('setHigherChargeLimit', {
+        'enabled': enabled,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to set higher charge limit: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Request advanced modes from device
+  static Future<bool> requestAdvancedModes() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('requestAdvancedModes');
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to request advanced modes: ${e.message}');
+      return false;
+    }
+  }
+
+  // ============================================================================
+  // LED TIMEOUT
+  // ============================================================================
+
+  /// Set LED timeout (seconds)
+  static Future<bool> setLedTimeout(int seconds) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('setLedTimeout', {
+        'seconds': seconds,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to set LED timeout: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Request LED timeout from device
+  static Future<bool> requestLedTimeout() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('requestLedTimeout');
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to request LED timeout: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get LED timeout info
+  static Future<int> getLedTimeout() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('getLedTimeoutInfo');
+      return result?['ledTimeout'] as int? ?? 300;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get LED timeout: ${e.message}');
+      return 300;
+    }
+  }
+
+  // ============================================================================
+  // MEASURE DATA & BATTERY METRICS
+  // ============================================================================
+
+  /// Get current measure data (voltage and current from Leo device)
+  static Future<Map<String, String>> getMeasureData() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('getMeasureData');
+      if (result == null) {
+        return {'voltage': '0.000', 'current': '0.000'};
+      }
+
+      return {
+        'voltage': result['voltage'] as String? ?? '0.000',
+        'current': result['current'] as String? ?? '0.000',
+      };
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get measure data: ${e.message}');
+      return {'voltage': '0.000', 'current': '0.000'};
+    }
+  }
+
+  /// Stream of measure data (polls every 1 second when device is connected)
+  static Stream<Map<String, String>> getMeasureDataStream() {
+    _measureDataStreamController ??=
+        StreamController<Map<String, String>>.broadcast();
+
+    // Start polling if not already started
+    if (_measureDataTimer == null) {
+      _measureDataTimer = Timer.periodic(const Duration(seconds: 1), (
+        timer,
+      ) async {
+        try {
+          final connected = await isConnected();
+          if (connected) {
+            final data = await getMeasureData();
+            _measureDataStreamController?.add(data);
+          }
+        } catch (e) {
+          print('[iOS] Error polling measure data: $e');
+        }
+      });
+    }
+
+    return _measureDataStreamController!.stream;
+  }
+
+  /// Get last received raw data (matching Android dataReceivedStream)
+  static Future<String> getLastReceivedData() async {
+    try {
+      final result = await _channel.invokeMethod<String>('getLastReceivedData');
+      return result ?? '';
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get last received data: ${e.message}');
+      return '';
+    }
+  }
+
+  /// Stream of raw received data (polls every 1 second when device is connected)
+  /// Matches Android dataReceivedStream for parsing charging mode and other values
+  static Stream<String> getDataReceivedStream() {
+    _dataReceivedStreamController ??= StreamController<String>.broadcast();
+
+    // Start polling if not already started
+    if (_dataReceivedTimer == null) {
+      String lastData = '';
+      _dataReceivedTimer = Timer.periodic(const Duration(seconds: 1), (
+        timer,
+      ) async {
+        try {
+          final connected = await isConnected();
+          if (connected) {
+            final data = await getLastReceivedData();
+            // Only emit if data changed to avoid duplicate parsing
+            if (data.isNotEmpty && data != lastData) {
+              lastData = data;
+              _dataReceivedStreamController?.add(data);
+            }
+          }
+        } catch (e) {
+          print('[iOS] Error polling data received: $e');
+        }
+      });
+    }
+
+    return _dataReceivedStreamController!.stream;
+  }
+
+  /// Stream of advanced modes (polls every 2 seconds when device is connected)
+  static Stream<Map<String, bool>> getAdvancedModesStream() {
+    _advancedModesStreamController ??=
+        StreamController<Map<String, bool>>.broadcast();
+
+    // Start polling if not already started
+    if (_advancedModesTimer == null) {
+      _advancedModesTimer = Timer.periodic(const Duration(seconds: 2), (
+        timer,
+      ) async {
+        try {
+          final connected = await isConnected();
+          if (connected) {
+            final modes = await getAdvancedModes();
+            _advancedModesStreamController?.add(modes);
+          }
+        } catch (e) {
+          print('[iOS] Error polling advanced modes: $e');
+        }
+      });
+    }
+
+    return _advancedModesStreamController!.stream;
+  }
+
+  // ============================================================================
   // CLEANUP
   // ============================================================================
 
@@ -449,11 +691,23 @@ class IOSBleScanService {
   static void dispose() {
     _scanTimer?.cancel();
     _scanTimer = null;
+    _measureDataTimer?.cancel();
+    _measureDataTimer = null;
+    _dataReceivedTimer?.cancel();
+    _dataReceivedTimer = null;
+    _advancedModesTimer?.cancel();
+    _advancedModesTimer = null;
     _deviceStreamController?.close();
     _deviceStreamController = null;
     _connectionStreamController?.close();
     _connectionStreamController = null;
     _adapterStateStreamController?.close();
     _adapterStateStreamController = null;
+    _measureDataStreamController?.close();
+    _measureDataStreamController = null;
+    _dataReceivedStreamController?.close();
+    _dataReceivedStreamController = null;
+    _advancedModesStreamController?.close();
+    _advancedModesStreamController = null;
   }
 }

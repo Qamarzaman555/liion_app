@@ -50,9 +50,33 @@ class BLEService: NSObject {
     private var timeTrackingTimer: DispatchSourceTimer?
     private var lastChargingState: Bool?
     
+    // Measure command timer (matching Android - every 30 seconds)
+    private var measureTimer: DispatchSourceTimer?
+    private let measureIntervalSeconds: TimeInterval = 30.0 // 30 seconds
+    private let measureInitialDelaySeconds: TimeInterval = 25.0 // 25 seconds initial delay
+    
+    // Note: Battery metrics (current, voltage, temperature) are not implemented for iOS
+    // iOS only provides battery level and charging state via UIDevice
+    // For detailed battery metrics, see Android implementation
+    
+    // Measure data state (latest values from device)
+    private var latestMeasureVoltage: Double = 0.0
+    private var latestMeasureCurrent: Double = 0.0
+    private var lastReceivedData: String = "" // Latest raw data received from device
+    
+    // Advanced modes state (matching Android)
+    private var ledTimeoutSeconds: Int = 300
+    private var ghostModeEnabled: Bool = false
+    private var silentModeEnabled: Bool = false
+    private var higherChargeLimitEnabled: Bool = false
+    
     // UserDefaults keys (matching Android KEY_* constants)
     private let chargeLimitKey = "charge_limit"
     private let chargeLimitEnabledKey = "charge_limit_enabled"
+    private let ledTimeoutKey = "led_timeout_seconds"
+    private let ghostModeKey = "ghost_mode_enabled"
+    private let silentModeKey = "silent_mode_enabled"
+    private let higherChargeLimitKey = "higher_charge_limit_enabled"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -84,6 +108,12 @@ class BLEService: NSObject {
     var onDeviceDiscovered: (([String: Any]) -> Void)?
     var onConnectionStateChanged: ((String, String) -> Void)? // (deviceId, state)
     
+    // Data callbacks
+    var onMeasureDataReceived: ((Double, Double) -> Void)? // (voltage, current)
+    var onDataReceived: ((String) -> Void)? // (rawData) - matches Android dataReceivedStream
+    var onAdvancedModesUpdate: ((Bool, Bool, Bool) -> Void)? // (ghostMode, silentMode, higherChargeLimit)
+    var onLedTimeoutUpdate: ((Int) -> Void)? // (timeoutSeconds)
+    
     private override init() {
         super.init()
         // Initialize with queue for background operations
@@ -92,6 +122,9 @@ class BLEService: NSObject {
         
         // Load saved charge limit settings
         loadChargeLimitSettings()
+        
+        // Load saved advanced modes settings
+        loadAdvancedModesSettings()
         
         // Setup battery monitoring
         setupBatteryMonitoring()
@@ -724,6 +757,181 @@ class BLEService: NSObject {
         ]
     }
     
+    // MARK: - Advanced Modes Methods (matching Android)
+    
+    /// Get advanced modes state
+    func getAdvancedModes() -> [String: Any] {
+        return [
+            "ghostMode": ghostModeEnabled,
+            "silentMode": silentModeEnabled,
+            "higherChargeLimit": higherChargeLimitEnabled
+        ]
+    }
+    
+    /// Set ghost mode
+    func setGhostMode(enabled: Bool) -> [String: Any] {
+        ghostModeEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: ghostModeKey)
+        UserDefaults.standard.synchronize()
+        
+        if isUartReady && connectionState == .connected {
+            let value = enabled ? 1 : 0
+            enqueueCommand("app_msg ghost_mode \(value)")
+            // Schedule refresh request after 200ms (matching Android)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                if self.isUartReady && self.connectionState == .connected {
+                    self.enqueueCommand("app_msg ghost_mode")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        if self.isUartReady && self.connectionState == .connected {
+                            self.enqueueCommand("py_msg")
+                        }
+                    }
+                }
+            }
+        }
+        
+        return ["success": true, "ghostMode": enabled]
+    }
+    
+    /// Set silent mode (quiet_mode on device)
+    func setSilentMode(enabled: Bool) -> [String: Any] {
+        silentModeEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: silentModeKey)
+        UserDefaults.standard.synchronize()
+        
+        if isUartReady && connectionState == .connected {
+            let value = enabled ? 1 : 0
+            enqueueCommand("app_msg quiet_mode \(value)")
+            // Schedule refresh request after 200ms (matching Android)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                if self.isUartReady && self.connectionState == .connected {
+                    self.enqueueCommand("app_msg quiet_mode")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        if self.isUartReady && self.connectionState == .connected {
+                            self.enqueueCommand("py_msg")
+                        }
+                    }
+                }
+            }
+        }
+        
+        return ["success": true, "silentMode": enabled]
+    }
+    
+    /// Set higher charge limit
+    func setHigherChargeLimit(enabled: Bool) -> [String: Any] {
+        higherChargeLimitEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: higherChargeLimitKey)
+        UserDefaults.standard.synchronize()
+        
+        if isUartReady && connectionState == .connected {
+            let value = enabled ? 1 : 0
+            enqueueCommand("app_msg charge_limit \(value)")
+            // Schedule refresh request after 200ms (matching Android)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                if self.isUartReady && self.connectionState == .connected {
+                    self.enqueueCommand("app_msg charge_limit")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        if self.isUartReady && self.connectionState == .connected {
+                            self.enqueueCommand("py_msg")
+                        }
+                    }
+                }
+            }
+        }
+        
+        return ["success": true, "higherChargeLimit": enabled]
+    }
+    
+    /// Request advanced modes from device (matching Android requestAdvancedModesFromDevice)
+    func requestAdvancedModes() -> [String: Any] {
+        guard isUartReady && connectionState == .connected else {
+            return ["success": false, "message": "Device not connected or UART not ready"]
+        }
+        
+        // Request each mode with py_msg after each (matching Android)
+        let modes = ["ghost_mode", "quiet_mode", "charge_limit"]
+        var delayMs: TimeInterval = 0.0
+        
+        for (index, mode) in modes.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delayMs) { [weak self] in
+                guard let self = self else { return }
+                if self.isUartReady && self.connectionState == .connected {
+                    self.enqueueCommand("app_msg \(mode)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        if self.isUartReady && self.connectionState == .connected {
+                            self.enqueueCommand("py_msg")
+                        }
+                    }
+                }
+            }
+            delayMs += 0.45 // 450ms between each mode (matching Android)
+        }
+        
+        return ["success": true, "message": "Advanced modes request queued"]
+    }
+    
+    /// Set LED timeout
+    func setLedTimeout(seconds: Int) -> [String: Any] {
+        guard seconds >= 0 && seconds <= 99999 else {
+            return ["success": false, "message": "Invalid timeout value"]
+        }
+        
+        ledTimeoutSeconds = seconds
+        UserDefaults.standard.set(seconds, forKey: ledTimeoutKey)
+        UserDefaults.standard.synchronize()
+        
+        if isUartReady && connectionState == .connected {
+            enqueueCommand("app_msg led_time_before_dim \(seconds)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                guard let self = self else { return }
+                if self.isUartReady && self.connectionState == .connected {
+                    self.enqueueCommand("py_msg")
+                }
+            }
+        }
+        
+        return ["success": true, "ledTimeout": seconds]
+    }
+    
+    /// Request LED timeout from device
+    func requestLedTimeout() -> [String: Any] {
+        guard isUartReady && connectionState == .connected else {
+            return ["success": false, "message": "Device not connected or UART not ready"]
+        }
+        
+        enqueueCommand("app_msg led_time_before_dim")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self = self else { return }
+            if self.isUartReady && self.connectionState == .connected {
+                self.enqueueCommand("py_msg")
+            }
+        }
+        
+        return ["success": true, "message": "LED timeout request queued"]
+    }
+    
+    /// Get LED timeout info
+    func getLedTimeoutInfo() -> [String: Any] {
+        return ["ledTimeout": ledTimeoutSeconds]
+    }
+    
+    /// Get latest measure data
+    func getMeasureData() -> [String: Any] {
+        return [
+            "voltage": String(format: "%.3f", latestMeasureVoltage),
+            "current": String(format: "%.3f", latestMeasureCurrent)
+        ]
+    }
+    
+    /// Get last received raw data (matching Android dataReceivedStream)
+    func getLastReceivedData() -> String {
+        return lastReceivedData
+    }
+    
     // MARK: - Private Charge Limit Methods
     
     /// Load charge limit settings from UserDefaults
@@ -736,6 +944,20 @@ class BLEService: NSObject {
         chargeLimitEnabled = UserDefaults.standard.bool(forKey: chargeLimitEnabledKey)
         
         logger.logInfo("Loaded charge limit settings: \(chargeLimit)%, enabled: \(chargeLimitEnabled)")
+    }
+    
+    /// Load advanced modes settings from UserDefaults (matching Android)
+    private func loadAdvancedModesSettings() {
+        ledTimeoutSeconds = UserDefaults.standard.integer(forKey: ledTimeoutKey)
+        if ledTimeoutSeconds == 0 {
+            ledTimeoutSeconds = 300 // Default 300 seconds
+        }
+        
+        ghostModeEnabled = UserDefaults.standard.bool(forKey: ghostModeKey)
+        silentModeEnabled = UserDefaults.standard.bool(forKey: silentModeKey)
+        higherChargeLimitEnabled = UserDefaults.standard.bool(forKey: higherChargeLimitKey)
+        
+        logger.logInfo("Loaded advanced modes: LED timeout: \(ledTimeoutSeconds)s, Ghost: \(ghostModeEnabled), Silent: \(silentModeEnabled), Higher charge: \(higherChargeLimitEnabled)")
     }
     
     /// Setup battery monitoring
@@ -913,6 +1135,30 @@ class BLEService: NSObject {
         timeTrackingTimer = nil
     }
     
+    /// Start measure command timer (matching Android startMeasureTimer)
+    /// Sends "measure" command every 30 seconds with 25-second initial delay
+    private func startMeasureTimer() {
+        stopMeasureTimer()
+        
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+        timer.schedule(deadline: .now() + measureInitialDelaySeconds, repeating: measureIntervalSeconds)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            if self.isUartReady && self.connectionState == .connected {
+                self.enqueueCommand("measure")
+            }
+        }
+        timer.resume()
+        measureTimer = timer
+        logger.logInfo("Measure timer started (initial delay: \(measureInitialDelaySeconds)s, interval: \(measureIntervalSeconds)s)")
+    }
+    
+    /// Stop measure command timer
+    private func stopMeasureTimer() {
+        measureTimer?.cancel()
+        measureTimer = nil
+    }
+    
     // MARK: - UART Communication Methods
     
     /// Enqueue a command for sending (matching Android enqueueCommand)
@@ -975,6 +1221,12 @@ class BLEService: NSObject {
         
         logger.logCommandResponse(trimmedData)
         
+        // Store last received data for polling
+        lastReceivedData = trimmedData
+        
+        // Send raw data to Flutter (matching Android dataReceivedStream)
+        onDataReceived?(trimmedData)
+        
         // Parse response
         let parts = trimmedData.components(separatedBy: " ")
         
@@ -989,14 +1241,20 @@ class BLEService: NSObject {
         // Handle ghost_mode response
         if parts.count >= 4 && parts[2] == "ghost_mode" {
             if let numeric = Int(parts[3].filter { $0.isNumber }) {
-                logger.logInfo("Ghost mode response: \(numeric)")
+                ghostModeEnabled = (numeric == 1)
+                UserDefaults.standard.set(ghostModeEnabled, forKey: ghostModeKey)
+                logger.logInfo("Ghost mode: \(ghostModeEnabled)")
+                onAdvancedModesUpdate?(ghostModeEnabled, silentModeEnabled, higherChargeLimitEnabled)
             }
         }
         
-        // Handle quiet_mode response
+        // Handle quiet_mode response (silent mode)
         if parts.count >= 4 && parts[2] == "quiet_mode" {
             if let numeric = Int(parts[3].filter { $0.isNumber }) {
-                logger.logInfo("Quiet mode response: \(numeric)")
+                silentModeEnabled = (numeric == 1)
+                UserDefaults.standard.set(silentModeEnabled, forKey: silentModeKey)
+                logger.logInfo("Silent mode: \(silentModeEnabled)")
+                onAdvancedModesUpdate?(ghostModeEnabled, silentModeEnabled, higherChargeLimitEnabled)
             }
         }
         
@@ -1005,14 +1263,61 @@ class BLEService: NSObject {
             let rawValue = parts[3].trimmingCharacters(in: .whitespacesAndNewlines)
             let numericOnly = rawValue.filter { $0.isNumber }
             if let parsed = Int(numericOnly) {
+                ledTimeoutSeconds = parsed
+                UserDefaults.standard.set(ledTimeoutSeconds, forKey: ledTimeoutKey)
                 logger.logInfo("LED timeout: \(parsed)s")
+                onLedTimeoutUpdate?(ledTimeoutSeconds)
             }
         }
         
-        // Handle measure response: "OK measure voltage current"
+        // Handle measure response: "OK measure voltage1 voltage2 current ... ... ... ... temp mode flags"
+        // Full format matching Android:
+        // parts[0] = "OK"
+        // parts[1] = "measure"
+        // parts[2] = voltage1
+        // parts[3] = voltage2
+        // parts[4] = current
+        // parts[5-8] = other values
+        // parts[9] = temperature
+        // parts[10] = mode (0=smart, 1=ghost, 2=safe)
+        // parts[11] = flags
         if parts.count >= 4 && parts[1] == "measure" {
-            if let voltage = Double(parts[2]), let current = Double(parts[3]) {
-                logger.logInfo("Measure: \(voltage)V, \(abs(current))A")
+            // Check if we have the full response (12 parts) or simplified (4 parts)
+            if parts.count >= 12 {
+                // Full response - extract all values
+                if let voltage1 = Double(parts[2]),
+                   let voltage2 = Double(parts[3]),
+                   let current = Double(parts[4]) {
+                    
+                    // Use the higher voltage like Android does
+                    let voltage = max(voltage1, voltage2)
+                    latestMeasureVoltage = voltage
+                    latestMeasureCurrent = abs(current)
+                    
+                    let voltageStr = String(format: "%.3f", voltage)
+                    let currentStr = String(format: "%.3f", abs(current))
+                    logger.logInfo("Measure: \(voltageStr)V, \(currentStr)A")
+                    
+                    // Send measure data to Flutter via callback
+                    onMeasureDataReceived?(voltage, abs(current))
+                    
+                    // Extract and log charging mode if available
+                    if let modeValue = Int(parts[10]) {
+                        let modeStr = modeValue == 0 ? "smart" : (modeValue == 1 ? "ghost" : "safe")
+                        logger.logInfo("Charging mode: \(modeStr)")
+                    }
+                }
+            } else if let voltage = Double(parts[2]), let current = Double(parts[3]) {
+                // Simplified response - just voltage and current
+                latestMeasureVoltage = voltage
+                latestMeasureCurrent = abs(current)
+                
+                let voltageStr = String(format: "%.3f", voltage)
+                let currentStr = String(format: "%.3f", abs(current))
+                logger.logInfo("Measure: \(voltageStr)V, \(currentStr)A")
+                
+                // Send measure data to Flutter via callback
+                onMeasureDataReceived?(voltage, abs(current))
             }
         }
         
@@ -1272,9 +1577,10 @@ extension BLEService: CBCentralManagerDelegate {
             rxCharacteristic = nil
             chargeLimitConfirmed = false
             
-            // Stop timers
+            // Stop all timers
             stopChargeLimitTimer()
             stopTimeTracking()
+            stopMeasureTimer()
         }
         
         let deviceId = peripheral.identifier.uuidString
@@ -1387,13 +1693,24 @@ extension BLEService: CBPeripheralDelegate {
             isUartReady = true
             logger.logInfo("UART ready - RX notifications enabled")
             
-            // Start charge limit timer and time tracking (matching Android)
+            // Start timers
             startChargeLimitTimer()
             startTimeTracking()
+            startMeasureTimer()
             
             // Send initial charge limit command after delay (matching Android 500ms delay)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.sendChargeLimitCommand()
+            }
+            
+            // Fetch LED timeout value after UART is ready (matching Android 700ms delay)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                _ = self?.requestLedTimeout()
+            }
+            
+            // Fetch advanced modes state after initial setup (matching Android 1100ms delay)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
+                _ = self?.requestAdvancedModes()
             }
         }
     }

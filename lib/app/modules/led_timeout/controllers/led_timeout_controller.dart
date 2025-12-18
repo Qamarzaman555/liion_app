@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
+import 'package:liion_app/app/services/ios_ble_scan_service.dart';
 
 class LedTimeoutController extends GetxController {
   /// Stores the timeout value in seconds. Defaults to 300 (5 minutes).
@@ -26,19 +27,13 @@ class LedTimeoutController extends GetxController {
   }
 
   Future<void> _loadInitialTimeout() async {
-    // LED timeout feature is only supported on Android
-    if (Platform.isAndroid) {
-      await _setValueFromService();
-    }
+    await _setValueFromService();
   }
 
   Future<bool> refreshTimeout() async {
-    // LED timeout feature is only supported on Android
-    if (!Platform.isAndroid) {
-      return false;
-    }
-    
-    final requested = await BleScanService.requestLedTimeout();
+    final requested = Platform.isAndroid
+        ? await BleScanService.requestLedTimeout()
+        : await IOSBleScanService.requestLedTimeout();
     if (!requested) return false;
     // Allow service to process and cache the value
     await Future.delayed(const Duration(milliseconds: 200));
@@ -53,14 +48,11 @@ class LedTimeoutController extends GetxController {
   }
 
   Future<bool> setTimeout(int seconds) async {
-    // LED timeout feature is only supported on Android
-    if (!Platform.isAndroid) {
-      return false;
-    }
-    
     timeoutSeconds.value = seconds;
     timeoutTextController.text = seconds.toString();
-    final sent = await BleScanService.setLedTimeout(seconds);
+    final sent = Platform.isAndroid
+        ? await BleScanService.setLedTimeout(seconds)
+        : await IOSBleScanService.setLedTimeout(seconds);
     if (!sent) {
       print('Failed to send LED timeout command');
       return false;
@@ -69,12 +61,9 @@ class LedTimeoutController extends GetxController {
   }
 
   Future<void> _setValueFromService() async {
-    // LED timeout feature is only supported on Android
-    if (!Platform.isAndroid) {
-      return;
-    }
-    
-    final cached = await BleScanService.getLedTimeout();
+    final cached = Platform.isAndroid
+        ? await BleScanService.getLedTimeout()
+        : await IOSBleScanService.getLedTimeout();
     timeoutSeconds.value = cached;
     timeoutTextController.text = cached.toString();
   }

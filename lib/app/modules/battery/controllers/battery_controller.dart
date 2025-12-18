@@ -80,8 +80,8 @@ class BatteryController extends GetxController {
   }
 
   void _listenToBatteryMetrics() {
-    // iOS: Battery metrics not available (UIDevice provides limited info)
-    // Android: Use stream subscription
+    // iOS: Battery metrics not available - only level and charging state from UIDevice
+    // Android: Use EventChannel stream for detailed metrics
     if (Platform.isAndroid) {
       _batteryMetricsSubscription = BleScanService.batteryMetricsStream.listen((
         metrics,

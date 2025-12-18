@@ -1,7 +1,9 @@
+import 'dart:io' show Platform;
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/controllers/leo_home_controller.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
+import 'package:liion_app/app/services/ios_ble_scan_service.dart';
 
 class AdvancedSettingsController extends GetxController {
   final ghostModeEnabled = false.obs;
@@ -19,8 +21,12 @@ class AdvancedSettingsController extends GetxController {
     higherChargeLimitEnabled.value =
         _leoHomeController.advancedHigherChargeLimitEnabled.value;
 
-    // Refresh the latest states from the foreground service.
-    BleScanService.requestAdvancedModes();
+    // Refresh the latest states from the service
+    if (Platform.isAndroid) {
+      BleScanService.requestAdvancedModes();
+    } else if (Platform.isIOS) {
+      IOSBleScanService.requestAdvancedModes();
+    }
   }
 
   Future<void> requestAdvancedGhostMode(bool value) async {
@@ -33,7 +39,9 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    final success = await BleScanService.setGhostMode(value);
+    final success = Platform.isAndroid
+        ? await BleScanService.setGhostMode(value)
+        : await IOSBleScanService.setGhostMode(value);
     ghostModeEnabled.value = value;
 
     AppSnackbars.showSuccess(
@@ -54,7 +62,9 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    final success = await BleScanService.setSilentMode(value);
+    final success = Platform.isAndroid
+        ? await BleScanService.setSilentMode(value)
+        : await IOSBleScanService.setSilentMode(value);
     silentModeEnabled.value = value;
 
     AppSnackbars.showSuccess(
@@ -75,7 +85,9 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    final success = await BleScanService.setHigherChargeLimit(value);
+    final success = Platform.isAndroid
+        ? await BleScanService.setHigherChargeLimit(value)
+        : await IOSBleScanService.setHigherChargeLimit(value);
     higherChargeLimitEnabled.value = value;
 
     AppSnackbars.showSuccess(
