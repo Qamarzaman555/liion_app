@@ -97,6 +97,21 @@ class BackgroundServiceChannel {
         case "startService":
             startService(result: result)
             
+        case "setChargeLimit":
+            setChargeLimit(call: call, result: result)
+            
+        case "setChargeLimitEnabled":
+            setChargeLimitEnabled(call: call, result: result)
+            
+        case "getChargeLimitInfo":
+            getChargeLimitInfo(result: result)
+            
+        case "sendCommand":
+            sendCommand(call: call, result: result)
+            
+        case "getPhoneBattery":
+            getPhoneBattery(result: result)
+            
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -277,6 +292,66 @@ class BackgroundServiceChannel {
     private func isReconnectingMethod(result: @escaping FlutterResult) {
         let reconnecting = bleService.isCurrentlyReconnecting()
         result(["isReconnecting": reconnecting])
+    }
+    
+    // MARK: - Charge Limit Method Handlers
+    
+    private func setChargeLimit(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let limit = args["limit"] as? Int,
+              let enabled = args["enabled"] as? Bool else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "limit (Int) and enabled (Bool) parameters are required",
+                details: nil
+            ))
+            return
+        }
+        
+        let chargeLimitResult = bleService.setChargeLimit(limit: limit, enabled: enabled)
+        result(chargeLimitResult)
+    }
+    
+    private func setChargeLimitEnabled(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let enabled = args["enabled"] as? Bool else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "enabled (Bool) parameter is required",
+                details: nil
+            ))
+            return
+        }
+        
+        let chargeLimitResult = bleService.setChargeLimitEnabled(enabled: enabled)
+        result(chargeLimitResult)
+    }
+    
+    private func getChargeLimitInfo(result: @escaping FlutterResult) {
+        let info = bleService.getChargeLimitInfo()
+        result(info)
+    }
+    
+    private func sendCommand(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let command = args["command"] as? String else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "command (String) parameter is required",
+                details: nil
+            ))
+            return
+        }
+        
+        let commandResult = bleService.sendCommand(command)
+        result(commandResult)
+    }
+    
+    // MARK: - Battery Method Handlers
+    
+    private func getPhoneBattery(result: @escaping FlutterResult) {
+        let info = bleService.getPhoneBatteryInfo()
+        result(info)
     }
 }
 

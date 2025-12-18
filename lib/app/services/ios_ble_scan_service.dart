@@ -332,6 +332,106 @@ class IOSBleScanService {
   }
 
   // ============================================================================
+  // CHARGE LIMIT
+  // ============================================================================
+
+  /// Set charge limit
+  static Future<bool> setChargeLimit(int limit, bool enabled) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('setChargeLimit', {
+        'limit': limit,
+        'enabled': enabled,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to set charge limit: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Set charge limit enabled state
+  static Future<bool> setChargeLimitEnabled(bool enabled) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('setChargeLimitEnabled', {
+        'enabled': enabled,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to set charge limit enabled: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get charge limit info
+  static Future<Map<String, dynamic>> getChargeLimitInfo() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('getChargeLimitInfo');
+      if (result == null) {
+        return {
+          'limit': 90,
+          'enabled': false,
+          'confirmed': false,
+          'chargingTime': 0,
+          'dischargingTime': 0,
+        };
+      }
+
+      return {
+        'limit': result['limit'] as int? ?? 90,
+        'enabled': result['enabled'] as bool? ?? false,
+        'confirmed': result['confirmed'] as bool? ?? false,
+        'chargingTime': result['chargingTime'] as int? ?? 0,
+        'dischargingTime': result['dischargingTime'] as int? ?? 0,
+      };
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get charge limit info: ${e.message}');
+      return {
+        'limit': 90,
+        'enabled': false,
+        'confirmed': false,
+        'chargingTime': 0,
+        'dischargingTime': 0,
+      };
+    }
+  }
+
+  /// Send a command to the device
+  static Future<bool> sendCommand(String command) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('sendCommand', {
+        'command': command,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to send command: ${e.message}');
+      return false;
+    }
+  }
+
+  // ============================================================================
+  // BATTERY METHODS
+  // ============================================================================
+
+  /// Get phone battery info
+  static Future<Map<String, dynamic>> getPhoneBattery() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('getPhoneBattery');
+      if (result == null) {
+        return {'level': -1, 'isCharging': false, 'currentMicroAmps': 0};
+      }
+
+      return {
+        'level': result['level'] as int? ?? -1,
+        'isCharging': result['isCharging'] as bool? ?? false,
+        'currentMicroAmps': result['currentMicroAmps'] as int? ?? 0,
+      };
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get phone battery: ${e.message}');
+      return {'level': -1, 'isCharging': false, 'currentMicroAmps': 0};
+    }
+  }
+
+  // ============================================================================
   // CLEANUP
   // ============================================================================
 

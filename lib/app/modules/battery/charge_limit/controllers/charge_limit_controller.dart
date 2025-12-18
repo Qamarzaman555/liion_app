@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
+import 'package:liion_app/app/services/ios_ble_scan_service.dart';
 
 class ChargeLimitController extends GetxController {
   final chargeLimit = 90.obs;
@@ -26,30 +28,55 @@ class ChargeLimitController extends GetxController {
   }
 
   Future<void> _loadInitialState() async {
-    final info = await BleScanService.getChargeLimit();
-    chargeLimit.value = info.limit;
-    chargeLimitEnabled.value = info.enabled;
-    chargeLimitConfirmed.value = info.confirmed;
-    limitTextController.text = info.limit.toString();
-    sliderValue.value = info.limit.toDouble();
-
-    final connectionState = await BleScanService.getConnectionState();
-    isConnected.value = connectionState == BleConnectionState.connected;
-  }
-
-  void _listenToChargeLimitUpdates() {
-    _chargeLimitSubscription = BleScanService.chargeLimitStream.listen((info) {
+    // Get charge limit info based on platform
+    if (Platform.isIOS) {
+      final info = await IOSBleScanService.getChargeLimitInfo();
+      chargeLimit.value = info['limit'] as int? ?? 90;
+      chargeLimitEnabled.value = info['enabled'] as bool? ?? false;
+      chargeLimitConfirmed.value = info['confirmed'] as bool? ?? false;
+      limitTextController.text = chargeLimit.value.toString();
+      sliderValue.value = chargeLimit.value.toDouble();
+      
+      final connected = await IOSBleScanService.isConnected();
+      isConnected.value = connected;
+    } else {
+      final info = await BleScanService.getChargeLimit();
       chargeLimit.value = info.limit;
       chargeLimitEnabled.value = info.enabled;
       chargeLimitConfirmed.value = info.confirmed;
-    });
+      limitTextController.text = info.limit.toString();
+      sliderValue.value = info.limit.toDouble();
+
+      final connectionState = await BleScanService.getConnectionState();
+      isConnected.value = connectionState == BleConnectionState.connected;
+    }
+  }
+
+  void _listenToChargeLimitUpdates() {
+    // iOS: Charge limit updates are handled via direct state management
+    // Android: Use stream subscription
+    if (Platform.isAndroid) {
+      _chargeLimitSubscription = BleScanService.chargeLimitStream.listen((info) {
+        chargeLimit.value = info.limit;
+        chargeLimitEnabled.value = info.enabled;
+        chargeLimitConfirmed.value = info.confirmed;
+      });
+    }
+    // For iOS: charge limit state is managed locally and persisted in native layer
   }
 
   void _listenToConnectionUpdates() {
-    _connectionSubscription = BleScanService.connectionStream.listen((event) {
-      final state = event['state'] as int;
-      isConnected.value = state == BleConnectionState.connected;
-    });
+    if (Platform.isIOS) {
+      _connectionSubscription = IOSBleScanService.getConnectionStream().listen((event) {
+        final state = event['state'] as int;
+        isConnected.value = state == 2; // 2 = connected
+      });
+    } else {
+      _connectionSubscription = BleScanService.connectionStream.listen((event) {
+        final state = event['state'] as int;
+        isConnected.value = state == BleConnectionState.connected;
+      });
+    }
   }
 
   String? validateLimit(String? value) {
@@ -84,7 +111,9 @@ class ChargeLimitController extends GetxController {
     }
 
     final limit = int.parse(limitTextController.text);
-    final success = await BleScanService.setChargeLimit(limit, true);
+    final success = Platform.isIOS
+        ? await IOSBleScanService.setChargeLimit(limit, true)
+        : await BleScanService.setChargeLimit(limit, true);
 
     if (success) {
       chargeLimit.value = limit;
@@ -104,7 +133,9 @@ class ChargeLimitController extends GetxController {
   }
 
   Future<void> toggleChargeLimit(bool enabled) async {
-    final success = await BleScanService.setChargeLimitEnabled(enabled);
+    final success = Platform.isIOS
+        ? await IOSBleScanService.setChargeLimitEnabled(enabled)
+        : await BleScanService.setChargeLimitEnabled(enabled);
     if (success) {
       chargeLimitEnabled.value = enabled;
       AppSnackbars.showSuccess(

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
+import 'package:liion_app/app/services/ios_ble_scan_service.dart';
 
 class BatteryController extends GetxController {
   final phoneBatteryLevel = (-1).obs;
@@ -40,46 +42,68 @@ class BatteryController extends GetxController {
   }
 
   Future<void> _loadInitialBattery() async {
-    final batteryInfo = await BleScanService.getPhoneBattery();
-    phoneBatteryLevel.value = batteryInfo.level;
-    isPhoneCharging.value = batteryInfo.isCharging;
+    if (Platform.isIOS) {
+      final batteryInfo = await IOSBleScanService.getPhoneBattery();
+      phoneBatteryLevel.value = batteryInfo['level'] as int? ?? -1;
+      isPhoneCharging.value = batteryInfo['isCharging'] as bool? ?? false;
+    } else {
+      final batteryInfo = await BleScanService.getPhoneBattery();
+      phoneBatteryLevel.value = batteryInfo.level;
+      isPhoneCharging.value = batteryInfo.isCharging;
+    }
   }
 
   Future<void> _loadInitialHealth() async {
+    // iOS: Battery health not supported - skip loading
+    if (Platform.isIOS) return;
+
     final healthInfo = await BleScanService.getBatteryHealthInfo();
     _updateHealthInfo(healthInfo);
   }
 
   void _listenToBatteryUpdates() {
-    _batterySubscription = BleScanService.phoneBatteryStream.listen((info) {
-      // Check if charging state changed - reset accumulated mAh
-      if (_lastChargingState != null && _lastChargingState != info.isCharging) {
-        accumulatedMah.value = 0.0;
-      }
-      _lastChargingState = info.isCharging;
+    // iOS: Battery updates managed via UIDevice notifications in native layer
+    // Android: Use stream subscription
+    if (Platform.isAndroid) {
+      _batterySubscription = BleScanService.phoneBatteryStream.listen((info) {
+        // Check if charging state changed - reset accumulated mAh
+        if (_lastChargingState != null &&
+            _lastChargingState != info.isCharging) {
+          accumulatedMah.value = 0.0;
+        }
+        _lastChargingState = info.isCharging;
 
-      phoneBatteryLevel.value = info.level;
-      isPhoneCharging.value = info.isCharging;
-    });
+        phoneBatteryLevel.value = info.level;
+        isPhoneCharging.value = info.isCharging;
+      });
+    }
   }
 
   void _listenToBatteryMetrics() {
-    _batteryMetricsSubscription = BleScanService.batteryMetricsStream.listen((
-      metrics,
-    ) {
-      batteryCurrent.value = metrics.current;
-      batteryVoltage.value = metrics.voltage;
-      batteryTemperature.value = metrics.temperature;
-      accumulatedMah.value = metrics.accumulatedMah;
-      chargingTimeSeconds.value = metrics.chargingTimeSeconds;
-      dischargingTimeSeconds.value = metrics.dischargingTimeSeconds;
-    });
+    // iOS: Battery metrics not available (UIDevice provides limited info)
+    // Android: Use stream subscription
+    if (Platform.isAndroid) {
+      _batteryMetricsSubscription = BleScanService.batteryMetricsStream.listen((
+        metrics,
+      ) {
+        batteryCurrent.value = metrics.current;
+        batteryVoltage.value = metrics.voltage;
+        batteryTemperature.value = metrics.temperature;
+        accumulatedMah.value = metrics.accumulatedMah;
+        chargingTimeSeconds.value = metrics.chargingTimeSeconds;
+        dischargingTimeSeconds.value = metrics.dischargingTimeSeconds;
+      });
+    }
   }
 
   void _listenToHealthUpdates() {
-    _healthSubscription = BleScanService.batteryHealthStream.listen((info) {
-      _updateHealthInfo(info);
-    });
+    // iOS: Battery health calculation not implemented yet
+    // Android: Use stream subscription
+    if (Platform.isAndroid) {
+      _healthSubscription = BleScanService.batteryHealthStream.listen((info) {
+        _updateHealthInfo(info);
+      });
+    }
   }
 
   void _updateHealthInfo(BatteryHealthInfo info) {
@@ -93,6 +117,11 @@ class BatteryController extends GetxController {
   }
 
   Future<void> startHealthCalculation() async {
+    // iOS: Battery health calculation not implemented yet
+    if (Platform.isIOS) {
+      return;
+    }
+
     final success = await BleScanService.startBatteryHealthCalculation();
     if (!success) {
       AppSnackbars.showSuccess(
@@ -103,10 +132,16 @@ class BatteryController extends GetxController {
   }
 
   Future<void> stopHealthCalculation() async {
+    // iOS: Battery health calculation not implemented yet
+    if (Platform.isIOS) return;
+
     await BleScanService.stopBatteryHealthCalculation();
   }
 
   Future<void> resetHealthReadings() async {
+    // iOS: Battery health calculation not implemented yet
+    if (Platform.isIOS) return;
+
     final success = await BleScanService.resetBatteryHealthReadings();
     if (success) {
       // Reload health info to reflect the reset

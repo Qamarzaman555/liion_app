@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+import UIKit
 
 /// BLEService - Manages Bluetooth state and operations
 class BLEService: NSObject {
@@ -14,6 +15,44 @@ class BLEService: NSObject {
     private var isScanning = false
     private var discoveredDevices: [String: [String: Any]] = [:] // UUID -> Device info
     private let deviceNameFilter = "Leo Usb" // Filter for Leo Usb devices
+    
+    // UART UUIDs (matching Android)
+    private let uartServiceUUID = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
+    private let txCharacteristicUUID = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // Write (app -> device)
+    private let rxCharacteristicUUID = CBUUID(string: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // Notify (device -> app)
+    
+    // UART characteristics
+    private var txCharacteristic: CBCharacteristic?
+    private var rxCharacteristic: CBCharacteristic?
+    private var isUartReady = false
+    
+    // Command queue (matching Android)
+    private var commandQueue: [String] = []
+    private var isProcessingCommand = false
+    private let commandGapMs: TimeInterval = 0.25 // 250ms between commands
+    
+    // Charge limit state (matching Android)
+    private var chargeLimit: Int = 90
+    private var chargeLimitEnabled: Bool = false
+    private var chargeLimitConfirmed: Bool = false
+    private var chargingTimeSeconds: Int64 = 0
+    private var dischargingTimeSeconds: Int64 = 0
+    
+    // Battery state
+    private var phoneBatteryLevel: Int = -1
+    private var isPhoneCharging: Bool = false
+    
+    // Charge limit timer (using DispatchSourceTimer for background queue compatibility)
+    private var chargeLimitTimer: DispatchSourceTimer?
+    private let chargeLimitIntervalSeconds: TimeInterval = 30.0 // 30 seconds (matching Android)
+    
+    // Time tracking timer (using DispatchSourceTimer for background queue compatibility)
+    private var timeTrackingTimer: DispatchSourceTimer?
+    private var lastChargingState: Bool?
+    
+    // UserDefaults keys (matching Android KEY_* constants)
+    private let chargeLimitKey = "charge_limit"
+    private let chargeLimitEnabledKey = "charge_limit_enabled"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -50,6 +89,12 @@ class BLEService: NSObject {
         // Initialize with queue for background operations
         let queue = DispatchQueue(label: "com.liion.ble", qos: .userInitiated)
         centralManager = CBCentralManager(delegate: self, queue: queue)
+        
+        // Load saved charge limit settings
+        loadChargeLimitSettings()
+        
+        // Setup battery monitoring
+        setupBatteryMonitoring()
     }
     
     // MARK: - Public Methods
@@ -174,7 +219,7 @@ class BLEService: NSObject {
     /// Get list of discovered devices (filtered)
     func getDiscoveredDevices() -> [[String: Any]] {
         let devicesList = Array(discoveredDevices.values)
-        logger.logDebug("Returning \(devicesList.count) discovered Leo Usb devices")
+//        logger.logDebug("Returning \(devicesList.count) discovered Leo Usb devices")
         return devicesList
     }
     
@@ -586,6 +631,365 @@ class BLEService: NSObject {
         return isReconnecting
     }
     
+    // MARK: - Charge Limit Methods
+    
+    /// Set charge limit
+    func setChargeLimit(limit: Int, enabled: Bool) -> [String: Any] {
+        guard limit >= 0 && limit <= 100 else {
+            return [
+                "success": false,
+                "message": "Charge limit must be between 0 and 100"
+            ]
+        }
+        
+        chargeLimit = limit
+        chargeLimitEnabled = enabled
+        
+        // Save to UserDefaults
+        UserDefaults.standard.set(limit, forKey: chargeLimitKey)
+        UserDefaults.standard.set(enabled, forKey: chargeLimitEnabledKey)
+        UserDefaults.standard.synchronize()
+        
+        logger.logChargeLimit(limit: limit, enabled: enabled)
+        
+        // Send command if connected
+        if isUartReady && connectionState == .connected {
+            sendChargeLimitCommand()
+        }
+        
+        return [
+            "success": true,
+            "limit": limit,
+            "enabled": enabled
+        ]
+    }
+    
+    /// Set charge limit enabled state
+    func setChargeLimitEnabled(enabled: Bool) -> [String: Any] {
+        chargeLimitEnabled = enabled
+        
+        // Save to UserDefaults
+        UserDefaults.standard.set(enabled, forKey: chargeLimitEnabledKey)
+        UserDefaults.standard.synchronize()
+        
+        // Send command if connected
+        if isUartReady && connectionState == .connected {
+            sendChargeLimitCommand()
+        }
+        
+        return [
+            "success": true,
+            "enabled": enabled
+        ]
+    }
+    
+    /// Get charge limit info
+    func getChargeLimitInfo() -> [String: Any] {
+        return [
+            "limit": chargeLimit,
+            "enabled": chargeLimitEnabled,
+            "confirmed": chargeLimitConfirmed,
+            "chargingTime": chargingTimeSeconds,
+            "dischargingTime": dischargingTimeSeconds
+        ]
+    }
+    
+    /// Get phone battery info
+    func getPhoneBatteryInfo() -> [String: Any] {
+        return [
+            "level": phoneBatteryLevel,
+            "isCharging": isPhoneCharging,
+            "currentMicroAmps": 0 // iOS doesn't provide this directly
+        ]
+    }
+    
+    /// Send a command to the device
+    func sendCommand(_ command: String) -> [String: Any] {
+        guard isUartReady && connectionState == .connected else {
+            return [
+                "success": false,
+                "message": "Device not connected or UART not ready"
+            ]
+        }
+        
+        enqueueCommand(command)
+        
+        return [
+            "success": true,
+            "message": "Command queued"
+        ]
+    }
+    
+    // MARK: - Private Charge Limit Methods
+    
+    /// Load charge limit settings from UserDefaults
+    private func loadChargeLimitSettings() {
+        chargeLimit = UserDefaults.standard.integer(forKey: chargeLimitKey)
+        if chargeLimit == 0 {
+            chargeLimit = 90 // Default value
+        }
+        
+        chargeLimitEnabled = UserDefaults.standard.bool(forKey: chargeLimitEnabledKey)
+        
+        logger.logInfo("Loaded charge limit settings: \(chargeLimit)%, enabled: \(chargeLimitEnabled)")
+    }
+    
+    /// Setup battery monitoring
+    private func setupBatteryMonitoring() {
+        // Enable battery monitoring
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        
+        // Get initial battery state
+        updateBatteryState()
+        
+        // Observe battery level changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(batteryLevelDidChange),
+            name: UIDevice.batteryLevelDidChangeNotification,
+            object: nil
+        )
+        
+        // Observe battery state changes (charging/unplugged)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(batteryStateDidChange),
+            name: UIDevice.batteryStateDidChangeNotification,
+            object: nil
+        )
+    }
+    
+    /// Update battery state from UIDevice
+    private func updateBatteryState() {
+        let level = UIDevice.current.batteryLevel
+        let state = UIDevice.current.batteryState
+        
+        // batteryLevel returns -1.0 if monitoring is not enabled or if the device doesn't have a battery
+        if level >= 0 {
+            phoneBatteryLevel = Int(level * 100)
+        } else {
+            phoneBatteryLevel = -1
+        }
+        
+        isPhoneCharging = (state == .charging || state == .full)
+    }
+    
+    /// Handle battery level change notification
+    @objc private func batteryLevelDidChange() {
+        let oldLevel = phoneBatteryLevel
+        updateBatteryState()
+        
+        let levelChanged = oldLevel != phoneBatteryLevel
+        
+        if levelChanged {
+            logger.logDebug("Battery level changed: \(phoneBatteryLevel)%")
+            
+            // Send charge limit command on battery level change (matching Android)
+            if isUartReady && connectionState == .connected {
+                sendChargeLimitCommand()
+            }
+        }
+    }
+    
+    /// Handle battery state change notification (charging/unplugged)
+    @objc private func batteryStateDidChange() {
+        let oldCharging = isPhoneCharging
+        updateBatteryState()
+        
+        let chargingStateChanged = oldCharging != isPhoneCharging
+        
+        if chargingStateChanged {
+            logger.logInfo("Battery charging state changed: \(isPhoneCharging ? "charging" : "not charging")")
+            
+            // Reset time counters when charging state changes (matching Android)
+            if isPhoneCharging {
+                chargingTimeSeconds = 0
+            } else {
+                dischargingTimeSeconds = 0
+            }
+            
+            lastChargingState = isPhoneCharging
+            
+            // Send charge limit command on charging state change
+            if isUartReady && connectionState == .connected {
+                sendChargeLimitCommand()
+            }
+        }
+    }
+    
+    /// Send charge limit command (matching Android sendChargeLimitCommand)
+    /// Command format: "app_msg limit <limitValue> <batteryLevel> <chargingFlag> <timeValue>"
+    private func sendChargeLimitCommand() {
+        guard isUartReady && connectionState == .connected else { return }
+        
+        let limitValue = chargeLimitEnabled ? chargeLimit : 0
+        let chargingFlag = isPhoneCharging ? 1 : 0
+        let timeValue = isPhoneCharging ? chargingTimeSeconds : dischargingTimeSeconds
+        
+        let command = "app_msg limit \(limitValue) \(phoneBatteryLevel) \(chargingFlag) \(timeValue)"
+        enqueueCommand(command)
+    }
+    
+    /// Start charge limit timer (matching Android startChargeLimitTimer)
+    private func startChargeLimitTimer() {
+        stopChargeLimitTimer()
+        
+        // Use DispatchSourceTimer for proper background queue operation
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+        timer.schedule(deadline: .now() + chargeLimitIntervalSeconds, repeating: chargeLimitIntervalSeconds)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            if self.isUartReady && self.connectionState == .connected {
+                self.sendChargeLimitCommand()
+            }
+        }
+        timer.resume()
+        chargeLimitTimer = timer
+    }
+    
+    /// Stop charge limit timer
+    private func stopChargeLimitTimer() {
+        chargeLimitTimer?.cancel()
+        chargeLimitTimer = nil
+    }
+    
+    /// Start time tracking (matching Android startTimeTracking)
+    private func startTimeTracking() {
+        stopTimeTracking()
+        
+        // Use DispatchSourceTimer for proper background queue operation
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+        timer.schedule(deadline: .now(), repeating: 1.0) // Fire every 1 second
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            if self.isPhoneCharging {
+                self.chargingTimeSeconds += 1
+            } else {
+                self.dischargingTimeSeconds += 1
+            }
+        }
+        timer.resume()
+        timeTrackingTimer = timer
+    }
+    
+    /// Stop time tracking
+    private func stopTimeTracking() {
+        timeTrackingTimer?.cancel()
+        timeTrackingTimer = nil
+    }
+    
+    // MARK: - UART Communication Methods
+    
+    /// Enqueue a command for sending (matching Android enqueueCommand)
+    private func enqueueCommand(_ command: String) {
+        guard isUartReady && connectionState == .connected else { return }
+        
+        commandQueue.append(command)
+        
+        if !isProcessingCommand {
+            processCommandQueue()
+        }
+    }
+    
+    /// Process command queue (matching Android processCommandQueue)
+    private func processCommandQueue() {
+        guard !commandQueue.isEmpty else {
+            isProcessingCommand = false
+            return
+        }
+        
+        isProcessingCommand = true
+        let command = commandQueue.removeFirst()
+        
+        writeCommandImmediate(command)
+        
+        // Schedule next command after delay (matching Android COMMAND_GAP_MS)
+        DispatchQueue.main.asyncAfter(deadline: .now() + commandGapMs) { [weak self] in
+            self?.processCommandQueue()
+        }
+    }
+    
+    /// Write command immediately to TX characteristic (matching Android writeCommandImmediate)
+    private func writeCommandImmediate(_ command: String) {
+        guard isUartReady && connectionState == .connected else { return }
+        guard let txChar = txCharacteristic else { return }
+        guard let peripheral = connectedPeripheral else { return }
+        
+        logger.logCommand(command)
+        
+        // Add line feed to command (matching Android)
+        let commandWithLF = command + "\n"
+        guard let data = commandWithLF.data(using: .utf8) else { return }
+        
+        // Write without response for speed (matching Android WRITE_TYPE_DEFAULT)
+        peripheral.writeValue(data, for: txChar, type: .withResponse)
+    }
+    
+    /// Setup UART service after connection (matching Android setupUartService)
+    private func setupUartService() {
+        guard let peripheral = connectedPeripheral else { return }
+        
+        // Discover UART service
+        peripheral.discoverServices([uartServiceUUID])
+    }
+    
+    /// Handle received data from RX characteristic (matching Android handleReceivedData)
+    private func handleReceivedData(_ data: Data) {
+        guard let receivedString = String(data: data, encoding: .utf8) else { return }
+        let trimmedData = receivedString.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        logger.logCommandResponse(trimmedData)
+        
+        // Parse response
+        let parts = trimmedData.components(separatedBy: " ")
+        
+        // Handle charge_limit response: "OK py_msg charge_limit <value>"
+        if parts.count >= 4 && parts[2] == "charge_limit" {
+            if let numeric = Int(parts[3].filter { $0.isNumber }) {
+                chargeLimitConfirmed = (numeric == 1)
+                logger.logInfo("Charge limit confirmed: \(chargeLimitConfirmed)")
+            }
+        }
+        
+        // Handle ghost_mode response
+        if parts.count >= 4 && parts[2] == "ghost_mode" {
+            if let numeric = Int(parts[3].filter { $0.isNumber }) {
+                logger.logInfo("Ghost mode response: \(numeric)")
+            }
+        }
+        
+        // Handle quiet_mode response
+        if parts.count >= 4 && parts[2] == "quiet_mode" {
+            if let numeric = Int(parts[3].filter { $0.isNumber }) {
+                logger.logInfo("Quiet mode response: \(numeric)")
+            }
+        }
+        
+        // Handle LED timeout response: "OK py_msg led_time_before_dim <seconds>"
+        if parts.count >= 4 && parts[2] == "led_time_before_dim" {
+            let rawValue = parts[3].trimmingCharacters(in: .whitespacesAndNewlines)
+            let numericOnly = rawValue.filter { $0.isNumber }
+            if let parsed = Int(numericOnly) {
+                logger.logInfo("LED timeout: \(parsed)s")
+            }
+        }
+        
+        // Handle measure response: "OK measure voltage current"
+        if parts.count >= 4 && parts[1] == "measure" {
+            if let voltage = Double(parts[2]), let current = Double(parts[3]) {
+                logger.logInfo("Measure: \(voltage)V, \(abs(current))A")
+            }
+        }
+        
+        // Handle swversion response
+        if parts.count >= 3 && parts[1].lowercased() == "swversion" {
+            let versionValue = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !versionValue.isEmpty {
+                logger.logInfo("Firmware version: \(versionValue)")
+            }
+        }
+    }
+    
     // MARK: - Helper Methods
     
     private func bluetoothStateToString(_ state: CBManagerState) -> String {
@@ -772,6 +1176,9 @@ extension BLEService: CBCentralManagerDelegate {
             logger.logScan("Stopped scan after successful connection")
         }
         
+        // Setup UART service (discover services -> characteristics -> enable notifications)
+        setupUartService()
+        
         // Notify callback
         onConnectionStateChanged?(deviceId, "CONNECTED")
     }
@@ -823,6 +1230,16 @@ extension BLEService: CBCentralManagerDelegate {
             connectedPeripheral = nil
             connectionState = .disconnected
             pendingConnectDeviceId = nil
+            
+            // Clean up UART state (matching Android)
+            isUartReady = false
+            txCharacteristic = nil
+            rxCharacteristic = nil
+            chargeLimitConfirmed = false
+            
+            // Stop timers
+            stopChargeLimitTimer()
+            stopTimeTracking()
         }
         
         let deviceId = peripheral.identifier.uuidString
@@ -879,7 +1296,13 @@ extension BLEService: CBPeripheralDelegate {
         
         logger.logInfo("Discovered \(services.count) service(s)")
         
-        // Will be used in next step for characteristic discovery
+        // Find UART service and discover its characteristics
+        for service in services {
+            if service.uuid == uartServiceUUID {
+                logger.logInfo("Found UART service, discovering characteristics...")
+                peripheral.discoverCharacteristics([txCharacteristicUUID, rxCharacteristicUUID], for: service)
+            }
+        }
     }
     
     /// Called when peripheral characteristics are discovered
@@ -898,7 +1321,46 @@ extension BLEService: CBPeripheralDelegate {
         
         logger.logInfo("Discovered \(characteristics.count) characteristic(s) for service: \(service.uuid)")
         
-        // Will be used in next step for reading/writing data
+        // Setup UART characteristics
+        if service.uuid == uartServiceUUID {
+            for characteristic in characteristics {
+                if characteristic.uuid == txCharacteristicUUID {
+                    txCharacteristic = characteristic
+                    logger.logInfo("Found TX characteristic (write)")
+                } else if characteristic.uuid == rxCharacteristicUUID {
+                    rxCharacteristic = characteristic
+                    logger.logInfo("Found RX characteristic (notify)")
+                    
+                    // Enable notifications for RX characteristic (matching Android)
+                    peripheral.setNotifyValue(true, for: characteristic)
+                }
+            }
+        }
+    }
+    
+    /// Called when a characteristic notification state is updated
+    func peripheral(_ peripheral: CBPeripheral,
+                   didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                   error: Error?) {
+        if let error = error {
+            logger.logError("Error updating notification state: \(error.localizedDescription)")
+            return
+        }
+        
+        // Check if RX notifications are enabled (matching Android onDescriptorWrite)
+        if characteristic.uuid == rxCharacteristicUUID && characteristic.isNotifying {
+            isUartReady = true
+            logger.logInfo("UART ready - RX notifications enabled")
+            
+            // Start charge limit timer and time tracking (matching Android)
+            startChargeLimitTimer()
+            startTimeTracking()
+            
+            // Send initial charge limit command after delay (matching Android 500ms delay)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.sendChargeLimitCommand()
+            }
+        }
     }
     
     /// Called when a characteristic value is updated
@@ -910,8 +1372,12 @@ extension BLEService: CBPeripheralDelegate {
             return
         }
         
-        // Will be implemented in next step
-        logger.logDebug("Characteristic updated: \(characteristic.uuid)")
+        // Handle RX characteristic data (device -> app)
+        if characteristic.uuid == rxCharacteristicUUID {
+            if let data = characteristic.value {
+                handleReceivedData(data)
+            }
+        }
     }
     
     /// Called when a characteristic value is written
@@ -923,7 +1389,7 @@ extension BLEService: CBPeripheralDelegate {
             return
         }
         
-        // Will be implemented in next step
+        // Write successful (matching Android onCharacteristicWrite)
         logger.logDebug("Characteristic written: \(characteristic.uuid)")
     }
 }
