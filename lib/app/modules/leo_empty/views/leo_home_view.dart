@@ -66,7 +66,11 @@ class LeoHomeView extends GetView<LeoHomeController> {
                     ),
                     ThankYouNote(controller: controller),
                     const SizedBox(height: 20),
-                    Obx(()=> controller.hasConnectedOnce.value ? LeoMetricsSummary(controller: controller) : const SizedBox.shrink()),
+                    Obx(
+                      () => controller.hasConnectedOnce.value
+                          ? LeoMetricsSummary(controller: controller)
+                          : const SizedBox.shrink(),
+                    ),
                   ],
                 ),
               ),
@@ -91,7 +95,11 @@ class LeoHomeView extends GetView<LeoHomeController> {
 
   void _handleConnectionButtonTap(BuildContext context) {
     if (!controller.isBluetoothOn) {
-      BleScanService.requestEnableBluetooth();
+      // On Android, request to enable Bluetooth
+      // On iOS, user must enable it via Settings/Control Center
+      if (Platform.isAndroid) {
+        BleScanService.requestEnableBluetooth();
+      }
       return;
     }
 

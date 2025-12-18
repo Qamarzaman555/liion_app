@@ -49,10 +49,10 @@ class BackgroundServiceChannel {
         case "getBluetoothStatus":
             getBluetoothStatus(result: result)
             
-        case "startBLEScan":
+        case "startBLEScan", "startScan":
             startBLEScan(result: result)
             
-        case "stopBLEScan":
+        case "stopBLEScan", "stopScan":
             stopBLEScan(result: result)
             
         case "isScanning":
@@ -94,12 +94,22 @@ class BackgroundServiceChannel {
         case "isReconnecting":
             isReconnectingMethod(result: result)
             
+        case "startService":
+            startService(result: result)
+            
         default:
             result(FlutterMethodNotImplemented)
         }
     }
     
     // MARK: - Method Handlers
+    
+    /// Start service (iOS services auto-start in AppDelegate, this is a no-op for API consistency)
+    private func startService(result: @escaping FlutterResult) {
+        // iOS services (BLEService, BackgroundService) are already started in AppDelegate
+        // This method is here for API consistency with Android
+        result(true)
+    }
     
     private func startBackgroundService(result: @escaping FlutterResult) {
         backgroundService.start()

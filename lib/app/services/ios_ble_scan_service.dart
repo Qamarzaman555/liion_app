@@ -16,7 +16,6 @@ class IOSBleScanService {
   static StreamController<int>? _adapterStateStreamController;
 
   // Track previous states for change detection
-  static Set<String> _previousDeviceIds = {};
   static bool _previousConnectionState = false;
   static bool _previousBluetoothState = false;
 
@@ -53,8 +52,8 @@ class IOSBleScanService {
   /// Check if Bluetooth is enabled
   static Future<bool> isBluetoothEnabled() async {
     try {
-      final result = await _channel.invokeMethod<bool>('isBluetoothEnabled');
-      return result ?? false;
+      final result = await _channel.invokeMethod<Map>('isBluetoothEnabled');
+      return result?['isEnabled'] as bool? ?? false;
     } on PlatformException catch (e) {
       print('[iOS] Failed to check Bluetooth: ${e.message}');
       return false;
@@ -90,10 +89,11 @@ class IOSBleScanService {
   /// Get discovered devices
   static Future<List<Map<String, String>>> getDiscoveredDevices() async {
     try {
-      final result = await _channel.invokeMethod<List>('getDiscoveredDevices');
-      if (result == null) return [];
+      final result = await _channel.invokeMethod<Map>('getDiscoveredDevices');
+      final devicesList = result?['devices'] as List?;
+      if (devicesList == null) return [];
 
-      return result.map((device) {
+      return devicesList.map((device) {
         final map = Map<String, dynamic>.from(device as Map);
         return <String, String>{
           'name': map['name']?.toString() ?? 'Unknown',
@@ -111,6 +111,19 @@ class IOSBleScanService {
     await stopScan();
     await Future.delayed(const Duration(milliseconds: 500));
     return await startScan();
+  }
+
+  /// Stop device stream polling
+  static void stopDeviceStream() {
+    _scanTimer?.cancel();
+    _scanTimer = null;
+    _deviceStreamController?.close();
+    _deviceStreamController = null;
+  }
+
+  /// Restart device stream (useful when reopening device list)
+  static void restartDeviceStream() {
+    stopDeviceStream();
   }
 
   // ============================================================================
@@ -144,8 +157,8 @@ class IOSBleScanService {
   /// Check if connected
   static Future<bool> isConnected() async {
     try {
-      final result = await _channel.invokeMethod<bool>('isConnected');
-      return result ?? false;
+      final result = await _channel.invokeMethod<Map>('isConnected');
+      return result?['isConnected'] as bool? ?? false;
     } on PlatformException catch (e) {
       print('[iOS] Failed to check connection: ${e.message}');
       return false;
@@ -158,9 +171,13 @@ class IOSBleScanService {
       final result = await _channel.invokeMethod<Map>('getConnectedDevice');
       if (result == null) return null;
 
+      final device = result['device'];
+      if (device == null || device is! Map) return null;
+
+      final deviceMap = Map<String, dynamic>.from(device);
       return <String, String>{
-        'name': result['name']?.toString() ?? 'Unknown',
-        'address': result['id']?.toString() ?? '',
+        'name': deviceMap['name']?.toString() ?? 'Unknown',
+        'address': deviceMap['id']?.toString() ?? '',
       };
     } on PlatformException catch (e) {
       print('[iOS] Failed to get connected device: ${e.message}');
@@ -188,8 +205,8 @@ class IOSBleScanService {
   /// Check if auto-connect is enabled
   static Future<bool> isAutoConnectEnabled() async {
     try {
-      final result = await _channel.invokeMethod<bool>('isAutoConnectEnabled');
-      return result ?? true;
+      final result = await _channel.invokeMethod<Map>('isAutoConnectEnabled');
+      return result?['enabled'] as bool? ?? true;
     } on PlatformException catch (e) {
       print('[iOS] Failed to check auto-connect: ${e.message}');
       return true;
@@ -202,9 +219,13 @@ class IOSBleScanService {
       final result = await _channel.invokeMethod<Map>('getLastConnectedDevice');
       if (result == null) return null;
 
+      final device = result['device'];
+      if (device == null || device is! Map) return null;
+
+      final deviceMap = Map<String, dynamic>.from(device);
       return <String, String>{
-        'name': result['name']?.toString() ?? 'Unknown',
-        'address': result['id']?.toString() ?? '',
+        'name': deviceMap['name']?.toString() ?? 'Unknown',
+        'address': deviceMap['id']?.toString() ?? '',
       };
     } on PlatformException catch (e) {
       print('[iOS] Failed to get last connected device: ${e.message}');
@@ -227,28 +248,36 @@ class IOSBleScanService {
   // STREAMS (Polling-based for iOS)
   // ============================================================================
 
-  /// Stream of discovered devices (polls every 2 seconds)
+  /// Stream of discovered devices (polls every 1 second)
+  /// Emits all currently discovered devices on each poll - controller handles deduplication
   static Stream<Map<String, String>> getDeviceStream() {
     _deviceStreamController ??=
         StreamController<Map<String, String>>.broadcast();
 
     // Start polling if not already started
-    _scanTimer ??= Timer.periodic(const Duration(seconds: 2), (timer) async {
-      try {
-        final devices = await getDiscoveredDevices();
-
-        // Only emit new devices
+    if (_scanTimer == null) {
+      // Immediately emit all currently discovered devices
+      getDiscoveredDevices().then((devices) {
         for (final device in devices) {
-          final deviceId = device['address'] ?? '';
-          if (deviceId.isNotEmpty && !_previousDeviceIds.contains(deviceId)) {
-            _previousDeviceIds.add(deviceId);
+          _deviceStreamController?.add(device);
+        }
+      });
+
+      // Then start periodic polling - emit ALL devices each time
+      // Controller will handle deduplication
+      _scanTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+        try {
+          final devices = await getDiscoveredDevices();
+
+          // Emit all devices - let controller handle deduplication
+          for (final device in devices) {
             _deviceStreamController?.add(device);
           }
+        } catch (e) {
+          print('[iOS] Error polling devices: $e');
         }
-      } catch (e) {
-        print('[iOS] Error polling devices: $e');
-      }
-    });
+      });
+    }
 
     return _deviceStreamController!.stream;
   }
@@ -315,6 +344,5 @@ class IOSBleScanService {
     _connectionStreamController = null;
     _adapterStateStreamController?.close();
     _adapterStateStreamController = null;
-    _previousDeviceIds.clear();
   }
 }

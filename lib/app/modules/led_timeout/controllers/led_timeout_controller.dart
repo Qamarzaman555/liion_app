@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
@@ -25,10 +26,18 @@ class LedTimeoutController extends GetxController {
   }
 
   Future<void> _loadInitialTimeout() async {
-    await _setValueFromService();
+    // LED timeout feature is only supported on Android
+    if (Platform.isAndroid) {
+      await _setValueFromService();
+    }
   }
 
   Future<bool> refreshTimeout() async {
+    // LED timeout feature is only supported on Android
+    if (!Platform.isAndroid) {
+      return false;
+    }
+    
     final requested = await BleScanService.requestLedTimeout();
     if (!requested) return false;
     // Allow service to process and cache the value
@@ -44,6 +53,11 @@ class LedTimeoutController extends GetxController {
   }
 
   Future<bool> setTimeout(int seconds) async {
+    // LED timeout feature is only supported on Android
+    if (!Platform.isAndroid) {
+      return false;
+    }
+    
     timeoutSeconds.value = seconds;
     timeoutTextController.text = seconds.toString();
     final sent = await BleScanService.setLedTimeout(seconds);
@@ -55,6 +69,11 @@ class LedTimeoutController extends GetxController {
   }
 
   Future<void> _setValueFromService() async {
+    // LED timeout feature is only supported on Android
+    if (!Platform.isAndroid) {
+      return;
+    }
+    
     final cached = await BleScanService.getLedTimeout();
     timeoutSeconds.value = cached;
     timeoutTextController.text = cached.toString();
