@@ -36,7 +36,7 @@ class ChargeLimitController extends GetxController {
       chargeLimitConfirmed.value = info['confirmed'] as bool? ?? false;
       limitTextController.text = chargeLimit.value.toString();
       sliderValue.value = chargeLimit.value.toDouble();
-      
+
       final connected = await IOSBleScanService.isConnected();
       isConnected.value = connected;
     } else {
@@ -56,7 +56,9 @@ class ChargeLimitController extends GetxController {
     // iOS: Charge limit updates are handled via direct state management
     // Android: Use stream subscription
     if (Platform.isAndroid) {
-      _chargeLimitSubscription = BleScanService.chargeLimitStream.listen((info) {
+      _chargeLimitSubscription = BleScanService.chargeLimitStream.listen((
+        info,
+      ) {
         chargeLimit.value = info.limit;
         chargeLimitEnabled.value = info.enabled;
         chargeLimitConfirmed.value = info.confirmed;
@@ -67,7 +69,9 @@ class ChargeLimitController extends GetxController {
 
   void _listenToConnectionUpdates() {
     if (Platform.isIOS) {
-      _connectionSubscription = IOSBleScanService.getConnectionStream().listen((event) {
+      _connectionSubscription = IOSBleScanService.getConnectionStream().listen((
+        event,
+      ) {
         final state = event['state'] as int;
         isConnected.value = state == 2; // 2 = connected
       });
@@ -95,14 +99,50 @@ class ChargeLimitController extends GetxController {
 
   void updateSlider(double value) {
     final clampedValue = value.clamp(0, 100).toDouble();
-    sliderValue.value = clampedValue;
-    limitTextController.text = clampedValue.toInt().toString();
+
+    // iOS: Snap to valid battery percentages (5% increments)
+    if (Platform.isIOS) {
+      final roundedValue = _roundToValidIOSPercentage(clampedValue.toInt());
+      sliderValue.value = roundedValue.toDouble();
+      limitTextController.text = roundedValue.toString();
+    } else {
+      sliderValue.value = clampedValue;
+      limitTextController.text = clampedValue.toInt().toString();
+    }
   }
 
   void updateFromText(String value) {
     final parsed = int.tryParse(value);
     if (parsed == null) return;
-    sliderValue.value = parsed.clamp(0, 100).toDouble();
+
+    // iOS: Snap to valid battery percentages (5% increments)
+    if (Platform.isIOS) {
+      final roundedValue = _roundToValidIOSPercentage(parsed.clamp(0, 100));
+      sliderValue.value = roundedValue.toDouble();
+    } else {
+      sliderValue.value = parsed.clamp(0, 100).toDouble();
+    }
+  }
+
+  /// Round to valid iOS battery percentage (matching iOS native logic)
+  /// Valid values: [0, 3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58, 63, 68, 73, 78, 83, 88, 93, 98, 100]
+  int _roundToValidIOSPercentage(int value) {
+    List<int> validPercentages = [0, 3, 8];
+
+    // Add 8, 13, 18, ..., 93 (18 values in 5% increments)
+    for (int index = 0; index < 18; index++) {
+      validPercentages.add(8 + (index * 5));
+    }
+
+    validPercentages.add(100);
+
+    // Remove duplicates and sort
+    validPercentages = validPercentages.toSet().toList()..sort();
+
+    // Find closest valid percentage
+    return validPercentages.reduce(
+      (a, b) => (value - a).abs() < (value - b).abs() ? a : b,
+    );
   }
 
   Future<bool> saveChargeLimit() async {
@@ -111,25 +151,50 @@ class ChargeLimitController extends GetxController {
     }
 
     final limit = int.parse(limitTextController.text);
-    final success = Platform.isIOS
-        ? await IOSBleScanService.setChargeLimit(limit, true)
-        : await BleScanService.setChargeLimit(limit, true);
 
-    if (success) {
-      chargeLimit.value = limit;
-      chargeLimitEnabled.value = true;
-      AppSnackbars.showSuccess(
-        title: 'Success',
-        message: 'Charge limit set to $limit%',
-      );
+    if (Platform.isIOS) {
+      // iOS returns rounded value in result map
+      final result = await IOSBleScanService.setChargeLimit(limit, true);
+      final success = result['success'] as bool? ?? false;
+      final roundedLimit = result['limit'] as int? ?? limit;
+
+      if (success) {
+        chargeLimit.value = roundedLimit; // Use rounded value from iOS
+        chargeLimitEnabled.value = true;
+        limitTextController.text = roundedLimit.toString(); // Update text field
+        sliderValue.value = roundedLimit.toDouble(); // Update slider
+        AppSnackbars.showSuccess(
+          title: 'Success',
+          message: 'Charge limit set to $roundedLimit%',
+        );
+      } else {
+        AppSnackbars.showSuccess(
+          title: 'Error',
+          message: 'Failed to set charge limit',
+        );
+      }
+
+      return success;
     } else {
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'Failed to set charge limit',
-      );
-    }
+      // Android
+      final success = await BleScanService.setChargeLimit(limit, true);
 
-    return success;
+      if (success) {
+        chargeLimit.value = limit;
+        chargeLimitEnabled.value = true;
+        AppSnackbars.showSuccess(
+          title: 'Success',
+          message: 'Charge limit set to $limit%',
+        );
+      } else {
+        AppSnackbars.showSuccess(
+          title: 'Error',
+          message: 'Failed to set charge limit',
+        );
+      }
+
+      return success;
+    }
   }
 
   Future<void> toggleChargeLimit(bool enabled) async {

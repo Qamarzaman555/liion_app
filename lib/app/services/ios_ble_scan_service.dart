@@ -336,16 +336,26 @@ class IOSBleScanService {
   // ============================================================================
 
   /// Set charge limit
-  static Future<bool> setChargeLimit(int limit, bool enabled) async {
+  /// Returns a map with success status and the rounded limit value
+  static Future<Map<String, dynamic>> setChargeLimit(int limit, bool enabled) async {
     try {
       final result = await _channel.invokeMethod<Map>('setChargeLimit', {
         'limit': limit,
         'enabled': enabled,
       });
-      return result?['success'] as bool? ?? false;
+      
+      if (result == null) {
+        return {'success': false, 'limit': limit};
+      }
+      
+      return {
+        'success': result['success'] as bool? ?? false,
+        'limit': result['limit'] as int? ?? limit, // iOS returns rounded value
+        'enabled': result['enabled'] as bool? ?? enabled,
+      };
     } on PlatformException catch (e) {
       print('[iOS] Failed to set charge limit: ${e.message}');
-      return false;
+      return {'success': false, 'limit': limit};
     }
   }
 

@@ -642,15 +642,18 @@ class BLEService: NSObject {
             ]
         }
         
-        chargeLimit = limit
+        // Round to valid iOS battery percentage (iPhones use 5% increments)
+        let roundedLimit = roundToValidIOSBatteryPercentage(limit)
+        
+        chargeLimit = roundedLimit
         chargeLimitEnabled = enabled
         
         // Save to UserDefaults
-        UserDefaults.standard.set(limit, forKey: chargeLimitKey)
+        UserDefaults.standard.set(roundedLimit, forKey: chargeLimitKey)
         UserDefaults.standard.set(enabled, forKey: chargeLimitEnabledKey)
         UserDefaults.standard.synchronize()
         
-        logger.logChargeLimit(limit: limit, enabled: enabled)
+        logger.logChargeLimit(limit: roundedLimit, enabled: enabled)
         
         // Send command if connected
         if isUartReady && connectionState == .connected {
@@ -659,7 +662,7 @@ class BLEService: NSObject {
         
         return [
             "success": true,
-            "limit": limit,
+            "limit": roundedLimit, // Return rounded value so UI updates
             "enabled": enabled
         ]
     }
@@ -697,9 +700,10 @@ class BLEService: NSObject {
     /// Get phone battery info
     func getPhoneBatteryInfo() -> [String: Any] {
         return [
-            "level": phoneBatteryLevel,
+            "level": phoneBatteryLevel, // Actual battery level from UIDevice
             "isCharging": isPhoneCharging,
-            "currentMicroAmps": 0 // iOS doesn't provide this directly
+            "currentMicroAmps": 0, // iOS doesn't provide this directly
+            "roundedLevel": roundToValidIOSBatteryPercentage(phoneBatteryLevel) // Rounded to valid iOS value
         ]
     }
     
@@ -826,8 +830,39 @@ class BLEService: NSObject {
         let chargingFlag = isPhoneCharging ? 1 : 0
         let timeValue = isPhoneCharging ? chargingTimeSeconds : dischargingTimeSeconds
         
-        let command = "app_msg limit \(limitValue) \(phoneBatteryLevel) \(chargingFlag) \(timeValue)"
+        // Round battery level to nearest valid iOS value (iPhones report in 5% increments after iPhone 8)
+        let roundedBatteryLevel = roundToValidIOSBatteryPercentage(phoneBatteryLevel)
+        
+        // Log both actual and rounded values for debugging
+        if phoneBatteryLevel != roundedBatteryLevel {
+            logger.logDebug("Battery: actual \(phoneBatteryLevel)% → rounded \(roundedBatteryLevel)% (iOS valid values)")
+        }
+        
+        let command = "app_msg limit \(limitValue) \(roundedBatteryLevel) \(chargingFlag) \(timeValue)"
         enqueueCommand(command)
+    }
+    
+    /// Round battery percentage to nearest valid iOS value
+    /// iPhones (after iPhone 8) report battery in increments of 5%
+    /// Valid values: [0, 3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58, 63, 68, 73, 78, 83, 88, 93, 98, 100]
+    private func roundToValidIOSBatteryPercentage(_ value: Int) -> Int {
+        // Generate valid percentages: [0, 3, 8] + [8, 13, 18, ..., 93] + [100]
+        var validPercentages: [Int] = [0, 3, 8]
+        
+        // Add values from 8 to 93 in increments of 5 (18 values: 8, 13, 18, ..., 93)
+        for index in 0..<18 {
+            validPercentages.append(8 + (index * 5))
+        }
+        
+        validPercentages.append(100)
+        
+        // Remove duplicates and sort (in case of duplicate 8)
+        validPercentages = Array(Set(validPercentages)).sorted()
+        
+        // Find closest valid percentage
+        let closest = validPercentages.min(by: { abs($0 - value) < abs($1 - value) }) ?? value
+        
+        return closest
     }
     
     /// Start charge limit timer (matching Android startChargeLimitTimer)

@@ -49,9 +49,9 @@ class BackendLoggingService {
             print("[BackendLogging] Backend URL: \(self.backendBaseUrl)")
             print("[BackendLogging] App Version: \(appVersion), Build: \(buildNumber)")
             
-            // Dev-mode: avoid creating cloud sessions while iterating locally
-            print("[BackendLogging] Skipping backend session creation in dev mode")
-            return
+            // // Dev-mode: avoid creating cloud sessions while iterating locally
+            // print("[BackendLogging] Skipping backend session creation in dev mode")
+            // return
             
             // Check network connectivity
             guard self.hasNetworkConnection() else {
