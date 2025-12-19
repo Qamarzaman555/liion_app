@@ -149,7 +149,7 @@ class LeoHomeController extends GetxController {
       cloudBinFileName.value = '';
 
       final storage = firebase_storage.FirebaseStorage.instance;
-      final result = await storage.ref('Bin file').listAll();
+      final result = await storage.ref('Beta fw').listAll();
 
       if (result.items.isEmpty) {
         return;

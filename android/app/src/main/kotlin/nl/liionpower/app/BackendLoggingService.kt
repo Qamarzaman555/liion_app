@@ -60,6 +60,9 @@ class BackendLoggingService private constructor() {
         get() = isInitialized
 
     fun initialize(context: Context, appVersion: String, buildNumber: String) {
+        // Backend logging disabled for beta release
+        return
+        /*
         this.context = context.applicationContext
         this.appVersion = appVersion
         this.buildNumber = buildNumber
@@ -130,6 +133,7 @@ class BackendLoggingService private constructor() {
                 Log.e("BackendLogging", "Error in initialize", e)
             }
         }
+        */
     }
 
     private suspend fun getNextSessionId(): String {
@@ -332,6 +336,9 @@ class BackendLoggingService private constructor() {
     }
 
     fun log(level: String, message: String) {
+        // Backend logging disabled for beta release
+        return
+        /*
         if (!isInitialized || sessionId == null || deviceKey == null) {
             Log.d(
                     "BackendLogging",
@@ -353,6 +360,7 @@ class BackendLoggingService private constructor() {
                 Log.e("BackendLogging", "Error in log method", e)
             }
         }
+        */
     }
 
     private suspend fun sendLog(level: String, message: String) {

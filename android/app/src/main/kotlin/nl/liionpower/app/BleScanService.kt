@@ -2874,7 +2874,8 @@ class BleScanService : Service() {
         }
         
         // Initialize backend logging
-        initializeLogging()
+        // Backend logging disabled for beta release
+        // initializeLogging()
         
         // Acquire partial wake lock to keep CPU running
         acquireWakeLock()
