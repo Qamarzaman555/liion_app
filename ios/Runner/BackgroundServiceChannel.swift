@@ -5,7 +5,7 @@ import CoreBluetooth
 /// Flutter Method Channel bridge for Background Service and BLE
 class BackgroundServiceChannel {
     
-    private static let channelName = "com.liion.app/background_service"
+    private static let channelName = "nl.liionpower.app/background_service"
     private let backgroundService = BackgroundService.shared
     private let loggingService = BackendLoggingService.shared
     private let bleService = BLEService.shared

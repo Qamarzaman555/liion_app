@@ -66,6 +66,7 @@ class BLEService: NSObject {
     // Measure data state (latest values from device)
     private var latestMeasureVoltage: Double = 0.0
     private var latestMeasureCurrent: Double = 0.0
+    private var latestMwhValue: String = ""
     private var lastReceivedData: String = "" // Latest raw data received from device
     
     // Advanced modes state (matching Android)
@@ -121,7 +122,7 @@ class BLEService: NSObject {
     private override init() {
         super.init()
         // Initialize with queue for background operations
-        let queue = DispatchQueue(label: "com.liion.ble", qos: .userInitiated)
+        let queue = DispatchQueue(label: "nl.liionpower.app.ble", qos: .userInitiated)
         centralManager = CBCentralManager(delegate: self, queue: queue)
         
         // Load saved charge limit settings
@@ -629,12 +630,26 @@ class BLEService: NSObject {
     /// Attempt auto-connect to last device (matching Android attemptAutoConnect)
     private func attemptAutoConnect() {
         // Matching Android: if (connectionState != STATE_DISCONNECTED) return
-        if connectionState != .disconnected { return }
-        if bluetoothState != .poweredOn { return }
-        if !autoConnectEnabled { return }
+        if connectionState != .disconnected {
+            logger.logDebug("Auto-connect skipped: connection state is \(connectionState), not disconnected")
+            return
+        }
+        if bluetoothState != .poweredOn {
+            logger.logDebug("Auto-connect skipped: Bluetooth is not powered on")
+            return
+        }
+        if !autoConnectEnabled {
+            logger.logDebug("Auto-connect skipped: auto-connect is disabled")
+            return
+        }
         
-        guard let savedAddress = getLastConnectedDeviceId() else { return }
+        guard let savedAddress = getLastConnectedDeviceId() else {
+            logger.logDebug("Auto-connect skipped: no saved device ID found")
+            return
+        }
         
+        let savedName = getLastConnectedDeviceName() ?? "Unknown"
+        logger.logInfo("Attempting auto-connect to last device: \(savedName) (\(savedAddress))")
         logger.logAutoConnect(address: savedAddress)
         
         // Try to connect (will auto-scan if device not in cache)
@@ -1429,6 +1444,16 @@ class BLEService: NSObject {
             }
         }
         
+        // Handle mwh response: "OK mwh <value>"
+        if parts.count >= 3 && parts[1].lowercased() == "mwh" {
+            let mwhValue = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !mwhValue.isEmpty {
+                // Store mwh value for polling
+                latestMwhValue = mwhValue
+                logger.logInfo("MWh value: \(mwhValue)")
+            }
+        }
+        
         // Handle swversion response
         if parts.count >= 3 && parts[1].lowercased() == "swversion" {
             let versionValue = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1506,11 +1531,14 @@ extension BLEService: CBCentralManagerDelegate {
             // Bluetooth is available and ready
             logger.logInfo("Bluetooth is ready for use")
             
+            // Ensure auto-connect preference is loaded (in case centralManagerDidUpdateState is called before start())
+            loadAutoConnectPreference()
+            
             // Start scanning immediately (matching Android: startBleScan() in onStartCommand)
             _ = startScan()
             
             // Try auto-connect if enabled and not already connected
-            if autoConnectEnabled && connectedPeripheral == nil {
+            if autoConnectEnabled && connectedPeripheral == nil && connectionState == .disconnected {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     self?.attemptAutoConnect()
                 }
@@ -1577,11 +1605,21 @@ extension BLEService: CBCentralManagerDelegate {
             logger.logInfo("Found pending auto-connect device: \(deviceName), connecting...")
             pendingAutoConnectDeviceId = nil // Clear pending
             
-            // Connect after a short delay
+            // Stop scanning before connecting
+            if centralManager.isScanning {
+                centralManager.stopScan()
+                isScanning = false
+                logger.logScan("Stopped scan before auto-connect")
+            }
+            
+            // Connect directly to the discovered peripheral (more reliable than retrieving from cache)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 guard let self = self else { return }
                 if self.connectionState == .disconnected {
-                    _ = self.connect(deviceId: deviceId)
+                    // Notify UI immediately that we're connecting
+                    self.onConnectionStateChanged?(deviceId, "CONNECTING")
+                    // Connect directly to the discovered peripheral
+                    self.performConnection(peripheral: peripheral, isAutoConnect: true)
                 }
             }
         }

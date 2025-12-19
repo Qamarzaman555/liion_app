@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// Communicates with native iOS background services via method channel
 class IOSBackgroundService {
   static const MethodChannel _channel =
-      MethodChannel('com.liion.app/background_service');
+      MethodChannel('nl.liionpower.app/background_service');
 
   /// Start the native iOS background service
   /// This will keep the app alive in background using location services

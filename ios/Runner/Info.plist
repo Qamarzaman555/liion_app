@@ -4,8 +4,8 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.sparkleo.liionapp.refresh</string>
-		<string>com.sparkleo.liionapp.processing</string>
+		<string>nl.liionpower.app.refresh</string>
+		<string>nl.liionpower.app.processing</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>

@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 class IOSBleScanService {
   /// iOS Method Channel (communicates with BackgroundServiceChannel.swift)
   static const MethodChannel _channel = MethodChannel(
-    'com.liion.app/background_service',
+    'nl.liionpower.app/background_service',
   );
 
   // Stream controllers for iOS (polling-based)
@@ -680,9 +680,20 @@ class IOSBleScanService {
           final connected = await isConnected();
           if (connected) {
             final data = await getLastReceivedData();
-            // Only emit if data changed to avoid duplicate parsing
-            if (data.isNotEmpty && data != lastData) {
-              lastData = data;
+            // Emit if data changed OR if it contains important commands (mwh, swversion, chmode)
+            // This ensures we parse responses even if they're the same value
+            final shouldEmit =
+                data.isNotEmpty &&
+                (data != lastData ||
+                    data.toLowerCase().contains('mwh') ||
+                    data.toLowerCase().contains('swversion') ||
+                    data.toLowerCase().contains('chmode'));
+
+            if (shouldEmit) {
+              // Only update lastData if it actually changed to avoid infinite loops
+              if (data != lastData) {
+                lastData = data;
+              }
               _dataReceivedStreamController?.add(data);
             }
           }

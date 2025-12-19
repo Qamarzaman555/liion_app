@@ -196,7 +196,7 @@ class LeoHomeController extends GetxController {
       cloudBinFileName.value = '';
 
       final storage = firebase_storage.FirebaseStorage.instance;
-      final result = await storage.ref('Bin file').listAll();
+      final result = await storage.ref('Beta fw').listAll();
 
       if (result.items.isEmpty) {
         return;
@@ -223,6 +223,7 @@ class LeoHomeController extends GetxController {
       print('Error downloading firmware at start: $e');
     } finally {
       isFirmwareDownloading.value = false;
+      print('Cloud bin file name: ${cloudBinFileName.value}');
     }
   }
 
@@ -461,12 +462,24 @@ class LeoHomeController extends GetxController {
         return;
       }
 
-      // Parse mwh value
+      // Parse mwh value: "OK mwh 363601" or "OK mwh 363601\n"
       if (parts.length >= 2 && parts[1].toLowerCase() == 'mwh') {
-        String value = parts.length > 2 ? parts[2] : parts[0];
+        String value = '';
+        if (parts.length > 2) {
+          // Format: "OK mwh 363601"
+          value = parts[2].trim();
+        } else if (parts.length == 2 && parts[0].toLowerCase() == 'ok') {
+          // Format: "OK mwh" (unlikely but handle it)
+          value = '';
+        }
+        // Extract only digits
         value = value.replaceAll(RegExp(r'[^0-9]'), '');
+        print('Mwh value parsed: $value from parts: $parts');
         if (value.isNotEmpty) {
           mwhValue.value = value;
+          print('Mwh value set to: ${mwhValue.value}');
+        } else {
+          print('Mwh value is empty after parsing');
         }
       }
 

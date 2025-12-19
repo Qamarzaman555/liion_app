@@ -18,7 +18,7 @@ class BackendLoggingService {
     private var buildNumber: String?
     
     private let dateFormatter: DateFormatter
-    private let serialQueue = DispatchQueue(label: "com.liion.backendlogging", qos: .utility)
+    private let serialQueue = DispatchQueue(label: "nl.liionpower.app.backendlogging", qos: .utility)
     
     var initialized: Bool {
         return isInitialized
