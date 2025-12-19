@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:file_picker/file_picker.dart';
@@ -6,6 +7,7 @@ import 'package:liion_app/app/modules/leo_empty/controllers/leo_ota_controller.d
 import 'package:liion_app/app/modules/leo_empty/views/widgets/leo_firmware_update_dialog.dart';
 import 'package:liion_app/app/modules/leo_empty/views/widgets/wait_for_install_dialog.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
+import 'package:liion_app/app/services/ios_ble_scan_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class LeoTroubleshootController extends GetxController {
@@ -15,7 +17,9 @@ class LeoTroubleshootController extends GetxController {
   Future<void> resetLeo() async {
     try {
       isResetting.value = true;
-      final success = await BleScanService.sendCommand("reboot");
+      final success = Platform.isAndroid
+          ? await BleScanService.sendCommand("reboot")
+          : await IOSBleScanService.sendCommand("reboot");
       if (success) {
         AppSnackbars.showSuccess(
           title: 'Success',

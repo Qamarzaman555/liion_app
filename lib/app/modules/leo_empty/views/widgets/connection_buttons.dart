@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
+import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
-import 'package:liion_app/app/modules/leo_empty/views/widgets/update_leo_text.dart';
+// import 'package:liion_app/app/modules/leo_empty/views/widgets/update_leo_text.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 import '../../controllers/leo_home_controller.dart';
@@ -69,7 +72,14 @@ class LeoConnectionButtons extends StatelessWidget {
                     ? AppColors.primaryInvertColor
                     : AppColors.primaryColor,
                 text: statusText,
-                onPressed: onFirmwareUpdateButtonPressed,
+                onPressed: Platform.isIOS
+                    ? () {
+                        AppSnackbars.showSuccess(
+                          title: "Feature not available",
+                          message: "This feature is not available on iOS",
+                        );
+                      }
+                    : onFirmwareUpdateButtonPressed,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -84,11 +94,11 @@ class LeoConnectionButtons extends StatelessWidget {
                   ],
                 ),
               ),
-              if (statusText != "Leo is up-to-date" &&
-                  !controller.isFirmwareDownloading.value) ...[
-                const SizedBox(height: 10),
-                UpdateLeoText(),
-              ],
+              // if (statusText != "Leo is up-to-date" &&
+              //     !controller.isFirmwareDownloading.value) ...[
+              //   const SizedBox(height: 10),
+              //   UpdateLeoText(),
+              // ],
             ],
           );
         }),

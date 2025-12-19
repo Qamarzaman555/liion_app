@@ -22,7 +22,6 @@ class IOSBleScanService {
   static StreamController<Map<String, bool>>? _advancedModesStreamController;
 
   // Track previous states for change detection
-  static bool _previousConnectionState = false;
   static bool _previousBluetoothState = false;
 
   // ============================================================================
@@ -171,6 +170,17 @@ class IOSBleScanService {
     }
   }
 
+  /// Get connection state (0=disconnected, 1=connecting, 2=connected)
+  static Future<int> getConnectionState() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('getConnectionState');
+      return result?['state'] as int? ?? 0;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get connection state: ${e.message}');
+      return 0;
+    }
+  }
+
   /// Get connected device
   static Future<Map<String, String>?> getConnectedDevice() async {
     try {
@@ -295,19 +305,34 @@ class IOSBleScanService {
 
     Timer.periodic(const Duration(seconds: 1), (timer) async {
       try {
-        final connected = await isConnected();
+        // Get connection state (0=disconnected, 1=connecting, 2=connected)
+        final state = await getConnectionState();
 
-        // Emit state changes
-        if (connected != _previousConnectionState) {
-          _previousConnectionState = connected;
+        // Get device info if connected or connecting
+        Map<String, String>? device;
+        if (state == 1 || state == 2) {
+          // If connecting, try to get device from pending connection
+          // If connected, get from connected device
+          device = await getConnectedDevice();
 
-          final device = await getConnectedDevice();
-          _connectionStreamController?.add({
-            'state': connected ? 2 : 0, // connected : disconnected
-            'address': device?['address'],
-            'name': device?['name'], // Include device name for UI display
-          });
+          // If no device found but we're connecting, try to get last connected device
+          if (device == null && state == 1) {
+            final lastDevice = await getLastConnectedDevice();
+            if (lastDevice != null) {
+              device = {
+                'address': lastDevice['address'] ?? '',
+                'name': lastDevice['name'] ?? 'Unknown',
+              };
+            }
+          }
         }
+
+        // Emit state changes (always emit to ensure UI updates)
+        _connectionStreamController?.add({
+          'state': state, // 0=disconnected, 1=connecting, 2=connected
+          'address': device?['address'],
+          'name': device?['name'], // Include device name for UI display
+        });
       } catch (e) {
         print('[iOS] Error polling connection: $e');
       }
@@ -423,6 +448,18 @@ class IOSBleScanService {
       return result?['success'] as bool? ?? false;
     } on PlatformException catch (e) {
       print('[iOS] Failed to send command: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Send UI-ready commands (mwh, swversion, chmode) - called once from Flutter when UI is ready
+  /// This prevents duplicate commands from being sent repeatedly
+  static Future<bool> sendUIReadyCommands() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('sendUIReadyCommands');
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to send UI-ready commands: ${e.message}');
       return false;
     }
   }

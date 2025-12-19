@@ -29,6 +29,9 @@ class LeoHomeController extends GetxController {
   final showThankYouNote = false.obs;
   final hasConnectedOnce = false.obs;
 
+  // Track if initial requests have been sent for current connection (prevents duplicates)
+  String? _lastInitialRequestsAddress;
+
   // Data from Leo
   final mwhValue = ''.obs;
   final binFileFromLeoName = ''.obs;
@@ -258,40 +261,114 @@ class LeoHomeController extends GetxController {
     final stream = Platform.isIOS
         ? IOSBleScanService.getConnectionStream()
         : BleScanService.connectionStream;
-    _connectionSubscription = stream.listen((event) async {
-      final newState = event['state'] as int;
-      final address = event['address'] as String?;
-      final name =
-          event['name'] as String?; // Extract device name from connection event
 
-      connectionState.value = newState;
+    if (Platform.isIOS) {
+      // iOS-specific connection handling with new connection detection
+      int? previousState; // Track previous state to detect transitions
+      String? previousAddress; // Track previous address to detect reconnections
 
-      if (newState == BleConnectionState.connected) {
-        hasConnectedOnce.value = true;
-        if (showThankYouNote.value) {
-          await dismissThankYouNote();
-        }
-        connectedDeviceAddress.value = address;
-        connectedDeviceName.value = name; // Store connected device name
-        connectingDeviceAddress.value = null;
-        // Request firmware version after OTA reconnection to get updated version
-        // Add delay to ensure BLE services are discovered and UART is ready
-        Future.delayed(const Duration(seconds: 5), () async {
-          try {
-            await requestLeoFirmwareVersion();
-          } catch (e) {
-            print('🟡 [OTA Controller] Could not request firmware version: $e');
+      _connectionSubscription = stream.listen((event) async {
+        final newState = event['state'] as int;
+        final address = event['address'] as String?;
+        final name =
+            event['name']
+                as String?; // Extract device name from connection event
+
+        connectionState.value = newState;
+
+        final stateChanged = previousState != newState;
+        final addressChanged = previousAddress != address;
+        final isNewConnection =
+            stateChanged &&
+            newState == BleConnectionState.connected &&
+            (previousState != BleConnectionState.connected || addressChanged);
+
+        if (newState == BleConnectionState.connected) {
+          // Only execute initial requests on NEW connection (not on every poll)
+          if (isNewConnection) {
+            hasConnectedOnce.value = true;
+            if (showThankYouNote.value) {
+              await dismissThankYouNote();
+            }
+            connectedDeviceAddress.value = address;
+            connectedDeviceName.value = name; // Store connected device name
+            connectingDeviceAddress.value = null;
+
+            // Prevent duplicate initial requests for same device
+            if (_lastInitialRequestsAddress != address) {
+              _lastInitialRequestsAddress = address;
+
+              // iOS native already sent: charge limit, LED timeout, advanced modes (when UART ready)
+              // Flutter sends UI-ready commands once when UI is ready (not repeatedly)
+              Future.delayed(const Duration(seconds: 2), () async {
+                // Wait for UART to be ready and initial setup to complete
+                try {
+                  await IOSBleScanService.sendUIReadyCommands();
+                } catch (e) {
+                  print('[iOS] Failed to send UI-ready commands: $e');
+                }
+              });
+            }
+          } else {
+            // Update address/name if changed but don't resend commands
+            connectedDeviceAddress.value = address;
+            connectedDeviceName.value = name;
           }
-        });
-        await _scheduleInitialRequests();
-      } else if (newState == BleConnectionState.connecting) {
-        connectingDeviceAddress.value = address;
-      } else if (newState == BleConnectionState.disconnected) {
-        connectedDeviceAddress.value = null;
-        connectedDeviceName.value = null; // Clear device name on disconnect
-        connectingDeviceAddress.value = null;
-      }
-    });
+        } else if (newState == BleConnectionState.connecting) {
+          connectingDeviceAddress.value = address;
+        } else if (newState == BleConnectionState.disconnected) {
+          connectedDeviceAddress.value = null;
+          connectedDeviceName.value = null; // Clear device name on disconnect
+          connectingDeviceAddress.value = null;
+          // Reset initial requests flag on disconnect so they can be sent again on next connection
+          _lastInitialRequestsAddress = null;
+        }
+
+        // Update previous state/address for next iteration (iOS only)
+        previousState = newState;
+        previousAddress = address;
+      });
+    } else {
+      // Android: Keep original behavior completely unchanged
+      _connectionSubscription = stream.listen((event) async {
+        final newState = event['state'] as int;
+        final address = event['address'] as String?;
+        final name =
+            event['name']
+                as String?; // Extract device name from connection event
+
+        connectionState.value = newState;
+
+        if (newState == BleConnectionState.connected) {
+          hasConnectedOnce.value = true;
+          if (showThankYouNote.value) {
+            await dismissThankYouNote();
+          }
+          connectedDeviceAddress.value = address;
+          connectedDeviceName.value = name;
+          connectingDeviceAddress.value = null;
+
+          // Request firmware version after OTA reconnection to get updated version
+          // Add delay to ensure BLE services are discovered and UART is ready
+          Future.delayed(const Duration(seconds: 5), () async {
+            try {
+              await requestLeoFirmwareVersion();
+            } catch (e) {
+              print(
+                '🟡 [OTA Controller] Could not request firmware version: $e',
+              );
+            }
+          });
+          await _scheduleInitialRequests();
+        } else if (newState == BleConnectionState.connecting) {
+          connectingDeviceAddress.value = address;
+        } else if (newState == BleConnectionState.disconnected) {
+          connectedDeviceAddress.value = null;
+          connectedDeviceName.value = null;
+          connectingDeviceAddress.value = null;
+        }
+      });
+    }
   }
 
   void _listenToDataReceived() {
@@ -687,6 +764,8 @@ class LeoHomeController extends GetxController {
     if (connectionState.value == BleConnectionState.connected) {
       if (Platform.isAndroid) {
         await BleScanService.sendCommand('mwh');
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.sendCommand('mwh');
       }
     }
   }
@@ -697,6 +776,10 @@ class LeoHomeController extends GetxController {
         await BleScanService.sendCommand('measure');
         await Future.delayed(const Duration(milliseconds: 300));
         await BleScanService.sendCommand('swversion');
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.sendCommand('measure');
+        await Future.delayed(const Duration(milliseconds: 300));
+        await IOSBleScanService.sendCommand('swversion');
       }
     }
   }
@@ -705,6 +788,8 @@ class LeoHomeController extends GetxController {
     if (connectionState.value == BleConnectionState.connected) {
       if (Platform.isAndroid) {
         await BleScanService.sendCommand('chmode');
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.sendCommand('chmode');
       }
     }
   }
@@ -819,6 +904,8 @@ class LeoHomeController extends GetxController {
     }
     if (Platform.isAndroid) {
       return await BleScanService.sendCommand(command);
+    } else if (Platform.isIOS) {
+      return await IOSBleScanService.sendCommand(command);
     }
     return false;
   }
@@ -837,6 +924,8 @@ class LeoHomeController extends GetxController {
       // Send mode change command to Leo
       if (Platform.isAndroid) {
         await BleScanService.sendCommand("chmode ${mode.index}\n");
+      } else if (Platform.isIOS) {
+        await IOSBleScanService.sendCommand("chmode ${mode.index}\n");
       }
     } catch (e) {
       // Revert the mode if the command fails

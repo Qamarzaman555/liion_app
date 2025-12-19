@@ -73,6 +73,9 @@ class BackgroundServiceChannel {
         case "isConnected":
             isConnectedToDevice(result: result)
             
+        case "getConnectionState":
+            getConnectionState(result: result)
+            
         case "getConnectedDevice":
             getConnectedDevice(result: result)
             
@@ -141,6 +144,9 @@ class BackgroundServiceChannel {
             
         case "getLastReceivedData":
             getLastReceivedData(result: result)
+            
+        case "sendUIReadyCommands":
+            sendUIReadyCommands(result: result)
             
         default:
             result(FlutterMethodNotImplemented)
@@ -263,6 +269,11 @@ class BackgroundServiceChannel {
     private func isConnectedToDevice(result: @escaping FlutterResult) {
         let connected = bleService.isConnected()
         result(["isConnected": connected])
+    }
+    
+    private func getConnectionState(result: @escaping FlutterResult) {
+        let state = bleService.getConnectionState()
+        result(["state": state])
     }
     
     private func getConnectedDevice(result: @escaping FlutterResult) {
@@ -478,6 +489,11 @@ class BackgroundServiceChannel {
     private func getLastReceivedData(result: @escaping FlutterResult) {
         let data = bleService.getLastReceivedData()
         result(data)
+    }
+    
+    private func sendUIReadyCommands(result: @escaping FlutterResult) {
+        let commandResult = bleService.sendUIReadyCommands()
+        result(commandResult)
     }
 }
 

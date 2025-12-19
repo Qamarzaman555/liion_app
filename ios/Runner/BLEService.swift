@@ -26,6 +26,10 @@ class BLEService: NSObject {
     private var rxCharacteristic: CBCharacteristic?
     private var isUartReady = false
     
+    // Track if initial setup commands have been sent (prevents duplicates)
+    private var initialSetupDone = false
+    private var uiReadyCommandsSent = false
+    
     // Command queue (matching Android)
     private var commandQueue: [String] = []
     private var isProcessingCommand = false
@@ -160,7 +164,7 @@ class BLEService: NSObject {
         ]
     }
     
-    /// Start the BLE service (just initializes, actual start happens automatically)
+    /// Start the BLE service (matching Android: starts scanning immediately)
     func start() {
         logger.logInfo("BLE Service started")
         logger.logBleState("BLE Service initialized, state: \(bluetoothStateToString(bluetoothState))")
@@ -168,9 +172,16 @@ class BLEService: NSObject {
         // Load auto-connect preference
         loadAutoConnectPreference()
         
-        // Try auto-connect if enabled and Bluetooth is on
-        if autoConnectEnabled && bluetoothState == .poweredOn {
-            attemptAutoConnect()
+        // Start scanning immediately if Bluetooth is on (matching Android onStartCommand)
+        if bluetoothState == .poweredOn {
+            _ = startScan()
+            
+            // Try auto-connect if enabled
+            if autoConnectEnabled {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.attemptAutoConnect()
+                }
+            }
         }
     }
     
@@ -186,8 +197,9 @@ class BLEService: NSObject {
     
     // MARK: - Scanning Methods
     
-    /// Start scanning for BLE devices
+    /// Start scanning for BLE devices (matching Android: cancel current scan and start new)
     /// Only discovers devices with "Leo Usb" in their name
+    /// Scanning runs continuously without timeout (matching Android behavior)
     func startScan() -> [String: Any] {
         guard bluetoothState == .poweredOn else {
             let message = "Cannot start scan: Bluetooth is \(bluetoothStateToString(bluetoothState))"
@@ -199,18 +211,18 @@ class BLEService: NSObject {
             ]
         }
         
+        // Cancel current scan if running (matching Android restartScan behavior)
         if centralManager.isScanning {
-            logger.logWarning("Scan already in progress")
-            return [
-                "success": false,
-                "message": "Scan already in progress"
-            ]
+            centralManager.stopScan()
+            isScanning = false
+            logger.logScan("Stopped current scan before starting new scan")
         }
         
         // Clear previous scan results
         discoveredDevices.removeAll()
         
         // Start scanning (no service UUID filter - scan all devices)
+        // No timeout - scan runs continuously (matching Android)
         centralManager.scanForPeripherals(withServices: nil, options: [
             CBCentralManagerScanOptionAllowDuplicatesKey: false
         ])
@@ -308,6 +320,12 @@ class BLEService: NSObject {
         if connectionState != .disconnected {
             let stateStr = connectionState == .connected ? "Already connected" : "Connection already in progress"
             logger.logWarning(stateStr)
+            // Still notify UI of current state
+            if connectionState == .connecting {
+                onConnectionStateChanged?(deviceId, "CONNECTING")
+            } else if connectionState == .connected {
+                onConnectionStateChanged?(deviceId, "CONNECTED")
+            }
             return [
                 "success": false,
                 "message": stateStr
@@ -344,14 +362,17 @@ class BLEService: NSObject {
             }
         }
         
-        // Stop scanning before connecting (BLE best practice)
+        // Stop scanning before connecting (BLE best practice - matching Android)
         if centralManager.isScanning {
             centralManager.stopScan()
             isScanning = false
             logger.logScan("Stopped scan before connection")
         }
         
-        // Add delay before connecting (BLE stack stability)
+        // Notify UI immediately that we're connecting (matching Android)
+        onConnectionStateChanged?(deviceId, "CONNECTING")
+        
+        // Add delay before connecting (BLE stack stability - matching Android operationDelay)
         DispatchQueue.main.asyncAfter(deadline: .now() + operationDelay) { [weak self] in
             self?.performConnection(peripheral: peripheral)
         }
@@ -362,7 +383,7 @@ class BLEService: NSObject {
         ]
     }
     
-    /// Perform the actual connection
+    /// Perform the actual connection (matching Android: proper delays and state management)
     private func performConnection(peripheral: CBPeripheral, isAutoConnect: Bool = false) {
         // Set connection state (matching Android: connectionState = STATE_CONNECTING)
         connectionState = .connecting
@@ -388,12 +409,15 @@ class BLEService: NSObject {
             logger.logConnect(address: deviceId, name: deviceName)
         }
         
+        // Notify UI immediately that we're connecting (matching Android)
+        onConnectionStateChanged?(deviceId, "CONNECTING")
+        
         // Start connection timeout timer
         connectionTimer = Timer.scheduledTimer(withTimeInterval: connectionTimeout, repeats: false) { [weak self] _ in
             self?.handleConnectionTimeout(peripheral: peripheral)
         }
         
-        // Connect to peripheral
+        // Connect to peripheral (matching Android: direct connect after delay)
         centralManager.connect(peripheral, options: nil)
     }
     
@@ -485,6 +509,18 @@ class BLEService: NSObject {
             return false
         }
         return peripheral.state == .connected
+    }
+    
+    /// Get connection state as int (matching Android: 0=disconnected, 1=connecting, 2=connected)
+    func getConnectionState() -> Int {
+        switch connectionState {
+        case .disconnected:
+            return 0
+        case .connecting:
+            return 1
+        case .connected:
+            return 2
+        }
     }
     
     /// Get connected device info
@@ -648,10 +684,12 @@ class BLEService: NSObject {
         logger.logDebug("Cancelled reconnection scheduler")
     }
     
-    /// Restart BLE scan (matching Android restartScan)
-    private func restartScan() {
+    /// Restart BLE scan (matching Android restartScan: stop then start)
+    func restartScan() {
         stopScan()
-        let _ = startScan()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            _ = self?.startScan()
+        }
     }
     
     /// Get current reconnect attempt count
@@ -754,6 +792,58 @@ class BLEService: NSObject {
         return [
             "success": true,
             "message": "Command queued"
+        ]
+    }
+    
+    /// Send UI-ready commands (mwh, swversion, chmode) - called once from Flutter when UI is ready
+    /// This prevents Flutter from sending these commands repeatedly
+    func sendUIReadyCommands() -> [String: Any] {
+        guard isUartReady && connectionState == .connected else {
+            return [
+                "success": false,
+                "message": "Device not connected or UART not ready"
+            ]
+        }
+        
+        // Prevent duplicate UI-ready commands
+        guard !uiReadyCommandsSent else {
+            logger.logDebug("UI-ready commands already sent, skipping duplicate")
+            return [
+                "success": false,
+                "message": "UI-ready commands already sent"
+            ]
+        }
+        
+        uiReadyCommandsSent = true
+        
+        // Send UI-ready commands with delays (matching Android _scheduleInitialRequests timing)
+        // 1. Request mwh value
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self = self, self.isUartReady && self.connectionState == .connected else { return }
+            self.enqueueCommand("mwh")
+        }
+        
+        // 2. Request firmware version (measure + swversion)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self = self, self.isUartReady && self.connectionState == .connected else { return }
+            self.enqueueCommand("measure")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self = self, self.isUartReady && self.connectionState == .connected else { return }
+                self.enqueueCommand("swversion")
+            }
+        }
+        
+        // 3. Request charging mode
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self = self, self.isUartReady && self.connectionState == .connected else { return }
+            self.enqueueCommand("chmode")
+        }
+        
+        logger.logInfo("UI-ready commands scheduled: mwh, measure+swversion, chmode")
+        
+        return [
+            "success": true,
+            "message": "UI-ready commands queued"
         ]
     }
     
@@ -1206,12 +1296,30 @@ class BLEService: NSObject {
         peripheral.writeValue(data, for: txChar, type: .withResponse)
     }
     
-    /// Setup UART service after connection (matching Android setupUartService)
+    /// Setup UART service after connection (matching Android setupUartService with delays)
     private func setupUartService() {
-        guard let peripheral = connectedPeripheral else { return }
+        guard let peripheral = connectedPeripheral else {
+            logger.logWarning("Cannot setup UART service: no connected peripheral")
+            return
+        }
         
-        // Discover UART service
+        // Double-check connection is still active
+        guard connectionState == .connected && peripheral.state == .connected else {
+            logger.logWarning("Cannot setup UART service: connection not active (state: \(connectionState), peripheral.state: \(peripheral.state))")
+            return
+        }
+        
+        logger.logInfo("Discovering services...")
+        
+        // Ensure peripheral delegate is set (critical for receiving callbacks)
+        peripheral.delegate = self
+        
+        // Discover UART service (matching Android: gatt.discoverServices())
+        // Note: CoreBluetooth will call didDiscoverServices callback when complete
+        // This operation should complete within a few seconds, but CoreBluetooth handles timing
         peripheral.discoverServices([uartServiceUUID])
+        
+        logger.logDebug("Service discovery request sent for UART service")
     }
     
     /// Handle received data from RX characteristic (matching Android handleReceivedData)
@@ -1398,9 +1506,12 @@ extension BLEService: CBCentralManagerDelegate {
             // Bluetooth is available and ready
             logger.logInfo("Bluetooth is ready for use")
             
+            // Start scanning immediately (matching Android: startBleScan() in onStartCommand)
+            _ = startScan()
+            
             // Try auto-connect if enabled and not already connected
             if autoConnectEnabled && connectedPeripheral == nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     self?.attemptAutoConnect()
                 }
             }
@@ -1476,7 +1587,7 @@ extension BLEService: CBCentralManagerDelegate {
         }
     }
     
-    /// Called when a connection to a peripheral succeeds
+    /// Called when a connection to a peripheral succeeds (matching Android: proper delays)
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         // Clear connection timeout timer
         connectionTimer?.invalidate()
@@ -1491,6 +1602,9 @@ extension BLEService: CBCentralManagerDelegate {
         connectedPeripheral = peripheral
         pendingConnectDeviceId = nil
         pendingAutoConnectDeviceId = nil // Clear pending auto-connect
+        
+        // CRITICAL: Set peripheral delegate BEFORE any operations (must be set for callbacks)
+        peripheral.delegate = self
         
         let deviceId = peripheral.identifier.uuidString
         
@@ -1516,11 +1630,22 @@ extension BLEService: CBCentralManagerDelegate {
             logger.logScan("Stopped scan after successful connection")
         }
         
-        // Setup UART service (discover services -> characteristics -> enable notifications)
-        setupUartService()
-        
-        // Notify callback
+        // Notify UI immediately that we're connected
         onConnectionStateChanged?(deviceId, "CONNECTED")
+        
+        // Setup UART service with delay (matching Android: wait for connection to stabilize)
+        // Android waits for MTU negotiation (which can take 1-2 seconds), iOS needs similar delay
+        // Increased delay to ensure connection is fully stable before service discovery
+        // Some devices need more time to be ready for service discovery
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self = self else { return }
+            // Double-check connection is still active before discovering services
+            if self.connectionState == .connected && peripheral.state == .connected {
+                self.setupUartService()
+            } else {
+                self.logger.logWarning("Connection lost before service discovery, skipping setup")
+            }
+        }
     }
     
     /// Called when a connection to a peripheral fails
@@ -1573,6 +1698,8 @@ extension BLEService: CBCentralManagerDelegate {
             
             // Clean up UART state (matching Android)
             isUartReady = false
+            initialSetupDone = false // Reset so initial setup runs again on next connection
+            uiReadyCommandsSent = false // Reset so UI-ready commands can be sent again on next connection
             txCharacteristic = nil
             rxCharacteristic = nil
             chargeLimitConfirmed = false
@@ -1623,8 +1750,14 @@ extension BLEService: CBCentralManagerDelegate {
 
 extension BLEService: CBPeripheralDelegate {
     
-    /// Called when peripheral services are discovered
+    /// Called when peripheral services are discovered (matching Android: proper delays)
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        // Check connection is still active
+        guard connectionState == .connected && peripheral.state == .connected else {
+            logger.logWarning("Services discovered but connection lost (state: \(connectionState), peripheral.state: \(peripheral.state))")
+            return
+        }
+        
         if let error = error {
             logger.logError("Error discovering services: \(error.localizedDescription)")
             return
@@ -1637,19 +1770,35 @@ extension BLEService: CBPeripheralDelegate {
         
         logger.logInfo("Discovered \(services.count) service(s)")
         
-        // Find UART service and discover its characteristics
+        // Find UART service and discover its characteristics with delay (matching Android)
         for service in services {
             if service.uuid == uartServiceUUID {
                 logger.logInfo("Found UART service, discovering characteristics...")
-                peripheral.discoverCharacteristics([txCharacteristicUUID, rxCharacteristicUUID], for: service)
+                // Delay before discovering characteristics (matching Android delays)
+                // Increased delay to ensure service discovery is complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    guard let self = self else { return }
+                    // Double-check connection is still active
+                    if self.connectionState == .connected && peripheral.state == .connected {
+                        peripheral.discoverCharacteristics([self.txCharacteristicUUID, self.rxCharacteristicUUID], for: service)
+                    } else {
+                        self.logger.logWarning("Connection lost before characteristic discovery")
+                    }
+                }
             }
         }
     }
     
-    /// Called when peripheral characteristics are discovered
+    /// Called when peripheral characteristics are discovered (matching Android: proper delays)
     func peripheral(_ peripheral: CBPeripheral, 
                    didDiscoverCharacteristicsFor service: CBService,
                    error: Error?) {
+        // Check connection is still active
+        guard connectionState == .connected && peripheral.state == .connected else {
+            logger.logWarning("Characteristics discovered but connection lost (state: \(connectionState), peripheral.state: \(peripheral.state))")
+            return
+        }
+        
         if let error = error {
             logger.logError("Error discovering characteristics: \(error.localizedDescription)")
             return
@@ -1662,7 +1811,7 @@ extension BLEService: CBPeripheralDelegate {
         
         logger.logInfo("Discovered \(characteristics.count) characteristic(s) for service: \(service.uuid)")
         
-        // Setup UART characteristics
+        // Setup UART characteristics with delay (matching Android delays)
         if service.uuid == uartServiceUUID {
             for characteristic in characteristics {
                 if characteristic.uuid == txCharacteristicUUID {
@@ -1672,8 +1821,18 @@ extension BLEService: CBPeripheralDelegate {
                     rxCharacteristic = characteristic
                     logger.logInfo("Found RX characteristic (notify)")
                     
-                    // Enable notifications for RX characteristic (matching Android)
-                    peripheral.setNotifyValue(true, for: characteristic)
+                    // Enable notifications for RX characteristic with delay (matching Android)
+                    // Android waits for descriptor write, iOS uses setNotifyValue
+                    // Increased delay to ensure characteristic discovery is complete
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                        guard let self = self else { return }
+                        // Double-check connection is still active
+                        if self.connectionState == .connected && peripheral.state == .connected {
+                            peripheral.setNotifyValue(true, for: characteristic)
+                        } else {
+                            self.logger.logWarning("Connection lost before enabling notifications")
+                        }
+                    }
                 }
             }
         }
@@ -1690,6 +1849,12 @@ extension BLEService: CBPeripheralDelegate {
         
         // Check if RX notifications are enabled (matching Android onDescriptorWrite)
         if characteristic.uuid == rxCharacteristicUUID && characteristic.isNotifying {
+            // Prevent duplicate initial setup (matching Android behavior - only once per connection)
+            guard !isUartReady else {
+                logger.logDebug("UART already ready, skipping duplicate initial setup")
+                return
+            }
+            
             isUartReady = true
             logger.logInfo("UART ready - RX notifications enabled")
             
@@ -1698,20 +1863,29 @@ extension BLEService: CBPeripheralDelegate {
             startTimeTracking()
             startMeasureTimer()
             
-            // Send initial charge limit command after delay (matching Android 500ms delay)
+            // Send initial commands ONCE when UART is ready (matching Android behavior)
+            // These commands are sent from native code, not Flutter, to prevent duplicates
+            
+            // 1. Send initial charge limit command (matching Android 500ms delay)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.sendChargeLimitCommand()
+                guard let self = self, self.isUartReady && self.connectionState == .connected else { return }
+                self.sendChargeLimitCommand()
             }
             
-            // Fetch LED timeout value after UART is ready (matching Android 700ms delay)
+            // 2. Fetch LED timeout value (matching Android 700ms delay)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-                _ = self?.requestLedTimeout()
+                guard let self = self, self.isUartReady && self.connectionState == .connected else { return }
+                _ = self.requestLedTimeout()
             }
             
-            // Fetch advanced modes state after initial setup (matching Android 1100ms delay)
+            // 3. Fetch advanced modes state (matching Android 1100ms delay)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
-                _ = self?.requestAdvancedModes()
+                guard let self = self, self.isUartReady && self.connectionState == .connected else { return }
+                _ = self.requestAdvancedModes()
             }
+            
+            // Mark initial setup as done
+            initialSetupDone = true
         }
     }
     
