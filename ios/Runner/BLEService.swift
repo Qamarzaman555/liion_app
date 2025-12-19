@@ -36,7 +36,7 @@ class BLEService: NSObject {
     private let commandGapMs: TimeInterval = 0.25 // 250ms between commands
     
     // Charge limit state (matching Android)
-    private var chargeLimit: Int = 90
+    private var chargeLimit: Int = 88
     private var chargeLimitEnabled: Bool = false
     private var chargeLimitConfirmed: Bool = false
     private var chargingTimeSeconds: Int64 = 0
@@ -1028,7 +1028,7 @@ class BLEService: NSObject {
     private func loadChargeLimitSettings() {
         chargeLimit = UserDefaults.standard.integer(forKey: chargeLimitKey)
         if chargeLimit == 0 {
-            chargeLimit = 90 // Default value
+            chargeLimit = 88 // Default value
         }
         
         chargeLimitEnabled = UserDefaults.standard.bool(forKey: chargeLimitEnabledKey)
