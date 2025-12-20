@@ -356,7 +356,7 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (122)"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (124)"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -1581,7 +1581,7 @@ class BleScanService : Service() {
                 }
                 val binFileName = firmwareVersion
                 val appVersion = prefs?.getString("appVersion", "1.5.0") ?: "1.5.0"
-                val appBuildNumber = prefs?.getString("appBuildNumber", "122") ?: "122"
+                val appBuildNumber = prefs?.getString("appBuildNumber", "124") ?: "124"
                 
                 // Get device information directly from Android Build class
                 val osVersion = Build.VERSION.RELEASE // e.g., "13", "14"
@@ -1623,7 +1623,7 @@ class BleScanService : Service() {
                 val major = if (versionParts.isNotEmpty()) versionParts[0].toIntOrNull() ?: 0 else 1
                 val minor = if (versionParts.size > 1) versionParts[1].toIntOrNull() ?: 0 else 5
                 val patch = if (versionParts.size > 2) versionParts[2].toIntOrNull() ?: 0 else 0
-                val build = appBuildNumber.toIntOrNull() ?: 122
+                val build = appBuildNumber.toIntOrNull() ?: 124
                 
                 // Get flags from first entry (they should be consistent across entries)
                 val firstFlags = dataSnapshot.firstOrNull()?.flags ?: 0
@@ -3203,10 +3203,15 @@ class BleScanService : Service() {
             val triggerAt = System.currentTimeMillis() + getKeepAliveInterval()
             val pendingIntent = restartPendingIntent ?: return
             val am = alarmManager ?: return
+            // Use setAndAllowWhileIdle() instead of setExactAndAllowWhileIdle() to avoid requiring USE_EXACT_ALARM permission
+            // This is sufficient for keeping the service alive and doesn't require special permission
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                // setAndAllowWhileIdle() allows alarms while idle but doesn't require USE_EXACT_ALARM
+                // It may have slight timing variations but is acceptable for service keep-alive
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             } else {
-                am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                // For older Android versions, use set() which doesn't require special permission
+                am.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             }
         } catch (_: Exception) {
             // Ignore scheduling errors
