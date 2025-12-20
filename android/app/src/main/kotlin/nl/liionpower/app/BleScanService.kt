@@ -304,12 +304,16 @@ class BleScanService : Service() {
     private var fileStreamingAccumulatedData = StringBuilder()
     private var isFileStreamingActive = false
     private var fileStreamingNextFileRunnable: Runnable? = null
-    private val FILE_STREAMING_DELAY_MS = 5000L // 5 seconds delay after ETX
+    private val FILE_STREAMING_DELAY_MS = 7000L // 7 seconds delay after ETX (recovery timer will restart if stopped due to interception)
     private var fileStreamingRequested = false
     private var getFilesRangePending = false
     private var getFilesRetryDone = false
     private var getFilesTimeoutRunnable: Runnable? = null
     private var serialRequested = false
+    
+    // File streaming recovery timer
+    private var fileStreamingRecoveryRunnable: Runnable? = null
+    private val FILE_STREAMING_RECOVERY_INTERVAL_MS = 10000L // Check every 10 seconds if file streaming should be restarted
     
     // File streaming data processing
     data class ChargeData(
@@ -345,6 +349,8 @@ class BleScanService : Service() {
     private var currentFile = 0
     private var fileCheck = 0
     private var streamFileResponseReceived = false
+    private var waitingForStreamFileResponse = false // Flag to track if we're waiting for stream_file response
+    private var lastStreamFileCommandTime = 0L // Timestamp when we last sent stream_file command
     private var streamFileTimeoutRunnable: Runnable? = null
     private val STREAM_FILE_TIMEOUT_MS = 10000L // 10 seconds timeout
     
@@ -581,6 +587,10 @@ class BleScanService : Service() {
                         isOtaInProgress = false
                         otaCancelRequested = false
                         chargeLimitConfirmed = false
+                        
+                        // Reset file streaming state on disconnection
+                        stopFileStreaming()
+                        stopFileStreamingRecovery()
                         
                         // Stop charge limit timer
                         stopChargeLimitTimer()
@@ -879,6 +889,8 @@ class BleScanService : Service() {
                     
                 // Start streaming from first file
                 startFileStreaming()
+                // Start recovery timer to check if file streaming stops unexpectedly
+                startFileStreamingRecovery()
                     getFilesRangePending = false
                     getFilesTimeoutRunnable?.let { handler.removeCallbacks(it) }
                 } else if (getFilesRangePending) {
@@ -908,6 +920,40 @@ class BleScanService : Service() {
             }
         }
         
+        // Handle ERROR response when expecting stream_file (command was intercepted)
+        // Only handle if we're waiting for stream_file AND the ERROR came soon after we sent the command
+        // This prevents advanced mode ERROR responses from being mistaken for file streaming errors
+        if (parts.size >= 2 && parts.getOrNull(0) == "ERROR" && parts.getOrNull(1) == "py_msg") {
+            val currentTime = System.currentTimeMillis()
+            val timeSinceStreamFileCommand = currentTime - lastStreamFileCommandTime
+            // Only treat as file streaming error if:
+            // 1. We're waiting for stream_file response
+            // 2. Current file is in valid range
+            // 3. ERROR came within 3 seconds of sending stream_file command (advanced mode commands are sent separately)
+            if (waitingForStreamFileResponse && 
+                currentFile >= leoFirstFile && 
+                currentFile <= leoLastFile &&
+                timeSinceStreamFileCommand > 0 &&
+                timeSinceStreamFileCommand < 3000) { // 3 seconds window
+                
+                android.util.Log.w("BleScanService", "[FileStream] ========================================")
+                android.util.Log.w("BleScanService", "[FileStream] ERROR response received - stream_file command intercepted for file $currentFile")
+                android.util.Log.w("BleScanService", "[FileStream] Time since stream_file command: ${timeSinceStreamFileCommand}ms")
+                android.util.Log.w("BleScanService", "[FileStream] Recovery timer will restart file streaming")
+                android.util.Log.w("BleScanService", "[FileStream] ========================================")
+                
+                // Mark that we got a response (even though it's an error) and reset state
+                streamFileResponseReceived = true
+                waitingForStreamFileResponse = false
+                cancelStreamFileTimeout()
+                isFileStreamingActive = false
+                // Recovery timer will detect this and restart
+            } else if (waitingForStreamFileResponse) {
+                // Log that we got an ERROR but it's not for file streaming (probably advanced mode)
+                android.util.Log.d("BleScanService", "[FileStream] ERROR py_msg received but not for file streaming (time since command: ${timeSinceStreamFileCommand}ms, window: 0-3000ms)")
+            }
+        }
+        
         // Handle stream_file response: "OK py_msg stream_file <fileCheck>"
         // fileCheck: 1 = file exists and streaming started, -1 = file doesn't exist
         if (parts.size >= 4 && parts.getOrNull(2) == "stream_file") {
@@ -916,30 +962,25 @@ class BleScanService : Service() {
                 
                 if (fileCheckValue != null) {
                     fileCheck = fileCheckValue
+                    streamFileResponseReceived = true // Mark response as received
+                    waitingForStreamFileResponse = false // No longer waiting
+                    cancelStreamFileTimeout() // Cancel any pending timeout
                     android.util.Log.i("BleScanService", "[FileStream] stream_file response: fileCheck=$fileCheck for file $currentFile")
                     
                     when (fileCheck) {
                         1 -> {
                             // File exists and is being streamed, wait for ETX
                             android.util.Log.i("BleScanService", "[FileStream] File $currentFile exists and streaming started")
-                            streamFileResponseReceived = true
                             isFileStreamingActive = true
                             // Start timeout timer
                             startStreamFileTimeout()
                         }
                         -1 -> {
-                            // File doesn't exist, move to next file
-                            android.util.Log.w("BleScanService", "[FileStream] File $currentFile doesn't exist, moving to next")
-                            cancelStreamFileTimeout()
+                            // File doesn't exist, move to next file after delay
+                            android.util.Log.w("BleScanService", "[FileStream] File $currentFile doesn't exist")
                             
-                            if (currentFile < leoLastFile) {
-                                currentFile++
-                                android.util.Log.i("BleScanService", "[FileStream] Moving to next file: $currentFile")
-                                requestNextFile()
-                            } else {
-                                android.util.Log.i("BleScanService", "[FileStream] Reached last file ($leoLastFile), no more files to stream")
-                                stopFileStreaming()
-                            }
+                            // Schedule next file request after delay
+                            scheduleNextFileAfterDelay()
                         }
                     }
                 }
@@ -989,6 +1030,9 @@ class BleScanService : Service() {
         
         isFileStreamingActive = true
         currentFile = leoFirstFile
+        streamFileResponseReceived = false
+        waitingForStreamFileResponse = true // Mark that we're waiting for stream_file response
+        lastStreamFileCommandTime = System.currentTimeMillis() // Track when we sent the command
         
         android.util.Log.i("BleScanService", "[FileStream] Requesting file $currentFile")
         enqueueCommand("app_msg stream_file $currentFile")
@@ -1005,11 +1049,23 @@ class BleScanService : Service() {
             return
         }
         
+        // Reset response flag when requesting new file so recovery timer can detect if no response
+        streamFileResponseReceived = false
+        waitingForStreamFileResponse = true // Mark that we're waiting for stream_file response
+        lastStreamFileCommandTime = System.currentTimeMillis() // Track when we sent the command
+        cancelStreamFileTimeout()
+        
         android.util.Log.i("BleScanService", "[FileStream] Requesting file $currentFile")
         enqueueCommand("app_msg stream_file $currentFile")
         handler.postDelayed({
             if (isUartReady && connectionState == STATE_CONNECTED) {
                 enqueueCommand("py_msg")
+                // Start timeout after py_msg is sent
+                handler.postDelayed({
+                    if (!streamFileResponseReceived && currentFile >= leoFirstFile && currentFile <= leoLastFile) {
+                        startStreamFileTimeout()
+                    }
+                }, 500) // Give device 500ms to respond before starting timeout
             }
         }, 250)
     }
@@ -1023,6 +1079,7 @@ class BleScanService : Service() {
             android.util.Log.w("BleScanService", "[FileStream] ========================================")
             
             streamFileResponseReceived = false
+            waitingForStreamFileResponse = false
             isFileStreamingActive = false
             
             // Move to next file if available
@@ -1053,8 +1110,58 @@ class BleScanService : Service() {
     private fun stopFileStreaming() {
         isFileStreamingActive = false
         streamFileResponseReceived = false
+        waitingForStreamFileResponse = false
         cancelStreamFileTimeout()
+        stopFileStreamingRecovery()
         android.util.Log.i("BleScanService", "[FileStream] File streaming stopped")
+    }
+    
+    private fun startFileStreamingRecovery() {
+        // Cancel any existing recovery timer to prevent duplicates
+        stopFileStreamingRecovery()
+        
+        fileStreamingRecoveryRunnable = Runnable {
+            // Check if we should restart file streaming
+            // Conditions: connected, UART ready, valid file range, current file within range, not actively streaming
+            if (connectionState == STATE_CONNECTED && 
+                isUartReady && 
+                leoFirstFile > 0 && 
+                leoLastFile > 0 &&
+                currentFile >= leoFirstFile && 
+                currentFile <= leoLastFile && 
+                !isFileStreamingActive) {
+                
+                android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                android.util.Log.i("BleScanService", "[FileStream] Recovery: File streaming stopped but should be active")
+                android.util.Log.i("BleScanService", "[FileStream] Recovery: Current file: $currentFile, Range: $leoFirstFile-$leoLastFile")
+                android.util.Log.i("BleScanService", "[FileStream] Recovery: Restarting file $currentFile")
+                android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                
+                // Restart streaming the current file
+                requestNextFile()
+            }
+            
+            // Schedule next check (only if we still have files to process)
+            if (leoFirstFile > 0 && leoLastFile > 0 && currentFile <= leoLastFile) {
+                handler.postDelayed(fileStreamingRecoveryRunnable!!, FILE_STREAMING_RECOVERY_INTERVAL_MS)
+            } else {
+                // All files processed or no valid range, stop recovery timer
+                android.util.Log.d("BleScanService", "[FileStream] Recovery timer stopping - all files processed or no valid range")
+                fileStreamingRecoveryRunnable = null
+            }
+        }
+        
+        // Start the recovery timer
+        handler.postDelayed(fileStreamingRecoveryRunnable!!, FILE_STREAMING_RECOVERY_INTERVAL_MS)
+        android.util.Log.d("BleScanService", "[FileStream] Recovery timer started (checking every ${FILE_STREAMING_RECOVERY_INTERVAL_MS / 1000}s)")
+    }
+    
+    private fun stopFileStreamingRecovery() {
+        fileStreamingRecoveryRunnable?.let {
+            handler.removeCallbacks(it)
+            fileStreamingRecoveryRunnable = null
+            android.util.Log.d("BleScanService", "[FileStream] Recovery timer stopped")
+        }
     }
 
     private fun handleAdvancedModeResponse(mode: String, value: Int) {
@@ -1359,6 +1466,7 @@ class BleScanService : Service() {
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
                 isFileStreamingActive = true
                 streamFileResponseReceived = true
+                waitingForStreamFileResponse = false // Got response, no longer waiting
                 previousChargeData = null // Reset previous data for new stream
                 chargeDataList.clear()
                 processedDataPoints.clear()
@@ -1393,8 +1501,9 @@ class BleScanService : Service() {
                 processedDataPoints.clear()
                 hasUnwantedCharacters = false
                 streamFileResponseReceived = false
+                waitingForStreamFileResponse = false
                 
-                // Schedule next file command after 15 seconds delay
+                // Schedule next file command after delay
                 scheduleNextFileStreamCommand()
             }
             
@@ -1471,11 +1580,13 @@ class BleScanService : Service() {
                     serialNumber = prefs?.getString(KEY_SERIAL_NUMBER, "") ?: ""
                 }
                 val binFileName = firmwareVersion
-                val appVersion = prefs?.getString("appVersion", "1.0.0") ?: "1.0.0"
-                val appBuildNumber = prefs?.getString("appBuildNumber", "1") ?: "1"
-                val osVersion = prefs?.getString("osVersion", "") ?: ""
-                val deviceBrand = prefs?.getString("deviceBrand", "") ?: ""
-                val deviceModel = prefs?.getString("deviceModel", "") ?: ""
+                val appVersion = prefs?.getString("appVersion", "1.5.0") ?: "1.5.0"
+                val appBuildNumber = prefs?.getString("appBuildNumber", "122") ?: "122"
+                
+                // Get device information directly from Android Build class
+                val osVersion = Build.VERSION.RELEASE // e.g., "13", "14"
+                val deviceBrand = Build.BRAND ?: "" // e.g., "samsung", "google", "oneplus"
+                val deviceModel = Build.MODEL ?: "" // e.g., "SM-G991B", "Pixel 7"
                 
                 if (serialNumber.isEmpty()) {
                     android.util.Log.w("BleScanService", "[FileStream] Serial number not available, skipping upload")
@@ -1509,10 +1620,10 @@ class BleScanService : Service() {
                 
                 // Parse app version
                 val versionParts = appVersion.split('.')
-                val major = if (versionParts.isNotEmpty()) versionParts[0].toIntOrNull() ?: 0 else 0
-                val minor = if (versionParts.size > 1) versionParts[1].toIntOrNull() ?: 0 else 0
+                val major = if (versionParts.isNotEmpty()) versionParts[0].toIntOrNull() ?: 0 else 1
+                val minor = if (versionParts.size > 1) versionParts[1].toIntOrNull() ?: 0 else 5
                 val patch = if (versionParts.size > 2) versionParts[2].toIntOrNull() ?: 0 else 0
-                val build = appBuildNumber.toIntOrNull() ?: 1
+                val build = appBuildNumber.toIntOrNull() ?: 122
                 
                 // Get flags from first entry (they should be consistent across entries)
                 val firstFlags = dataSnapshot.firstOrNull()?.flags ?: 0
@@ -1873,6 +1984,50 @@ class BleScanService : Service() {
                 stopFileStreaming()
             } else {
                 android.util.Log.i("BleScanService", "[FileStream] All files processed. Current: $currentFile, Last: $leoLastFile")
+                stopFileStreaming()
+            }
+            
+            android.util.Log.i("BleScanService", "[FileStream] ========================================")
+        }
+        
+        handler.postDelayed(fileStreamingNextFileRunnable!!, FILE_STREAMING_DELAY_MS)
+    }
+    
+    private fun scheduleNextFileAfterDelay() {
+        // Cancel any existing scheduled command
+        fileStreamingNextFileRunnable?.let {
+            handler.removeCallbacks(it)
+            android.util.Log.d("BleScanService", "[FileStream] Cancelled previous delay schedule")
+        }
+        
+        // Increment file number before scheduling delay
+        if (currentFile < leoLastFile) {
+            currentFile++
+            android.util.Log.i("BleScanService", "[FileStream] File doesn't exist, will request next file: $currentFile after delay")
+        } else {
+            android.util.Log.i("BleScanService", "[FileStream] Reached last file ($leoLastFile), no more files to stream")
+            stopFileStreaming()
+            return
+        }
+        
+        val delaySeconds = FILE_STREAMING_DELAY_MS / 1000
+        android.util.Log.i("BleScanService", "[FileStream] ========================================")
+        android.util.Log.i("BleScanService", "[FileStream] File doesn't exist - scheduling next file")
+        android.util.Log.i("BleScanService", "[FileStream] Starting ${delaySeconds}s cooldown delay for BLE stack")
+        android.util.Log.i("BleScanService", "[FileStream] Next file command will be ready after delay")
+        android.util.Log.i("BleScanService", "[FileStream] ========================================")
+        
+        fileStreamingNextFileRunnable = Runnable {
+            android.util.Log.i("BleScanService", "[FileStream] ========================================")
+            android.util.Log.i("BleScanService", "[FileStream] Cooldown delay completed (${delaySeconds}s)")
+            android.util.Log.i("BleScanService", "[FileStream] BLE stack is ready for next file stream")
+            
+            // Request the next file
+            if (connectionState == STATE_CONNECTED && isUartReady) {
+                android.util.Log.i("BleScanService", "[FileStream] Requesting next file: $currentFile")
+                requestNextFile()
+            } else {
+                android.util.Log.w("BleScanService", "[FileStream] Cannot request next file - not connected or UART not ready")
                 stopFileStreaming()
             }
             
@@ -3258,6 +3413,11 @@ class BleScanService : Service() {
         getFilesRangePending = false
         getFilesRetryDone = false
         getFilesTimeoutRunnable?.let { handler.removeCallbacks(it) }
+        
+        // Reset file streaming state on disconnect
+        stopFileStreaming()
+        stopFileStreamingRecovery()
+        
         txCharacteristic = null
         rxCharacteristic = null
         // chargeLimitConfirmed = false
@@ -3892,6 +4052,9 @@ class BleScanService : Service() {
         
         // Cancel file streaming timeout
         cancelStreamFileTimeout()
+        
+        // Stop file streaming recovery timer
+        stopFileStreamingRecovery()
 
         stopKeepAlive()
         stopBatteryMetricsPolling()
@@ -3922,4 +4085,3 @@ class BleScanService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 }
-
