@@ -28,7 +28,7 @@
 	<key>CFBundleSignature</key>
 	<string>APPL</string>
 	<key>CFBundleVersion</key>
-	<string>44</string>
+	<string>45</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
@@ -41,6 +41,19 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app needs local network access to communicate with the backend server and provide device logging functionality.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>13.62.9.177</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs location access to keep the service running in the background and provide continuous functionality.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
