@@ -93,17 +93,19 @@ class BLEService: NSObject {
     private var connectionState: ConnectionState = .disconnected
     private var connectedPeripheral: CBPeripheral?
     private var pendingConnectDeviceId: String? // Track pending connection
-    private var isUserInitiatedDisconnect = false // Track manual disconnects
     private var connectionTimer: Timer?
     private let connectionTimeout: TimeInterval = 10.0 // 10 seconds timeout
     private let operationDelay: TimeInterval = 0.5 // 500ms delay between operations
     
-    // Auto-reconnection (simplified: scan + connect every 10 seconds until success)
+    // Auto-reconnection (matching Android reconnect logic)
     private var autoConnectEnabled = true
     private var reconnectAttempts = 0
-    private let reconnectDelay: TimeInterval = 10.0 // Fixed 10-second delay between attempts
-    private var isReconnecting = false // Track if reconnection is active
-    private var pendingAutoConnectDeviceId: String? // Track device we're trying to auto-connect to
+    private let reconnectDelayMs: TimeInterval = 2.0 // 2 seconds (matching Android RECONNECT_DELAY_MS)
+    private let reconnectBackoffMs: TimeInterval = 1.0 // 1 second (matching Android RECONNECT_BACKOFF_MS)
+    private let maxReconnectAttempts = 10 // Matching Android MAX_RECONNECT_ATTEMPTS
+    private let reconnectCooldownMs: TimeInterval = 30.0 // 30 seconds cooldown after max attempts
+    private var reconnectTimer: DispatchWorkItem? // Track scheduled reconnect
+    private var pendingConnectAddress: String? // Track device address for reconnection
     private let lastDeviceIdKey = "LastConnectedDeviceId"
     private let lastDeviceNameKey = "LastConnectedDeviceName"
     private let autoConnectEnabledKey = "AutoConnectEnabled"
@@ -288,8 +290,8 @@ class BLEService: NSObject {
     
     // MARK: - Connection Methods
     
-    /// Connect to a BLE device by UUID
-    func connect(deviceId: String, isFromReconnectScheduler: Bool = false) -> [String: Any] {
+    /// Connect to a BLE device by UUID (matching Android connectToDevice)
+    func connect(deviceId: String, userInitiated: Bool = true) -> [String: Any] {
         guard bluetoothState == .poweredOn else {
             let message = "Cannot connect: Bluetooth is \(bluetoothStateToString(bluetoothState))"
             logger.logError(message)
@@ -299,38 +301,16 @@ class BLEService: NSObject {
             ]
         }
         
-        // If this is a manual connection (not from reconnect scheduler), handle special logic
-        if !isFromReconnectScheduler {
-            // Stop any ongoing reconnection
-            if isReconnecting {
-                logger.logInfo("Manual connection attempt, stopping reconnect scheduler")
-                cancelReconnect()
-                reconnectAttempts = 0
-            }
+        // If user-initiated connection, handle special logic (matching Android)
+        if userInitiated {
+            // Cancel any ongoing reconnection
+            cancelReconnect()
+            reconnectAttempts = 0
             
-            // Re-enable auto-connect when user manually connects (without triggering auto-connect)
-            // This allows auto-reconnection for this new device
-            if !autoConnectEnabled {
-                logger.logInfo("Re-enabling auto-connect for manual connection")
-                autoConnectEnabled = true
-                UserDefaults.standard.set(true, forKey: autoConnectEnabledKey)
-            }
-        }
-        
-        // Check connection state (matching Android: if (connectionState != STATE_DISCONNECTED) return)
-        if connectionState != .disconnected {
-            let stateStr = connectionState == .connected ? "Already connected" : "Connection already in progress"
-            logger.logWarning(stateStr)
-            // Still notify UI of current state
-            if connectionState == .connecting {
-                onConnectionStateChanged?(deviceId, "CONNECTING")
-            } else if connectionState == .connected {
-                onConnectionStateChanged?(deviceId, "CONNECTED")
-            }
-            return [
-                "success": false,
-                "message": stateStr
-            ]
+            // Enable auto-reconnect when user manually connects (matching Android)
+            autoConnectEnabled = true
+            UserDefaults.standard.set(true, forKey: autoConnectEnabledKey)
+            logger.logInfo("Auto-reconnect enabled for user-initiated connection")
         }
         
         // Find the peripheral
@@ -342,13 +322,28 @@ class BLEService: NSObject {
             ]
         }
         
+        // Properly close existing connection before connecting (matching Android: closeGatt)
+        // This prevents status 133 errors
+        if let existingPeripheral = connectedPeripheral {
+            logger.logInfo("Closing existing connection before new connection")
+            centralManager.cancelPeripheralConnection(existingPeripheral)
+            connectedPeripheral = nil
+            connectionState = .disconnected
+            isUartReady = false
+            txCharacteristic = nil
+            rxCharacteristic = nil
+        }
+        
+        // Small delay to let Bluetooth stack reset after closing (matching Android: Thread.sleep(100))
+        Thread.sleep(forTimeInterval: 0.1)
+        
         let peripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
         guard let peripheral = peripherals.first else {
             // Device not in cache - start scanning to find it (matching Android behavior)
             logger.logInfo("Device \(deviceId) not in cache, starting scan to find it...")
             
-            // Set as pending auto-connect device so we connect when discovered
-            pendingAutoConnectDeviceId = deviceId
+            // Set as pending connect address so we connect when discovered
+            pendingConnectAddress = deviceId
             
             // Start scan
             let scanResult = startScan()
@@ -358,7 +353,7 @@ class BLEService: NSObject {
                     "message": "Scanning for device..."
                 ]
             } else {
-                pendingAutoConnectDeviceId = nil
+                pendingConnectAddress = nil
                 return scanResult
             }
         }
@@ -370,13 +365,15 @@ class BLEService: NSObject {
             logger.logScan("Stopped scan before connection")
         }
         
+        // Set connection state (matching Android: connectionState = STATE_CONNECTING)
+        connectionState = .connecting
+        pendingConnectDeviceId = deviceId
+        
         // Notify UI immediately that we're connecting (matching Android)
         onConnectionStateChanged?(deviceId, "CONNECTING")
         
-        // Add delay before connecting (BLE stack stability - matching Android operationDelay)
-        DispatchQueue.main.asyncAfter(deadline: .now() + operationDelay) { [weak self] in
-            self?.performConnection(peripheral: peripheral)
-        }
+        // Perform connection (matching Android: direct connect after delay)
+        performConnection(peripheral: peripheral, userInitiated: userInitiated)
         
         return [
             "success": true,
@@ -385,13 +382,9 @@ class BLEService: NSObject {
     }
     
     /// Perform the actual connection (matching Android: proper delays and state management)
-    private func performConnection(peripheral: CBPeripheral, isAutoConnect: Bool = false) {
-        // Set connection state (matching Android: connectionState = STATE_CONNECTING)
-        connectionState = .connecting
-        pendingConnectDeviceId = peripheral.identifier.uuidString
-        peripheral.delegate = self
-        
+    private func performConnection(peripheral: CBPeripheral, userInitiated: Bool = true) {
         let deviceId = peripheral.identifier.uuidString
+        peripheral.delegate = self
         
         // Use saved device name if peripheral.name is nil (common when retrieving from cache)
         // This ensures we show the correct name during reconnection
@@ -401,28 +394,25 @@ class BLEService: NSObject {
         } else if let savedName = getLastConnectedDeviceName(), deviceId == getLastConnectedDeviceId() {
             deviceName = savedName
         } else {
-            deviceName = "Unknown"
+            deviceName = "Leo Usb"
         }
         
-        if isAutoConnect {
-            logger.logAutoConnect(address: deviceId)
-        } else {
+        if userInitiated {
             logger.logConnect(address: deviceId, name: deviceName)
+        } else {
+            logger.logAutoConnect(address: deviceId)
         }
-        
-        // Notify UI immediately that we're connecting (matching Android)
-        onConnectionStateChanged?(deviceId, "CONNECTING")
         
         // Start connection timeout timer
         connectionTimer = Timer.scheduledTimer(withTimeInterval: connectionTimeout, repeats: false) { [weak self] _ in
             self?.handleConnectionTimeout(peripheral: peripheral)
         }
         
-        // Connect to peripheral (matching Android: direct connect after delay)
+        // Connect to peripheral (matching Android: direct connect)
         centralManager.connect(peripheral, options: nil)
     }
     
-    /// Handle connection timeout
+    /// Handle connection timeout (matching Android)
     private func handleConnectionTimeout(peripheral: CBPeripheral) {
         let deviceId = peripheral.identifier.uuidString
         
@@ -433,7 +423,7 @@ class BLEService: NSObject {
         } else if let savedName = getLastConnectedDeviceName(), deviceId == getLastConnectedDeviceId() {
             deviceName = savedName
         } else {
-            deviceName = "Unknown"
+            deviceName = "Leo Usb"
         }
         
         logger.logError("Connection timeout for device: \(deviceName)")
@@ -441,16 +431,14 @@ class BLEService: NSObject {
         // Set state back to disconnected
         connectionState = .disconnected
         pendingConnectDeviceId = nil
-        isUserInitiatedDisconnect = false // Reset flag on timeout
         connectionTimer?.invalidate()
         connectionTimer = nil
         
         // Cancel connection attempt
         centralManager.cancelPeripheralConnection(peripheral)
         
-        // If reconnecting, schedule next attempt immediately
-        if isReconnecting && autoConnectEnabled {
-            logger.logInfo("Connection timeout during reconnect, scheduling next attempt...")
+        // Schedule reconnect if auto-reconnect is enabled (matching Android)
+        if autoConnectEnabled && bluetoothState == .poweredOn {
             scheduleReconnect(address: deviceId)
         }
         
@@ -458,8 +446,8 @@ class BLEService: NSObject {
         onConnectionStateChanged?(deviceId, "TIMEOUT")
     }
     
-    /// Disconnect from current device
-    func disconnect() -> [String: Any] {
+    /// Disconnect from current device (matching Android disconnectDevice)
+    func disconnect(userInitiated: Bool = true) -> [String: Any] {
         guard let peripheral = connectedPeripheral else {
             logger.logWarning("No device connected")
             return [
@@ -467,17 +455,6 @@ class BLEService: NSObject {
                 "message": "No device connected"
             ]
         }
-        
-        isUserInitiatedDisconnect = true // Mark as user-initiated
-        cancelReconnect() // Stop reconnection scheduler
-        reconnectAttempts = 0 // Reset attempt counter
-        pendingAutoConnectDeviceId = nil // Clear pending auto-connect
-        
-        // IMPORTANT: Disable auto-connect when user manually disconnects
-        // This prevents auto-reconnection on next app startup
-        autoConnectEnabled = false
-        UserDefaults.standard.set(false, forKey: autoConnectEnabledKey)
-        logger.logInfo("Auto-connect disabled due to manual disconnect")
         
         let deviceId = peripheral.identifier.uuidString
         
@@ -488,15 +465,46 @@ class BLEService: NSObject {
         } else if let savedName = getLastConnectedDeviceName(), deviceId == getLastConnectedDeviceId() {
             deviceName = savedName
         } else {
-            deviceName = "Unknown"
+            deviceName = "Leo Usb"
         }
         
-        logger.logDisconnect(reason: "User requested disconnect from \(deviceName)")
-        
-        // Add delay before disconnecting (BLE stack stability)
-        DispatchQueue.main.asyncAfter(deadline: .now() + operationDelay) { [weak self] in
-            self?.centralManager.cancelPeripheralConnection(peripheral)
+        if userInitiated {
+            logger.logDisconnect(reason: "User requested disconnect from \(deviceName)")
+        } else {
+            logger.logDisconnect(reason: "Disconnecting from \(deviceName)")
         }
+        
+        // Cancel reconnection (matching Android: cancelReconnect)
+        cancelReconnect()
+        
+        // If user-initiated disconnect, disable auto-reconnect and clear saved device (matching Android)
+        if userInitiated {
+            autoConnectEnabled = false
+            UserDefaults.standard.set(false, forKey: autoConnectEnabledKey)
+            reconnectAttempts = 0
+            clearLastConnectedDevice()
+            logger.logInfo("Auto-reconnect disabled and saved device cleared due to user disconnect")
+        }
+        
+        // Clear pending connect address
+        pendingConnectAddress = nil
+        pendingConnectDeviceId = nil
+        
+        // Clean up UART state (matching Android)
+        isUartReady = false
+        initialSetupDone = false
+        uiReadyCommandsSent = false
+        txCharacteristic = nil
+        rxCharacteristic = nil
+        chargeLimitConfirmed = false
+        
+        // Stop timers (matching Android)
+        stopChargeLimitTimer()
+        stopTimeTracking()
+        stopMeasureTimer()
+        
+        // Disconnect peripheral
+        centralManager.cancelPeripheralConnection(peripheral)
         
         return [
             "success": true,
@@ -626,7 +634,6 @@ class BLEService: NSObject {
         logger.logInfo("Cleared last connected device")
     }
     
-    /// Attempt auto-connect to last device
     /// Attempt auto-connect to last device (matching Android attemptAutoConnect)
     private func attemptAutoConnect() {
         // Matching Android: if (connectionState != STATE_DISCONNECTED) return
@@ -648,54 +655,62 @@ class BLEService: NSObject {
             return
         }
         
-        let savedName = getLastConnectedDeviceName() ?? "Unknown"
-        logger.logInfo("Attempting auto-connect to last device: \(savedName) (\(savedAddress))")
         logger.logAutoConnect(address: savedAddress)
         
-        // Try to connect (will auto-scan if device not in cache)
-        _ = connect(deviceId: savedAddress)
+        // Try to connect (matching Android: connectToDevice(savedAddress, userInitiated = false))
+        // Note: This will scan if device not in cache, matching Android behavior
+        _ = connect(deviceId: savedAddress, userInitiated: false)
     }
     
-    /// Schedule reconnection (simplified: scan + connect every 10 seconds indefinitely)
+    /// Schedule reconnection (matching Android scheduleReconnect)
     private func scheduleReconnect(address: String) {
         if !autoConnectEnabled { return }
         
-        // Cancel any existing reconnect timer
+        // Cancel any existing reconnect timer (matching Android: cancelReconnect)
         cancelReconnect()
         
+        // Calculate delay with backoff (matching Android logic)
+        let delay: TimeInterval
+        if reconnectAttempts >= maxReconnectAttempts {
+            // After MAX_RECONNECT_ATTEMPTS, add longer cooldown and restart scan (matching Android)
+            reconnectAttempts = 0
+            logger.logInfo("Max reconnect attempts reached, waiting \(Int(reconnectCooldownMs))s before retry")
+            restartScan() // Restart BLE scan to refresh device cache (matching Android)
+            delay = reconnectCooldownMs
+        } else {
+            // Normal reconnect delay with backoff (matching Android: RECONNECT_DELAY_MS + (reconnectAttempts * RECONNECT_BACKOFF_MS))
+            delay = reconnectDelayMs + (Double(reconnectAttempts) * reconnectBackoffMs)
+        }
+        
         reconnectAttempts += 1
-        isReconnecting = true
-        let lastDeviceName = getLastConnectedDeviceName() ?? "Unknown"
+        pendingConnectAddress = address
         
         logger.logReconnect(attempt: reconnectAttempts, address: address)
-        logger.logInfo("Reconnect attempt #\(reconnectAttempts) to \(lastDeviceName) (waiting \(Int(reconnectDelay))s)")
         
-        // IMPORTANT: Use DispatchQueue.main.asyncAfter instead of Timer on background thread
-        // Timers need a RunLoop which might not be running on background BLE queue
-        DispatchQueue.main.asyncAfter(deadline: .now() + reconnectDelay) { [weak self] in
+        // Schedule reconnect with calculated delay (matching Android: handler.postDelayed)
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             
-            // Check if we should still try to reconnect
-            guard self.autoConnectEnabled && self.connectionState == .disconnected && self.bluetoothState == .poweredOn else {
+            // Check if we should still try to reconnect (matching Android conditions)
+            guard self.autoConnectEnabled && 
+                  self.connectionState == .disconnected && 
+                  self.bluetoothState == .poweredOn else {
                 self.logger.logInfo("Stopping reconnect: autoConnect=\(self.autoConnectEnabled), state=\(self.connectionState), BT=\(self.bluetoothStateToString(self.bluetoothState))")
-                self.isReconnecting = false
                 return
             }
             
-            self.logger.logInfo("Executing reconnect attempt #\(self.reconnectAttempts): scanning and connecting...")
-            
-            // Start scan to find device (scan will stop automatically when we connect)
-            _ = self.startScan()
-            
-            // Try to connect (mark as from reconnect scheduler so it doesn't cancel itself)
-            // Note: Next attempt will be scheduled by timeout/failure/success handlers
-            _ = self.connect(deviceId: address, isFromReconnectScheduler: true)
+            // Try to connect (matching Android: connectToDevice(address, userInitiated = false))
+            _ = self.connect(deviceId: address, userInitiated: false)
         }
+        
+        reconnectTimer = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
     
-    /// Cancel reconnection
+    /// Cancel reconnection (matching Android cancelReconnect)
     private func cancelReconnect() {
-        isReconnecting = false
+        reconnectTimer?.cancel()
+        reconnectTimer = nil
         logger.logDebug("Cancelled reconnection scheduler")
     }
     
@@ -714,7 +729,7 @@ class BLEService: NSObject {
     
     /// Check if currently attempting to reconnect
     func isCurrentlyReconnecting() -> Bool {
-        return isReconnecting
+        return reconnectTimer != nil
     }
     
     // MARK: - Charge Limit Methods
@@ -1545,8 +1560,25 @@ extension BLEService: CBCentralManagerDelegate {
             }
             
         case .poweredOff:
-            // Bluetooth is turned off - inform user to enable it
+            // Bluetooth is turned off - clean up (matching Android)
             logger.logWarning("Bluetooth is turned off. Please enable Bluetooth to connect to devices.")
+            stopScan()
+            cancelReconnect()
+            stopChargeLimitTimer()
+            stopTimeTracking()
+            stopMeasureTimer()
+            if let peripheral = connectedPeripheral {
+                centralManager.cancelPeripheralConnection(peripheral)
+            }
+            connectionState = .disconnected
+            connectedPeripheral = nil
+            pendingConnectDeviceId = nil
+            pendingConnectAddress = nil
+            isUartReady = false
+            txCharacteristic = nil
+            rxCharacteristic = nil
+            discoveredDevices.removeAll()
+            onConnectionStateChanged?("", "DISCONNECTED")
             
         case .unauthorized:
             // User denied Bluetooth permission
@@ -1600,16 +1632,16 @@ extension BLEService: CBCentralManagerDelegate {
         // Notify callback if set
         onDeviceDiscovered?(deviceInfo)
         
-        // If this is a pending auto-connect device, connect to it (matching Android auto-connect behavior)
-        if let pendingId = pendingAutoConnectDeviceId, pendingId == deviceId {
-            logger.logInfo("Found pending auto-connect device: \(deviceName), connecting...")
-            pendingAutoConnectDeviceId = nil // Clear pending
+        // If this is a pending connect device, connect to it (matching Android auto-connect behavior)
+        if let pendingId = pendingConnectAddress, pendingId == deviceId {
+            logger.logInfo("Found pending connect device: \(deviceName), connecting...")
+            pendingConnectAddress = nil // Clear pending
             
             // Stop scanning before connecting
             if centralManager.isScanning {
                 centralManager.stopScan()
                 isScanning = false
-                logger.logScan("Stopped scan before auto-connect")
+                logger.logScan("Stopped scan before connect")
             }
             
             // Connect directly to the discovered peripheral (more reliable than retrieving from cache)
@@ -1619,7 +1651,7 @@ extension BLEService: CBCentralManagerDelegate {
                     // Notify UI immediately that we're connecting
                     self.onConnectionStateChanged?(deviceId, "CONNECTING")
                     // Connect directly to the discovered peripheral
-                    self.performConnection(peripheral: peripheral, isAutoConnect: true)
+                    self.performConnection(peripheral: peripheral, userInitiated: false)
                 }
             }
         }
@@ -1631,33 +1663,35 @@ extension BLEService: CBCentralManagerDelegate {
         connectionTimer?.invalidate()
         connectionTimer = nil
         
-        // Stop reconnection and reset attempts
-        cancelReconnect()
-        reconnectAttempts = 0
-        
-        // Set connection state
+        // Set connection state (matching Android: connectionState = STATE_CONNECTED)
         connectionState = .connected
         connectedPeripheral = peripheral
+        
+        // Stop reconnection and reset attempts (matching Android)
+        cancelReconnect()
+        reconnectAttempts = 0
+        pendingConnectAddress = nil
         pendingConnectDeviceId = nil
-        pendingAutoConnectDeviceId = nil // Clear pending auto-connect
         
         // CRITICAL: Set peripheral delegate BEFORE any operations (must be set for callbacks)
         peripheral.delegate = self
         
         let deviceId = peripheral.identifier.uuidString
         
-        // Get device name - prefer peripheral.name, fallback to saved name, then "Unknown"
+        // Get device name - prefer peripheral.name, fallback to saved name, then "Leo Usb"
         let deviceName: String
         if let peripheralName = peripheral.name, !peripheralName.isEmpty {
             deviceName = peripheralName
         } else if let savedName = getLastConnectedDeviceName(), deviceId == getLastConnectedDeviceId() {
             deviceName = savedName
         } else {
-            deviceName = "Unknown"
+            deviceName = "Leo Usb"
         }
         
-        // Save as last connected device (updates name if peripheral has it)
+        // Save as last connected device and enable auto-reconnect (matching Android)
         saveLastConnectedDevice(deviceId: deviceId, deviceName: deviceName)
+        autoConnectEnabled = true
+        UserDefaults.standard.set(true, forKey: autoConnectEnabledKey)
         
         logger.logConnected(address: deviceId, name: deviceName)
         
@@ -1686,7 +1720,7 @@ extension BLEService: CBCentralManagerDelegate {
         }
     }
     
-    /// Called when a connection to a peripheral fails
+    /// Called when a connection to a peripheral fails (matching Android)
     func centralManager(_ central: CBCentralManager, 
                        didFailToConnect peripheral: CBPeripheral, 
                        error: Error?) {
@@ -1694,7 +1728,7 @@ extension BLEService: CBCentralManagerDelegate {
         connectionTimer?.invalidate()
         connectionTimer = nil
         
-        // Set state back to disconnected
+        // Set state back to disconnected (matching Android)
         connectionState = .disconnected
         pendingConnectDeviceId = nil
         
@@ -1708,14 +1742,14 @@ extension BLEService: CBCentralManagerDelegate {
         } else if let savedName = getLastConnectedDeviceName(), deviceId == getLastConnectedDeviceId() {
             deviceName = savedName
         } else {
-            deviceName = "Unknown"
+            deviceName = "Leo Usb"
         }
         
         logger.logError("Failed to connect to \(deviceName): \(errorMsg)")
         
-        // If reconnecting, schedule next attempt immediately
-        if isReconnecting && autoConnectEnabled && !isUserInitiatedDisconnect {
-            logger.logInfo("Connection failed during reconnect, scheduling next attempt...")
+        // Schedule reconnect if auto-reconnect is enabled (matching Android)
+        // Android checks: shouldAutoReconnect && bluetoothAdapter?.isEnabled == true && previousAddress != null
+        if autoConnectEnabled && bluetoothState == .poweredOn && deviceId == (pendingConnectAddress ?? getLastConnectedDeviceId()) {
             scheduleReconnect(address: deviceId)
         }
         
@@ -1723,18 +1757,19 @@ extension BLEService: CBCentralManagerDelegate {
         onConnectionStateChanged?(deviceId, "FAILED")
     }
     
-    /// Called when a peripheral disconnects
+    /// Called when a peripheral disconnects (matching Android onConnectionStateChange STATE_DISCONNECTED)
     func centralManager(_ central: CBCentralManager, 
                        didDisconnectPeripheral peripheral: CBPeripheral, 
                        error: Error?) {
         // Only clear if this is our connected peripheral
-        let wasOurDevice = connectedPeripheral?.identifier == peripheral.identifier
-        if wasOurDevice {
-            connectedPeripheral = nil
-            connectionState = .disconnected
-            pendingConnectDeviceId = nil
-            
+        let wasConnected = connectedPeripheral?.identifier == peripheral.identifier
+        let previousAddress = connectedPeripheral?.identifier.uuidString ?? pendingConnectAddress
+        
+        if wasConnected {
             // Clean up UART state (matching Android)
+            connectionState = .disconnected
+            connectedPeripheral = nil
+            pendingConnectDeviceId = nil
             isUartReady = false
             initialSetupDone = false // Reset so initial setup runs again on next connection
             uiReadyCommandsSent = false // Reset so UI-ready commands can be sent again on next connection
@@ -1742,7 +1777,7 @@ extension BLEService: CBCentralManagerDelegate {
             rxCharacteristic = nil
             chargeLimitConfirmed = false
             
-            // Stop all timers
+            // Stop all timers (matching Android)
             stopChargeLimitTimer()
             stopTimeTracking()
             stopMeasureTimer()
@@ -1757,25 +1792,18 @@ extension BLEService: CBCentralManagerDelegate {
         } else if let savedName = getLastConnectedDeviceName(), deviceId == getLastConnectedDeviceId() {
             deviceName = savedName
         } else {
-            deviceName = "Unknown"
+            deviceName = "Leo Usb"
         }
         
-        // Check if this was a user-initiated disconnect
-        if isUserInitiatedDisconnect {
-            logger.logDisconnect(reason: "User-initiated disconnect from \(deviceName)")
-            isUserInitiatedDisconnect = false // Reset flag
-            cancelReconnect() // Stop any reconnection
-            reconnectAttempts = 0 // Reset attempt counter
-            // Don't attempt reconnect for user-initiated disconnects
-        } else {
-            // Unexpected disconnect - start reconnect scheduler (scan + connect every 10s indefinitely)
-            let errorMsg = error?.localizedDescription ?? "Connection lost"
-            logger.logDisconnect(reason: "Unexpected disconnect from \(deviceName): \(errorMsg)")
-            
-            if wasOurDevice && autoConnectEnabled {
-                logger.logInfo("Unexpected disconnect, starting reconnect scheduler...")
-                reconnectAttempts = 0 // Reset attempt counter for new reconnection sequence
-                scheduleReconnect(address: deviceId)
+        let errorMsg = error?.localizedDescription ?? "Connection lost"
+        logger.logDisconnect(reason: "Disconnected from \(deviceName) (status: \(errorMsg), wasConnected: \(wasConnected))")
+        
+        // Schedule reconnect if auto-reconnect is enabled (matching Android logic)
+        // Android checks: shouldAutoReconnect && bluetoothAdapter?.isEnabled == true && previousAddress != null
+        // Android also checks: status != BluetoothGatt.GATT_SUCCESS || wasConnected
+        if autoConnectEnabled && bluetoothState == .poweredOn && previousAddress != nil {
+            if wasConnected || error != nil {
+                scheduleReconnect(address: previousAddress!)
             }
         }
         
