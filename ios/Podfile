@@ -31,6 +31,10 @@ target 'Runner' do
   use_frameworks!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  
+  # Add Firebase Firestore for file streaming data upload
+  pod 'Firebase/Firestore'
+  
   target 'RunnerTests' do
     inherit! :search_paths
   end

@@ -148,6 +148,9 @@ class BackgroundServiceChannel {
         case "sendUIReadyCommands":
             sendUIReadyCommands(result: result)
             
+        case "startFileStreaming":
+            startFileStreaming(result: result)
+            
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -494,6 +497,13 @@ class BackgroundServiceChannel {
     private func sendUIReadyCommands(result: @escaping FlutterResult) {
         let commandResult = bleService.sendUIReadyCommands()
         result(commandResult)
+    }
+    
+    // MARK: - File Streaming Method Handler
+    
+    private func startFileStreaming(result: @escaping FlutterResult) {
+        let streamingResult = bleService.startFileStreaming()
+        result(streamingResult)
     }
 }
 

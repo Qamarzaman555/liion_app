@@ -1,5 +1,0 @@
-timestamp;session;current;volt;soc;wh;mode;charge phase;charge time;temperature;fault flags;flags;charge limit
-1400.623;987;0.161;4.99;-1;931770;0;1;1396;31.7;0;3;-1
-1402.627;987;0.181;4.96;-1;931770;0;1;1398;31.7;0;3;-1
-1466.623;987;0.262;4.94;-1;931777;0;1;1462;31.7;0;3;-1
-

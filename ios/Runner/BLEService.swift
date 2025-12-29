@@ -1,6 +1,8 @@
 import Foundation
 import CoreBluetooth
 import UIKit
+import FirebaseFirestore
+import FirebaseCore
 
 /// BLEService - Manages Bluetooth state and operations
 class BLEService: NSObject {
@@ -21,10 +23,17 @@ class BLEService: NSObject {
     private let txCharacteristicUUID = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // Write (app -> device)
     private let rxCharacteristicUUID = CBUUID(string: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // Notify (device -> app)
     
+    // Data Transfer Service UUIDs (File Streaming) - matching Android
+    private let dataTransferServiceUUID = CBUUID(string: "41E2B910-D0E0-4880-8988-5D4A761B9DC7")
+    private let dataTransmitCharUUID = CBUUID(string: "94D2C6E0-89B3-4133-92A5-15CCED3EE729")
+    
     // UART characteristics
     private var txCharacteristic: CBCharacteristic?
     private var rxCharacteristic: CBCharacteristic?
     private var isUartReady = false
+    
+    // File streaming characteristics
+    private var fileStreamingCharacteristic: CBCharacteristic?
     
     // Track if initial setup commands have been sent (prevents duplicates)
     private var initialSetupDone = false
@@ -82,6 +91,66 @@ class BLEService: NSObject {
     private let ghostModeKey = "ghost_mode_enabled"
     private let silentModeKey = "silent_mode_enabled"
     private let higherChargeLimitKey = "higher_charge_limit_enabled"
+    private let serialNumberKey = "deviceSerialNumber"
+    
+    // File streaming state (matching Android)
+    private var fileStreamingAccumulatedData = ""
+    private var isFileStreamingActive = false
+    private var fileStreamingRequested = false
+    private var getFilesRangePending = false
+    private var getFilesRetryDone = false
+    private var serialRequested = false
+    private var serialNumber: String = ""
+    private var firmwareVersion: String = ""
+    
+    // File streaming file management (matching Android)
+    private var leoFirstFile = 0
+    private var leoLastFile = 0
+    private var currentFile = 0
+    private var fileCheck = 0
+    private var streamFileResponseReceived = false
+    private var waitingForStreamFileResponse = false
+    private var lastStreamFileCommandTime: TimeInterval = 0
+    private var streamFileTimeoutWorkItem: DispatchWorkItem?
+    private let streamFileTimeoutSeconds: TimeInterval = 10.0 // 10 seconds timeout
+    
+    // File streaming recovery timer
+    private var fileStreamingRecoveryWorkItem: DispatchWorkItem?
+    private let fileStreamingRecoveryIntervalSeconds: TimeInterval = 10.0 // Check every 10 seconds
+    private let fileStreamingDelaySeconds: TimeInterval = 7.0 // 7 seconds delay after ETX
+    
+    // File streaming data processing (matching Android ChargeData)
+    private struct ChargeData {
+        let timestamp: Double
+        let session: Int?
+        let current: Double?
+        let volt: Double?
+        let soc: Int?
+        let wh: Int?
+        let mode: Int?
+        let chargePhase: Int?
+        let chargeTime: Int?
+        let temperature: Double?
+        let faultFlags: Int?
+        let flags: Int?
+        let chargeLimit: Int?
+        let startupCount: Int?
+        let chargeProfile: Int?
+    }
+    
+    private var chargeDataList: [ChargeData] = []
+    private var previousChargeData: ChargeData?
+    private var processedDataPoints: Set<String> = []
+    private var hasUnwantedCharacters = false
+    private var currentSession = 0
+    private var currentMode = 0
+    private var currentChargeLimit = 0
+    
+    // Firebase Firestore (matching Android) - lazy initialization to ensure Firebase is configured first
+    private lazy var firestore: Firestore = {
+        return Firestore.firestore()
+    }()
+    private let collectionName = "IOS Testing Build 1.5.0 (45)"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -132,6 +201,9 @@ class BLEService: NSObject {
         
         // Load saved advanced modes settings
         loadAdvancedModesSettings()
+        
+        // Load serial number
+        serialNumber = UserDefaults.standard.string(forKey: serialNumberKey) ?? ""
         
         // Setup battery monitoring
         setupBatteryMonitoring()
@@ -497,6 +569,14 @@ class BLEService: NSObject {
         txCharacteristic = nil
         rxCharacteristic = nil
         chargeLimitConfirmed = false
+        
+        // Reset file streaming state on disconnect (matching Android)
+        serialRequested = false
+        fileStreamingRequested = false
+        getFilesRangePending = false
+        getFilesRetryDone = false
+        stopFileStreaming()
+        stopFileStreamingRecovery()
         
         // Stop timers (matching Android)
         stopChargeLimitTimer()
@@ -1052,6 +1132,752 @@ class BLEService: NSObject {
         return lastReceivedData
     }
     
+    // MARK: - File Streaming Methods (matching Android)
+    
+    /// Start file streaming (matching Android startFileStreaming)
+    func startFileStreaming() -> [String: Any] {
+        guard connectionState == .connected && isUartReady else {
+            logger.logWarning("[FileStream] Cannot start file streaming - not connected or UART not ready")
+            return ["success": false, "message": "Device not connected or UART not ready"]
+        }
+        
+        return requestGetFiles()
+    }
+    
+    /// Request get_files command (matching Android requestGetFiles)
+    private func requestGetFiles() -> [String: Any] {
+        guard connectionState == .connected && isUartReady else {
+            logger.logWarning("[FileStream] Cannot request get_files - not connected or UART not ready")
+            return ["success": false, "message": "Device not connected or UART not ready"]
+        }
+        
+        logger.logInfo("[FileStream] ========================================")
+        logger.logInfo("[FileStream] Starting file streaming process")
+        logger.logInfo("[FileStream] Sending get_files command")
+        logger.logInfo("[FileStream] ========================================")
+        
+        getFilesRangePending = true
+        getFilesRetryDone = false
+        streamFileTimeoutWorkItem?.cancel()
+        
+        enqueueCommand("app_msg get_files")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self else { return }
+            if self.isUartReady && self.connectionState == .connected {
+                self.enqueueCommand("py_msg")
+                self.logger.logInfo("[FileStream] py_msg sent 300ms after get_files")
+            }
+        }
+        
+        // One-shot timeout to nudge range if still pending
+        streamFileTimeoutWorkItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            if self.getFilesRangePending && self.isUartReady && self.connectionState == .connected {
+                self.logger.logWarning("[FileStream] get_files range still pending; sending py_msg reminder")
+                self.enqueueCommand("py_msg")
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: streamFileTimeoutWorkItem!)
+        
+        return ["success": true, "message": "get_files command sent"]
+    }
+    
+    /// Start streaming a specific file (matching Android startFileStreaming)
+    private func startFileStreamingForFile() {
+        guard connectionState == .connected && isUartReady else {
+            logger.logWarning("[FileStream] Cannot start file streaming - not connected or UART not ready")
+            return
+        }
+        
+        isFileStreamingActive = true
+        currentFile = leoFirstFile
+        streamFileResponseReceived = false
+        waitingForStreamFileResponse = true
+        lastStreamFileCommandTime = Date().timeIntervalSince1970
+        
+        logger.logInfo("[FileStream] Requesting file \(currentFile)")
+        enqueueCommand("app_msg stream_file \(currentFile)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self = self else { return }
+            if self.isUartReady && self.connectionState == .connected {
+                self.enqueueCommand("py_msg")
+            }
+        }
+    }
+    
+    /// Request next file (matching Android requestNextFile)
+    private func requestNextFile() {
+        guard connectionState == .connected && isUartReady else {
+            logger.logWarning("[FileStream] Cannot request next file - not connected")
+            return
+        }
+        
+        streamFileResponseReceived = false
+        waitingForStreamFileResponse = true
+        lastStreamFileCommandTime = Date().timeIntervalSince1970
+        cancelStreamFileTimeout()
+        
+        logger.logInfo("[FileStream] Requesting file \(currentFile)")
+        enqueueCommand("app_msg stream_file \(currentFile)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self = self else { return }
+            if self.isUartReady && self.connectionState == .connected {
+                self.enqueueCommand("py_msg")
+                // Start timeout after py_msg is sent
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    guard let self = self else { return }
+                    if !self.streamFileResponseReceived && self.currentFile >= self.leoFirstFile && self.currentFile <= self.leoLastFile {
+                        self.startStreamFileTimeout()
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Start stream file timeout (matching Android startStreamFileTimeout)
+    private func startStreamFileTimeout() {
+        cancelStreamFileTimeout()
+        
+        streamFileTimeoutWorkItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.logger.logWarning("[FileStream] ========================================")
+            self.logger.logWarning("[FileStream] Stream file timeout - no response received for file \(self.currentFile)")
+            self.logger.logWarning("[FileStream] ========================================")
+            
+            self.streamFileResponseReceived = false
+            self.waitingForStreamFileResponse = false
+            self.isFileStreamingActive = false
+            
+            // Move to next file if available
+            if self.currentFile < self.leoLastFile && self.connectionState == .connected {
+                self.currentFile += 1
+                self.logger.logInfo("[FileStream] Moving to next file due to timeout: \(self.currentFile)")
+                self.requestNextFile()
+            } else if self.currentFile == self.leoLastFile {
+                // Retry last file once more
+                self.logger.logInfo("[FileStream] Retrying last file due to timeout: \(self.currentFile)")
+                self.requestNextFile()
+            } else {
+                self.logger.logInfo("[FileStream] Timeout on file beyond last file. Stopping file streaming.")
+                self.stopFileStreaming()
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + streamFileTimeoutSeconds, execute: streamFileTimeoutWorkItem!)
+    }
+    
+    /// Cancel stream file timeout (matching Android cancelStreamFileTimeout)
+    private func cancelStreamFileTimeout() {
+        streamFileTimeoutWorkItem?.cancel()
+        streamFileTimeoutWorkItem = nil
+    }
+    
+    /// Stop file streaming (matching Android stopFileStreaming)
+    private func stopFileStreaming() {
+        isFileStreamingActive = false
+        streamFileResponseReceived = false
+        waitingForStreamFileResponse = false
+        cancelStreamFileTimeout()
+        stopFileStreamingRecovery()
+        logger.logInfo("[FileStream] File streaming stopped")
+    }
+    
+    /// Start file streaming recovery timer (matching Android startFileStreamingRecovery)
+    private func startFileStreamingRecovery() {
+        stopFileStreamingRecovery()
+        
+        fileStreamingRecoveryWorkItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            
+            // Check if we should restart file streaming
+            if self.connectionState == .connected &&
+                self.isUartReady &&
+                self.leoFirstFile > 0 &&
+                self.leoLastFile > 0 &&
+                self.currentFile >= self.leoFirstFile &&
+                self.currentFile <= self.leoLastFile &&
+                !self.isFileStreamingActive {
+                
+                self.logger.logInfo("[FileStream] ========================================")
+                self.logger.logInfo("[FileStream] Recovery: File streaming stopped but should be active")
+                self.logger.logInfo("[FileStream] Recovery: Current file: \(self.currentFile), Range: \(self.leoFirstFile)-\(self.leoLastFile)")
+                self.logger.logInfo("[FileStream] Recovery: Restarting file \(self.currentFile)")
+                self.logger.logInfo("[FileStream] ========================================")
+                
+                // Restart streaming the current file
+                self.requestNextFile()
+            }
+            
+            // Schedule next check (only if we still have files to process)
+            if self.leoFirstFile > 0 && self.leoLastFile > 0 && self.currentFile <= self.leoLastFile {
+                DispatchQueue.main.asyncAfter(deadline: .now() + self.fileStreamingRecoveryIntervalSeconds, execute: self.fileStreamingRecoveryWorkItem!)
+            } else {
+                self.logger.logDebug("[FileStream] Recovery timer stopping - all files processed or no valid range")
+                self.fileStreamingRecoveryWorkItem = nil
+            }
+        }
+        
+        // Start the recovery timer
+        DispatchQueue.main.asyncAfter(deadline: .now() + fileStreamingRecoveryIntervalSeconds, execute: fileStreamingRecoveryWorkItem!)
+        logger.logDebug("[FileStream] Recovery timer started (checking every \(fileStreamingRecoveryIntervalSeconds)s)")
+    }
+    
+    /// Stop file streaming recovery timer (matching Android stopFileStreamingRecovery)
+    private func stopFileStreamingRecovery() {
+        fileStreamingRecoveryWorkItem?.cancel()
+        fileStreamingRecoveryWorkItem = nil
+        logger.logDebug("[FileStream] Recovery timer stopped")
+    }
+    
+    /// Process file streaming data (matching Android processFileStreamingData)
+    private func processFileStreamingData(_ data: Data) {
+        guard let receivedString = String(data: data, encoding: .utf8) else {
+            logger.logError("[FileStream] Failed to decode file streaming data")
+            return
+        }
+        
+        logger.logDebug("[FileStream] Received \(data.count) bytes")
+        
+        // Append incoming data to accumulatedData
+        fileStreamingAccumulatedData.append(receivedString)
+        logger.logDebug("[FileStream] Accumulated data length: \(fileStreamingAccumulatedData.count)")
+        
+        // Split the accumulated data by newline (\n) to identify potential complete data points
+        let allDataPoints = fileStreamingAccumulatedData.components(separatedBy: "\n")
+        
+        var stxDetected = false
+        var etxDetected = false
+        
+        // Process all complete data points except the last one
+        for i in 0..<(allDataPoints.count - 1) {
+            var dataPoint = allDataPoints[i]
+            
+            // Detect and remove STX/ETX control characters
+            if dataPoint.contains("\u{02}") {
+                stxDetected = true
+                dataPoint = dataPoint.replacingOccurrences(of: "\u{02}", with: "")
+                logger.logInfo("[FileStream] STX detected in data point")
+            }
+            if dataPoint.contains("\u{03}") {
+                etxDetected = true
+                dataPoint = dataPoint.replacingOccurrences(of: "\u{03}", with: "")
+                logger.logInfo("[FileStream] ETX detected in data point")
+            }
+            
+            dataPoint = dataPoint.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Skip empty data points
+            if dataPoint.isEmpty { continue }
+            
+            // Split the data into columns
+            let columns = dataPoint.components(separatedBy: ";")
+            
+            // Backward compatibility: Only require valid timestamp (column 0)
+            if columns.isEmpty || columns[0].isEmpty || columns[0].trimmingCharacters(in: .whitespaces).isEmpty {
+                logger.logDebug("[FileStream] Skipped data with empty timestamp: \(String(dataPoint.prefix(50)))")
+                continue
+            }
+            
+            // Skip header rows
+            if columns[0].trimmingCharacters(in: .whitespaces).lowercased() == "timestamp" {
+                logger.logDebug("[FileStream] Skipped header row")
+                continue
+            }
+            
+            // Check for unwanted characters
+            if dataPoint.contains("/") || dataPoint.contains("M") || dataPoint.contains("m") {
+                hasUnwantedCharacters = true
+                logger.logWarning("[FileStream] Found unwanted characters in data point")
+            }
+            
+            // Check if the data point is already processed
+            if !processedDataPoints.contains(dataPoint) {
+                processedDataPoints.insert(dataPoint)
+                
+                // Parse the data point to ChargeData
+                do {
+                    // Parse timestamp (required field)
+                    guard let timestampValue = parseDouble(columns[0]) else {
+                        logger.logDebug("[FileStream] Skipped data with invalid timestamp: \(String(dataPoint.prefix(50)))")
+                        continue
+                    }
+                    
+                    let timestamp = timestampValue
+                    
+                    // Parse all fields with carry-forward logic
+                    let session = getValueOrPrevious(index: 1, columns: columns, parser: parseInt) ?? previousChargeData?.session
+                    let current = getValueOrPrevious(index: 2, columns: columns, parser: parseDouble) ?? previousChargeData?.current
+                    let volt = getValueOrPrevious(index: 3, columns: columns, parser: parseDouble) ?? previousChargeData?.volt
+                    let soc = getValueOrPrevious(index: 4, columns: columns, parser: parseInt) ?? previousChargeData?.soc
+                    let wh = getValueOrPrevious(index: 5, columns: columns, parser: parseInt) ?? previousChargeData?.wh
+                    let mode = getValueOrPrevious(index: 6, columns: columns, parser: parseInt) ?? previousChargeData?.mode
+                    let chargePhase = getValueOrPrevious(index: 7, columns: columns, parser: parseInt) ?? previousChargeData?.chargePhase
+                    let chargeTime = getValueOrPrevious(index: 8, columns: columns, parser: parseInt) ?? previousChargeData?.chargeTime
+                    let temperature = getValueOrPrevious(index: 9, columns: columns, parser: parseDouble) ?? previousChargeData?.temperature
+                    let faultFlags = getValueOrPrevious(index: 10, columns: columns, parser: parseInt) ?? previousChargeData?.faultFlags
+                    let flags = getValueOrPrevious(index: 11, columns: columns, parser: parseInt) ?? previousChargeData?.flags
+                    let chargeLimit = getValueOrPrevious(index: 12, columns: columns, parser: parseInt) ?? previousChargeData?.chargeLimit
+                    let startupCount = getValueOrPrevious(index: 13, columns: columns, parser: parseInt) ?? previousChargeData?.startupCount
+                    let chargeProfile = getValueOrPrevious(index: 14, columns: columns, parser: parseInt) ?? previousChargeData?.chargeProfile
+                    
+                    let dataEntry = ChargeData(
+                        timestamp: timestamp,
+                        session: session,
+                        current: current,
+                        volt: volt,
+                        soc: soc,
+                        wh: wh,
+                        mode: mode,
+                        chargePhase: chargePhase,
+                        chargeTime: chargeTime,
+                        temperature: temperature,
+                        faultFlags: faultFlags,
+                        flags: flags,
+                        chargeLimit: chargeLimit,
+                        startupCount: startupCount,
+                        chargeProfile: chargeProfile
+                    )
+                    
+                    // Update instance variables for backward compatibility
+                    if let sessionValue = dataEntry.session {
+                        currentSession = sessionValue
+                    }
+                    if let modeValue = dataEntry.mode {
+                        currentMode = modeValue
+                    }
+                    if let chargeLimitValue = dataEntry.chargeLimit {
+                        currentChargeLimit = chargeLimitValue
+                    }
+                    
+                    // Update previous entry for next iteration
+                    previousChargeData = dataEntry
+                    chargeDataList.append(dataEntry)
+                    
+                    logger.logDebug("[FileStream] Parsed ChargeData: session=\(dataEntry.session ?? -1), timestamp=\(dataEntry.timestamp), total entries=\(chargeDataList.count)")
+                    
+                } catch {
+                    logger.logError("[FileStream] Error parsing data: \(error.localizedDescription)")
+                    // Try to create minimal entry with just timestamp
+                    if let timestampValue = parseDouble(columns[0]) {
+                        let minimalEntry = ChargeData(
+                            timestamp: timestampValue,
+                            session: previousChargeData?.session,
+                            current: previousChargeData?.current,
+                            volt: previousChargeData?.volt,
+                            soc: previousChargeData?.soc,
+                            wh: previousChargeData?.wh,
+                            mode: previousChargeData?.mode,
+                            chargePhase: previousChargeData?.chargePhase,
+                            chargeTime: previousChargeData?.chargeTime,
+                            temperature: previousChargeData?.temperature,
+                            faultFlags: previousChargeData?.faultFlags,
+                            flags: previousChargeData?.flags,
+                            chargeLimit: previousChargeData?.chargeLimit,
+                            startupCount: previousChargeData?.startupCount,
+                            chargeProfile: previousChargeData?.chargeProfile
+                        )
+                        previousChargeData = minimalEntry
+                        chargeDataList.append(minimalEntry)
+                        logger.logDebug("[FileStream] Created minimal entry from malformed data")
+                    }
+                }
+            }
+        }
+        
+        // Retain the last (possibly incomplete) data point
+        if !allDataPoints.isEmpty {
+            var lastDataPoint = allDataPoints.last!
+            if lastDataPoint.contains("\u{02}") {
+                stxDetected = true
+                lastDataPoint = lastDataPoint.replacingOccurrences(of: "\u{02}", with: "")
+            }
+            if lastDataPoint.contains("\u{03}") {
+                etxDetected = true
+                lastDataPoint = lastDataPoint.replacingOccurrences(of: "\u{03}", with: "")
+            }
+            fileStreamingAccumulatedData = lastDataPoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            fileStreamingAccumulatedData = ""
+        }
+        
+        // Handle start (STX) and end (ETX) indicators
+        if stxDetected || fileStreamingAccumulatedData.contains("\u{02}") {
+            logger.logInfo("[FileStream] ========================================")
+            logger.logInfo("[FileStream] STX detected - Stream start for file \(currentFile)")
+            logger.logInfo("[FileStream] ========================================")
+            isFileStreamingActive = true
+            streamFileResponseReceived = true
+            waitingForStreamFileResponse = false
+            previousChargeData = nil // Reset previous data for new stream
+            chargeDataList.removeAll()
+            processedDataPoints.removeAll()
+            hasUnwantedCharacters = false
+            // Cancel timeout since we received STX
+            cancelStreamFileTimeout()
+        }
+        
+        if etxDetected || fileStreamingAccumulatedData.contains("\u{03}") {
+            logger.logInfo("[FileStream] ========================================")
+            logger.logInfo("[FileStream] ETX detected - Stream end for file \(currentFile)")
+            logger.logInfo("[FileStream] Processed \(chargeDataList.count) data entries")
+            logger.logInfo("[FileStream] Session: \(currentSession), Mode: \(currentMode), ChargeLimit: \(currentChargeLimit)")
+            logger.logInfo("[FileStream] ========================================")
+            
+            isFileStreamingActive = false
+            cancelStreamFileTimeout()
+            
+            // Store data to Firebase/local storage using snapshot of current list
+            let dataSnapshot = chargeDataList
+            let fileNumberToDelete = currentFile
+            
+            if !hasUnwantedCharacters {
+                storeDataToFirebase(dataSnapshot: dataSnapshot, fileNumber: fileNumberToDelete)
+            } else {
+                logger.logWarning("[FileStream] Skipping Firebase upload due to unwanted characters in data")
+            }
+            
+            // Reset for next file
+            fileStreamingAccumulatedData = ""
+            chargeDataList.removeAll()
+            previousChargeData = nil
+            processedDataPoints.removeAll()
+            hasUnwantedCharacters = false
+            streamFileResponseReceived = false
+            waitingForStreamFileResponse = false
+            
+            // Schedule next file command after delay
+            scheduleNextFileStreamCommand()
+        }
+    }
+    
+    // Helper functions for parsing (matching Android)
+    private func parseDouble(_ value: String) -> Double? {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return nil }
+        return Double(trimmed)
+    }
+    
+    private func parseInt(_ value: String) -> Int? {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return nil }
+        return Int(trimmed)
+    }
+    
+    private func getValueOrPrevious<T>(index: Int, columns: [String], parser: (String) -> T?) -> T? {
+        if index < columns.count {
+            if let parsed = parser(columns[index]) {
+                return parsed
+            }
+        }
+        // If parsing failed or column doesn't exist, use previous value
+        guard let previous = previousChargeData else { return nil }
+        switch index {
+        case 1: return previous.session as? T
+        case 2: return previous.current as? T
+        case 3: return previous.volt as? T
+        case 4: return previous.soc as? T
+        case 5: return previous.wh as? T
+        case 6: return previous.mode as? T
+        case 7: return previous.chargePhase as? T
+        case 8: return previous.chargeTime as? T
+        case 9: return previous.temperature as? T
+        case 10: return previous.faultFlags as? T
+        case 11: return previous.flags as? T
+        case 12: return previous.chargeLimit as? T
+        case 13: return previous.startupCount as? T
+        case 14: return previous.chargeProfile as? T
+        default: return nil
+        }
+    }
+    
+    /// Schedule next file stream command after delay (matching Android scheduleNextFileStreamCommand)
+    private func scheduleNextFileStreamCommand() {
+        let delaySeconds = fileStreamingDelaySeconds
+        logger.logInfo("[FileStream] ========================================")
+        logger.logInfo("[FileStream] ETX detected - File stream complete")
+        logger.logInfo("[FileStream] Starting \(Int(delaySeconds))s cooldown delay for BLE stack")
+        logger.logInfo("[FileStream] Next file command will be ready after delay")
+        logger.logInfo("[FileStream] ========================================")
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) { [weak self] in
+            guard let self = self else { return }
+            self.logger.logInfo("[FileStream] ========================================")
+            self.logger.logInfo("[FileStream] Cooldown delay completed (\(Int(delaySeconds))s)")
+            self.logger.logInfo("[FileStream] BLE stack is ready for next file stream")
+            
+            // Move to next file if available
+            if self.currentFile < self.leoLastFile && self.connectionState == .connected && self.isUartReady {
+                self.currentFile += 1
+                self.logger.logInfo("[FileStream] Streaming next file: \(self.currentFile)")
+                self.requestNextFile()
+            } else if self.currentFile == self.leoLastFile {
+                self.logger.logInfo("[FileStream] Completed last file (\(self.currentFile)). All files processed.")
+                self.stopFileStreaming()
+            } else {
+                self.logger.logInfo("[FileStream] All files processed. Current: \(self.currentFile), Last: \(self.leoLastFile)")
+                self.stopFileStreaming()
+            }
+            
+            self.logger.logInfo("[FileStream] ========================================")
+        }
+    }
+    
+    /// Schedule next file after delay when file doesn't exist (matching Android scheduleNextFileAfterDelay)
+    private func scheduleNextFileAfterDelay() {
+        // Increment file number before scheduling delay
+        if currentFile < leoLastFile {
+            currentFile += 1
+            logger.logInfo("[FileStream] File doesn't exist, will request next file: \(currentFile) after delay")
+        } else {
+            logger.logInfo("[FileStream] Reached last file (\(leoLastFile)), no more files to stream")
+            stopFileStreaming()
+            return
+        }
+        
+        let delaySeconds = fileStreamingDelaySeconds
+        logger.logInfo("[FileStream] ========================================")
+        logger.logInfo("[FileStream] File doesn't exist - scheduling next file")
+        logger.logInfo("[FileStream] Starting \(Int(delaySeconds))s cooldown delay for BLE stack")
+        logger.logInfo("[FileStream] ========================================")
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) { [weak self] in
+            guard let self = self else { return }
+            self.logger.logInfo("[FileStream] ========================================")
+            self.logger.logInfo("[FileStream] Cooldown delay completed (\(Int(delaySeconds))s)")
+            
+            // Request the next file
+            if self.connectionState == .connected && self.isUartReady {
+                self.logger.logInfo("[FileStream] Requesting next file: \(self.currentFile)")
+                self.requestNextFile()
+            } else {
+                self.logger.logWarning("[FileStream] Cannot request next file - not connected or UART not ready")
+                self.stopFileStreaming()
+            }
+            
+            self.logger.logInfo("[FileStream] ========================================")
+        }
+    }
+    
+    /// Store data to Firebase (matching Android storeDataToFirebase)
+    private func storeDataToFirebase(dataSnapshot: [ChargeData], fileNumber: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            do {
+                self.logger.logInfo("[FileStream] ========================================")
+                self.logger.logInfo("[FileStream] Starting Firebase storage process")
+                self.logger.logInfo("[FileStream] Session: \(self.currentSession), Entries: \(dataSnapshot.count)")
+                
+                if dataSnapshot.isEmpty {
+                    self.logger.logWarning("[FileStream] No data to upload, skipping")
+                    return
+                }
+                
+                // Get the list of sent sessions from UserDefaults
+                let sentSessionsKey = "sentSessions_\(self.connectedPeripheral?.identifier.uuidString.replacingOccurrences(of: ":", with: "") ?? "")"
+                var sentSessions = Set(UserDefaults.standard.stringArray(forKey: sentSessionsKey) ?? [])
+                
+                // Check if this session has already been sent
+                if sentSessions.contains("\(self.currentSession)") {
+                    self.logger.logInfo("[FileStream] Session \(self.currentSession) already sent to Firebase, skipping...")
+                    return
+                }
+                
+                // Get device info from UserDefaults
+                if self.serialNumber.isEmpty {
+                    self.serialNumber = UserDefaults.standard.string(forKey: self.serialNumberKey) ?? ""
+                }
+                let binFileName = self.firmwareVersion
+                let appVersion = UserDefaults.standard.string(forKey: "appVersion") ?? "1.5.0"
+                let appBuildNumber = UserDefaults.standard.string(forKey: "appBuildNumber") ?? "45"
+                
+                // Get device information
+                let osVersion = UIDevice.current.systemVersion
+                let deviceModel = UIDevice.current.model
+                
+                if self.serialNumber.isEmpty {
+                    self.logger.logWarning("[FileStream] Serial number not available, skipping upload")
+                    return
+                }
+                
+                // Prepare the data for Firebase
+                let firebaseData = dataSnapshot.map { chargeData -> [String: Any] in
+                    // Convert flags to binary and extract individual boolean values
+                    let flagsValue = chargeData.flags ?? 0
+                    let binaryFlags = String(flagsValue, radix: 2).padding(toLength: 8, withPad: "0", startingAt: 0)
+                    let ghostMode = binaryFlags.count > 7 && binaryFlags[binaryFlags.index(binaryFlags.startIndex, offsetBy: 7)] == "1"
+                    let higherChargeLimit = binaryFlags.count > 6 && binaryFlags[binaryFlags.index(binaryFlags.startIndex, offsetBy: 6)] == "1"
+                    let silent = binaryFlags.count > 5 && binaryFlags[binaryFlags.index(binaryFlags.startIndex, offsetBy: 5)] == "1"
+                    
+                    return [
+                        "ts": chargeData.timestamp,
+                        "c": chargeData.current as Any,
+                        "v": chargeData.volt as Any,
+                        "soc": chargeData.soc as Any,
+                        "mwh": chargeData.wh as Any,
+                        "cp": chargeData.chargePhase as Any,
+                        "ct": chargeData.chargeTime as Any,
+                        "temp": chargeData.temperature as Any,
+                        "ff": chargeData.faultFlags as Any,
+                        "cl": chargeData.chargeLimit as Any,
+                        "sc": chargeData.startupCount as Any,
+                        "cprofile": chargeData.chargeProfile as Any
+                    ]
+                }
+                
+                // Parse app version
+                let versionParts = appVersion.components(separatedBy: ".")
+                let major = Int(versionParts.first ?? "1") ?? 1
+                let minor = versionParts.count > 1 ? (Int(versionParts[1]) ?? 5) : 5
+                let patch = versionParts.count > 2 ? (Int(versionParts[2]) ?? 0) : 0
+                let build = Int(appBuildNumber) ?? 124
+                
+                // Get flags from first entry
+                let firstFlags = dataSnapshot.first?.flags ?? 0
+                let binaryFlags = String(firstFlags, radix: 2).padding(toLength: 8, withPad: "0", startingAt: 0)
+                let ghostMode = binaryFlags.count > 7 && binaryFlags[binaryFlags.index(binaryFlags.startIndex, offsetBy: 7)] == "1"
+                let higherChargeLimit = binaryFlags.count > 6 && binaryFlags[binaryFlags.index(binaryFlags.startIndex, offsetBy: 6)] == "1"
+                let silent = binaryFlags.count > 5 && binaryFlags[binaryFlags.index(binaryFlags.startIndex, offsetBy: 5)] == "1"
+                
+                // Construct the complete object to store
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "dd-MM-yyyy HH:mm:ss"
+                dateFormatter.timeZone = TimeZone(identifier: "UTC")
+                
+                let fileNameFormatter = DateFormatter()
+                fileNameFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+                fileNameFormatter.timeZone = TimeZone(identifier: "UTC")
+                
+                let firebaseObject: [String: Any] = [
+                    "model": "Leo",
+                    "serial_number": self.serialNumber.components(separatedBy: "\\").first?.trimmingCharacters(in: .whitespaces) ?? self.serialNumber,
+                    "firmware": binFileName.trimmingCharacters(in: .whitespaces),
+                    "sw": [
+                        "type": "Release",
+                        "major": major,
+                        "minor": minor,
+                        "patch": patch,
+                        "build": build
+                    ],
+                    "device": [
+                        "type": "mobile",
+                        "os": "iOS",
+                        "version": osVersion,
+                        "brand": "Apple",
+                        "model": deviceModel
+                    ],
+                    "session": self.currentSession,
+                    "mode": self.currentMode,
+                    "flags": [
+                        "charge_limit": self.currentChargeLimit,
+                        "ghost_mode_beta": ghostMode,
+                        "higher_charge_limit": higherChargeLimit,
+                        "silent": silent
+                    ],
+                    "timestamp": Int(Date().timeIntervalSince1970),
+                    "DateTime": dateFormatter.string(from: Date()),
+                    "data": firebaseData
+                ]
+                
+                // Generate a file name for Firebase
+                let fileName = "\(fileNameFormatter.string(from: Date()))_\(self.serialNumber.trimmingCharacters(in: .whitespaces))_\(self.currentSession).json"
+                
+                self.logger.logInfo("[FileStream] Prepared Firebase object")
+                self.logger.logDebug("[FileStream] File name: \(fileName)")
+                self.logger.logDebug("[FileStream] Serial: \(self.serialNumber), Session: \(self.currentSession)")
+                self.logger.logDebug("[FileStream] Data entries: \(firebaseData.count)")
+                
+                // Check connectivity
+                if self.hasNetworkConnection() {
+                    self.logger.logInfo("[FileStream] Internet connection available. Uploading to Firebase...")
+                    self.uploadToFirebase(fileName: fileName, firebaseObject: firebaseObject, sessionId: "\(self.currentSession)", serialNumber: self.serialNumber, fileNumber: fileNumber)
+                } else {
+                    self.logger.logWarning("[FileStream] No internet connection. Saving data locally for later sync.")
+                    self.saveToLocalStorage(serialNumber: self.serialNumber, sessionId: "\(self.currentSession)", fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber)
+                }
+                
+            } catch {
+                self.logger.logError("[FileStream] Error storing data to Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// Upload to Firebase (matching Android uploadToFirebase)
+    private func uploadToFirebase(fileName: String, firebaseObject: [String: Any], sessionId: String, serialNumber: String, fileNumber: Int) {
+        let docId = fileName.replacingOccurrences(of: ".json", with: "")
+        
+        firestore.collection(collectionName).document(docId).setData(firebaseObject, merge: true) { [weak self] error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                self.logger.logError("[FileStream] Firebase upload failed: \(error.localizedDescription)")
+                self.logger.logError("[FileStream] Saving data locally for later sync")
+                self.saveToLocalStorage(serialNumber: serialNumber, sessionId: sessionId, fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber)
+            } else {
+                self.logger.logInfo("[FileStream] ========================================")
+                self.logger.logInfo("[FileStream] Data successfully stored to Firebase!")
+                self.logger.logInfo("[FileStream] Document ID: \(docId)")
+                self.logger.logInfo("[FileStream] Session: \(sessionId)")
+                self.logger.logInfo("[FileStream] ========================================")
+                
+                // Add this session to the list of sent sessions
+                let sentSessionsKey = "sentSessions_\(self.connectedPeripheral?.identifier.uuidString.replacingOccurrences(of: ":", with: "") ?? "")"
+                var sentSessions = Set(UserDefaults.standard.stringArray(forKey: sentSessionsKey) ?? [])
+                sentSessions.insert(sessionId)
+                UserDefaults.standard.set(Array(sentSessions), forKey: sentSessionsKey)
+                
+                // Remove from pending uploads if it was a retry
+                let pendingKey = "pending_upload_\(serialNumber)_\(sessionId)"
+                UserDefaults.standard.removeObject(forKey: pendingKey)
+                UserDefaults.standard.removeObject(forKey: "\(pendingKey)_data")
+                
+                // Delete file from device after successful upload
+                if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.enqueueCommand("app_msg rm_file \(fileNumber)")
+                        self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
+                    }
+                } else if fileNumber < 0 {
+                    self.logger.logWarning("[FileStream] Cannot delete file - invalid file number: \(fileNumber)")
+                } else {
+                    self.logger.logWarning("[FileStream] Cannot delete file \(fileNumber) - not connected or UART not ready")
+                }
+            }
+        }
+    }
+    
+    /// Save to local storage for later sync (matching Android saveToLocalStorage)
+    private func saveToLocalStorage(serialNumber: String, sessionId: String, fileName: String, firebaseObject: [String: Any], fileNumber: Int) {
+        let pendingKey = "pending_upload_\(serialNumber)_\(sessionId)"
+        let pendingData: [String: Any] = [
+            "sessionId": sessionId,
+            "fileName": fileName,
+            "serialNumber": serialNumber,
+            "fileNumber": fileNumber,
+            "timestamp": Date().timeIntervalSince1970
+        ]
+        
+        if let jsonData = try? JSONSerialization.data(withJSONObject: pendingData),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            UserDefaults.standard.set(jsonString, forKey: pendingKey)
+        }
+        
+        // Also save the firebase object
+        if let firebaseJsonData = try? JSONSerialization.data(withJSONObject: firebaseObject),
+           let firebaseJsonString = String(data: firebaseJsonData, encoding: .utf8) {
+            UserDefaults.standard.set(firebaseJsonString, forKey: "\(pendingKey)_data")
+        }
+        
+        logger.logInfo("[FileStream] Data saved locally for session \(sessionId). Will sync when online.")
+    }
+    
+    /// Check network connection (matching Android connectivity check)
+    private func hasNetworkConnection() -> Bool {
+        // Simple check - in production, use proper network reachability
+        // For now, assume connected if we can reach Firebase
+        return true // Simplified - Firebase SDK handles retries
+    }
+    
     // MARK: - Private Charge Limit Methods
     
     /// Load charge limit settings from UserDefaults
@@ -1344,12 +2170,13 @@ class BLEService: NSObject {
         // Ensure peripheral delegate is set (critical for receiving callbacks)
         peripheral.delegate = self
         
-        // Discover UART service (matching Android: gatt.discoverServices())
+        // Discover all services (matching Android: gatt.discoverServices() discovers all services)
+        // This will discover both UART service and file streaming service
         // Note: CoreBluetooth will call didDiscoverServices callback when complete
         // This operation should complete within a few seconds, but CoreBluetooth handles timing
-        peripheral.discoverServices([uartServiceUUID])
+        peripheral.discoverServices(nil) // nil = discover all services
         
-        logger.logDebug("Service discovery request sent for UART service")
+        logger.logDebug("Service discovery request sent for all services")
     }
     
     /// Handle received data from RX characteristic (matching Android handleReceivedData)
@@ -1473,7 +2300,125 @@ class BLEService: NSObject {
         if parts.count >= 3 && parts[1].lowercased() == "swversion" {
             let versionValue = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
             if !versionValue.isEmpty {
+                firmwareVersion = versionValue
                 logger.logInfo("Firmware version: \(versionValue)")
+            }
+        }
+        
+        // Handle serial response (command: "serial" without py_msg) - matching Android
+        if parts.count >= 3 && parts[1].lowercased() == "serial" {
+            let serialValue = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !serialValue.isEmpty {
+                serialNumber = serialValue
+                UserDefaults.standard.set(serialNumber, forKey: serialNumberKey)
+                logger.logInfo("[FileStream] Serial received and saved: \(serialNumber)")
+            }
+        }
+        
+        // Handle get_files response: "OK py_msg get_files <startFile> <endFile>" - matching Android
+        if parts.count >= 5 && parts[2] == "get_files" {
+            logger.logInfo("[FileStream] get_files response raw parts: \(parts)")
+            if let startFile = Int(parts[3]),
+               let endFile = Int(parts[4]) {
+                getFilesRangePending = false
+                leoFirstFile = startFile
+                leoLastFile = endFile
+                currentFile = leoFirstFile
+                
+                logger.logInfo("[FileStream] ========================================")
+                logger.logInfo("[FileStream] get_files response received")
+                logger.logInfo("[FileStream] File range: \(startFile) to \(endFile)")
+                logger.logInfo("[FileStream] Starting file streaming from file \(currentFile)")
+                logger.logInfo("[FileStream] ========================================")
+                
+                // Start streaming from first file
+                startFileStreamingForFile()
+                // Start recovery timer to check if file streaming stops unexpectedly
+                startFileStreamingRecovery()
+                getFilesRangePending = false
+                streamFileTimeoutWorkItem?.cancel()
+            } else if getFilesRangePending {
+                // One controlled retry of get_files + py_msg if range missing and not retried yet
+                if !getFilesRetryDone {
+                    getFilesRetryDone = true
+                    logger.logWarning("[FileStream] get_files response missing range; scheduling one retry")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                        guard let self = self else { return }
+                        if self.isUartReady && self.connectionState == .connected {
+                            self.enqueueCommand("app_msg get_files")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                if self.isUartReady && self.connectionState == .connected {
+                                    self.enqueueCommand("py_msg")
+                                    self.logger.logInfo("[FileStream] py_msg sent after retry get_files")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    logger.logWarning("[FileStream] get_files response missing range after retry, aborting file stream start")
+                    getFilesRangePending = false
+                    streamFileTimeoutWorkItem?.cancel()
+                }
+            }
+        }
+        
+        // Handle ERROR response when expecting stream_file (command was intercepted) - matching Android
+        if parts.count >= 2 && parts[0] == "ERROR" && parts[1] == "py_msg" {
+            let currentTime = Date().timeIntervalSince1970
+            let timeSinceStreamFileCommand = currentTime - lastStreamFileCommandTime
+            
+            // Only treat as file streaming error if:
+            // 1. We're waiting for stream_file response
+            // 2. Current file is in valid range
+            // 3. ERROR came within 3 seconds of sending stream_file command
+            if waitingForStreamFileResponse &&
+                currentFile >= leoFirstFile &&
+                currentFile <= leoLastFile &&
+                timeSinceStreamFileCommand > 0 &&
+                timeSinceStreamFileCommand < 3.0 {
+                
+                logger.logWarning("[FileStream] ========================================")
+                logger.logWarning("[FileStream] ERROR response received - stream_file command intercepted for file \(currentFile)")
+                logger.logWarning("[FileStream] Time since stream_file command: \(Int(timeSinceStreamFileCommand * 1000))ms")
+                logger.logWarning("[FileStream] Recovery timer will restart file streaming")
+                logger.logWarning("[FileStream] ========================================")
+                
+                // Mark that we got a response (even though it's an error) and reset state
+                streamFileResponseReceived = true
+                waitingForStreamFileResponse = false
+                cancelStreamFileTimeout()
+                isFileStreamingActive = false
+                // Recovery timer will detect this and restart
+            } else if waitingForStreamFileResponse {
+                logger.logDebug("[FileStream] ERROR py_msg received but not for file streaming (time since command: \(Int(timeSinceStreamFileCommand * 1000))ms, window: 0-3000ms)")
+            }
+        }
+        
+        // Handle stream_file response: "OK py_msg stream_file <fileCheck>" - matching Android
+        // fileCheck: 1 = file exists and streaming started, -1 = file doesn't exist
+        if parts.count >= 4 && parts[2] == "stream_file" {
+            if let fileCheckValue = Int(parts[3]) {
+                fileCheck = fileCheckValue
+                streamFileResponseReceived = true
+                waitingForStreamFileResponse = false
+                cancelStreamFileTimeout()
+                logger.logInfo("[FileStream] stream_file response: fileCheck=\(fileCheck) for file \(currentFile)")
+                
+                switch fileCheck {
+                case 1:
+                    // File exists and is being streamed, wait for ETX
+                    logger.logInfo("[FileStream] File \(currentFile) exists and streaming started")
+                    isFileStreamingActive = true
+                    // Start timeout timer
+                    startStreamFileTimeout()
+                case -1:
+                    // File doesn't exist, move to next file after delay
+                    logger.logWarning("[FileStream] File \(currentFile) doesn't exist")
+                    // Schedule next file request after delay
+                    scheduleNextFileAfterDelay()
+                default:
+                    logger.logWarning("[FileStream] Unknown fileCheck value: \(fileCheck)")
+                }
             }
         }
     }
@@ -1777,6 +2722,10 @@ extension BLEService: CBCentralManagerDelegate {
             rxCharacteristic = nil
             chargeLimitConfirmed = false
             
+            // Reset file streaming state on disconnection (matching Android)
+            stopFileStreaming()
+            stopFileStreamingRecovery()
+            
             // Stop all timers (matching Android)
             stopChargeLimitTimer()
             stopTimeTracking()
@@ -1836,6 +2785,11 @@ extension BLEService: CBPeripheralDelegate {
         
         logger.logInfo("Discovered \(services.count) service(s)")
         
+        // Log all discovered services for debugging
+        for service in services {
+            logger.logDebug("Discovered service: \(service.uuid.uuidString)")
+        }
+        
         // Find UART service and discover its characteristics with delay (matching Android)
         for service in services {
             if service.uuid == uartServiceUUID {
@@ -1852,6 +2806,26 @@ extension BLEService: CBPeripheralDelegate {
                     }
                 }
             }
+            
+            // Setup file streaming service (matching Android setupFileStreamingService)
+            if service.uuid == dataTransferServiceUUID {
+                logger.logInfo("[FileStream] Found file streaming service, discovering characteristics...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    guard let self = self else { return }
+                    if self.connectionState == .connected && peripheral.state == .connected {
+                        peripheral.discoverCharacteristics([self.dataTransmitCharUUID], for: service)
+                    } else {
+                        self.logger.logWarning("[FileStream] Connection lost before file streaming characteristic discovery")
+                    }
+                }
+            }
+        }
+        
+        // Log if file streaming service was not found
+        let foundFileStreamingService = services.contains { $0.uuid == dataTransferServiceUUID }
+        if !foundFileStreamingService {
+            logger.logWarning("[FileStream] File streaming service not found. Expected UUID: \(dataTransferServiceUUID.uuidString)")
+            logger.logWarning("[FileStream] Available services: \(services.map { $0.uuid.uuidString }.joined(separator: ", "))")
         }
     }
     
@@ -1897,6 +2871,31 @@ extension BLEService: CBPeripheralDelegate {
                             peripheral.setNotifyValue(true, for: characteristic)
                         } else {
                             self.logger.logWarning("Connection lost before enabling notifications")
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Setup file streaming characteristics (matching Android setupFileStreamingService)
+        if service.uuid == dataTransferServiceUUID {
+            for characteristic in characteristics {
+                if characteristic.uuid == dataTransmitCharUUID {
+                    fileStreamingCharacteristic = characteristic
+                    logger.logInfo("Found file streaming characteristic")
+                    
+                    // Enable notifications for file streaming
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                        guard let self = self else { return }
+                        if self.connectionState == .connected && peripheral.state == .connected {
+                            peripheral.setNotifyValue(true, for: characteristic)
+                            self.logger.logInfo("[FileStream] File streaming notifications enabled")
+                            
+                            // Kick off get_files once notifications are active (matching Android)
+                            if !self.fileStreamingRequested {
+                                _ = self.requestGetFiles()
+                                self.logger.logInfo("[FileStream] get_files requested automatically after enable")
+                            }
                         }
                     }
                 }
@@ -1950,6 +2949,31 @@ extension BLEService: CBPeripheralDelegate {
                 _ = self.requestAdvancedModes()
             }
             
+            // 4. Request serial (one-shot, no py_msg needed) - matching Android 1700ms delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) { [weak self] in
+                guard let self = self else { return }
+                if !self.serialRequested &&
+                    self.connectionState == .connected &&
+                    self.isUartReady {
+                    self.enqueueCommand("serial")
+                    self.serialRequested = true
+                    self.logger.logInfo("[FileStream] serial requested (no py_msg)")
+                }
+            }
+            
+            // 5. Start file listing once UART is ready and all initial commands are queued (send last) - matching Android 3000ms delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                guard let self = self else { return }
+                if !self.fileStreamingRequested &&
+                    self.connectionState == .connected &&
+                    self.fileStreamingCharacteristic != nil {
+                    self.getFilesRangePending = false
+                    self.getFilesRetryDone = false
+                    self.fileStreamingRequested = (self.requestGetFiles()["success"] as? Bool) ?? false
+                    self.logger.logInfo("[FileStream] get_files requested after UART ready (sent last): \(self.fileStreamingRequested)")
+                }
+            }
+            
             // Mark initial setup as done
             initialSetupDone = true
         }
@@ -1968,6 +2992,13 @@ extension BLEService: CBPeripheralDelegate {
         if characteristic.uuid == rxCharacteristicUUID {
             if let data = characteristic.value {
                 handleReceivedData(data)
+            }
+        }
+        
+        // Handle file streaming data (matching Android onCharacteristicChanged DATA_TRANSMIT_CHAR_UUID)
+        if characteristic.uuid == dataTransmitCharUUID {
+            if let data = characteristic.value {
+                processFileStreamingData(data)
             }
         }
     }
