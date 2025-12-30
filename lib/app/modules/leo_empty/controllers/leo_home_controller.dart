@@ -487,6 +487,7 @@ class LeoHomeController extends GetxController {
       if (parts.length >= 2 && parts[1].toLowerCase() == 'swversion') {
         String value = parts.length > 2 ? parts[2] : parts[0];
         binFileFromLeoName.value = value.trim();
+        print('Swversion value set to: ${binFileFromLeoName.value}');
       }
 
       // Parse measure data - check if any part contains 'measure'
@@ -792,7 +793,10 @@ class LeoHomeController extends GetxController {
       } else if (Platform.isIOS) {
         await IOSBleScanService.sendCommand('measure');
         await Future.delayed(const Duration(milliseconds: 300));
-        await IOSBleScanService.sendCommand('swversion');
+        if (Platform.isIOS) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          await IOSBleScanService.sendCommand('swversion');
+        }
       }
     }
   }

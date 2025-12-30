@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:liion_app/app/services/ios_ble_scan_service.dart';
 
 class BleConnectionState {
   static const int disconnected = 0;
@@ -328,10 +330,14 @@ class BleScanService {
   /// Get current connection state
   static Future<int> getConnectionState() async {
     try {
-      final result = await _methodChannel.invokeMethod<int>(
-        'getConnectionState',
-      );
-      return result ?? BleConnectionState.disconnected;
+      if (Platform.isIOS) {
+        return await IOSBleScanService.getConnectionState();
+      } else {
+        final result = await _methodChannel.invokeMethod<int>(
+          'getConnectionState',
+        );
+        return result ?? BleConnectionState.disconnected;
+      }
     } on PlatformException catch (e) {
       print('Failed to get connection state: ${e.message}');
       return BleConnectionState.disconnected;
@@ -781,10 +787,15 @@ class BleScanService {
   /// Start OTA update
   static Future<bool> startOtaUpdate(String filePath) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('startOtaUpdate', {
-        'filePath': filePath,
-      });
-      return result ?? false;
+      if (Platform.isIOS) {
+        return await IOSBleScanService.startOtaUpdate(filePath);
+      } else {
+        final result = await _methodChannel.invokeMethod<bool>(
+          'startOtaUpdate',
+          {'filePath': filePath},
+        );
+        return result ?? false;
+      }
     } on PlatformException catch (e) {
       print('Failed to start OTA update: ${e.message}');
       return false;
@@ -794,8 +805,12 @@ class BleScanService {
   /// Cancel OTA update
   static Future<bool> cancelOtaUpdate() async {
     try {
-      await _methodChannel.invokeMethod('cancelOtaUpdate');
-      return true;
+      if (Platform.isIOS) {
+        return await IOSBleScanService.cancelOtaUpdate();
+      } else {
+        await _methodChannel.invokeMethod('cancelOtaUpdate');
+        return true;
+      }
     } on PlatformException catch (e) {
       print('Failed to cancel OTA update: ${e.message}');
       return false;
@@ -805,8 +820,12 @@ class BleScanService {
   /// Get OTA progress
   static Future<int> getOtaProgress() async {
     try {
-      final result = await _methodChannel.invokeMethod<int>('getOtaProgress');
-      return result ?? 0;
+      if (Platform.isIOS) {
+        return await IOSBleScanService.getOtaProgress();
+      } else {
+        final result = await _methodChannel.invokeMethod<int>('getOtaProgress');
+        return result ?? 0;
+      }
     } on PlatformException catch (e) {
       print('Failed to get OTA progress: ${e.message}');
       return 0;
@@ -816,10 +835,14 @@ class BleScanService {
   /// Check if OTA update is in progress
   static Future<bool> isOtaUpdateInProgress() async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>(
-        'isOtaUpdateInProgress',
-      );
-      return result ?? false;
+      if (Platform.isIOS) {
+        return await IOSBleScanService.isOtaInProgress();
+      } else {
+        final result = await _methodChannel.invokeMethod<bool>(
+          'isOtaUpdateInProgress',
+        );
+        return result ?? false;
+      }
     } on PlatformException catch (e) {
       print('Failed to check OTA status: ${e.message}');
       return false;
@@ -828,10 +851,14 @@ class BleScanService {
 
   /// Stream of OTA progress updates
   static Stream<Map<String, dynamic>> get otaProgressStream {
-    _otaProgressStream ??= _otaProgressChannel.receiveBroadcastStream().map(
-      (event) => Map<String, dynamic>.from(event as Map),
-    );
-    return _otaProgressStream!;
+    if (Platform.isIOS) {
+      return IOSBleScanService.getOtaProgressStream();
+    } else {
+      _otaProgressStream ??= _otaProgressChannel.receiveBroadcastStream().map(
+        (event) => Map<String, dynamic>.from(event as Map),
+      );
+      return _otaProgressStream!;
+    }
   }
 
   /// Minimize the app instead of killing it

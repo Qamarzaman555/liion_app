@@ -3,12 +3,15 @@ import UIKit
 import CoreBluetooth
 
 /// Flutter Method Channel bridge for Background Service and BLE
-class BackgroundServiceChannel {
+class BackgroundServiceChannel: NSObject, FlutterStreamHandler {
     
     private static let channelName = "nl.liionpower.app/background_service"
+    private static let otaProgressChannelName = "com.liion_app/ota_progress"
     private let backgroundService = BackgroundService.shared
     private let loggingService = BackendLoggingService.shared
     private let bleService = BLEService.shared
+
+    private var otaProgressEventSink: FlutterEventSink?
     
     /// Setup method channel with Flutter
     func setupChannel(with messenger: FlutterBinaryMessenger) {
@@ -20,6 +23,14 @@ class BackgroundServiceChannel {
         channel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
             self?.handleMethodCall(call: call, result: result)
         }
+
+        // Setup OTA progress EventChannel
+        let otaProgressChannel = FlutterEventChannel(
+            name: BackgroundServiceChannel.otaProgressChannelName,
+            binaryMessenger: messenger
+        )
+
+        otaProgressChannel.setStreamHandler(self)
     }
     
     /// Handle method calls from Flutter
@@ -96,7 +107,19 @@ class BackgroundServiceChannel {
             
         case "isReconnecting":
             isReconnectingMethod(result: result)
-            
+
+        case "startOtaUpdate":
+            startOtaUpdate(call: call, result: result)
+
+        case "cancelOtaUpdate":
+            cancelOtaUpdate(result: result)
+
+        case "getOtaProgress":
+            getOtaProgress(result: result)
+
+        case "isOtaInProgress":
+            isOtaInProgressMethod(result: result)
+
         case "startService":
             startService(result: result)
             
@@ -337,7 +360,39 @@ class BackgroundServiceChannel {
         let reconnecting = bleService.isCurrentlyReconnecting()
         result(["isReconnecting": reconnecting])
     }
-    
+
+    // MARK: - OTA Method Handlers
+
+    private func startOtaUpdate(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let filePath = args["filePath"] as? String else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "filePath (String) parameter is required",
+                details: nil
+            ))
+            return
+        }
+
+        let success = bleService.startOtaUpdate(filePath: filePath)
+        result(["success": success])
+    }
+
+    private func cancelOtaUpdate(result: @escaping FlutterResult) {
+        bleService.cancelOtaUpdate()
+        result(["success": true])
+    }
+
+    private func getOtaProgress(result: @escaping FlutterResult) {
+        let progress = bleService.getOtaProgress()
+        result(["progress": progress])
+    }
+
+    private func isOtaInProgressMethod(result: @escaping FlutterResult) {
+        let inProgress = bleService.isOtaUpdateInProgress()
+        result(["isInProgress": inProgress])
+    }
+
     // MARK: - Charge Limit Method Handlers
     
     private func setChargeLimit(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -504,6 +559,32 @@ class BackgroundServiceChannel {
     private func startFileStreaming(result: @escaping FlutterResult) {
         let streamingResult = bleService.startFileStreaming()
         result(streamingResult)
+    }
+
+    // MARK: - FlutterStreamHandler Methods (OTA Progress)
+
+    func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        otaProgressEventSink = events
+
+        // Setup OTA progress callback
+        bleService.onOtaProgress = { [weak self] (progress, inProgress, message) in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.otaProgressEventSink?([
+                    "progress": progress,
+                    "inProgress": inProgress,
+                    "message": message ?? ""
+                ])
+            }
+        }
+
+        return nil
+    }
+
+    func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        otaProgressEventSink = nil
+        bleService.onOtaProgress = nil
+        return nil
     }
 }
 

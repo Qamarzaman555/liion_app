@@ -20,6 +20,7 @@ class IOSBleScanService {
   static StreamController<Map<String, String>>? _measureDataStreamController;
   static StreamController<String>? _dataReceivedStreamController;
   static StreamController<Map<String, bool>>? _advancedModesStreamController;
+  static StreamController<Map<String, dynamic>>? _otaProgressStreamController;
 
   // Track previous states for change detection
   static bool _previousBluetoothState = false;
@@ -731,6 +732,86 @@ class IOSBleScanService {
     return _advancedModesStreamController!.stream;
   }
 
+  /// Stream of OTA progress updates (iOS uses EventChannel)
+  static Stream<Map<String, dynamic>> getOtaProgressStream() {
+    // iOS uses EventChannel for OTA progress (matching Android implementation)
+    if (_otaProgressStreamController == null) {
+      const EventChannel otaProgressChannel = EventChannel(
+        'com.liion_app/ota_progress',
+      );
+      _otaProgressStreamController =
+          StreamController<Map<String, dynamic>>.broadcast();
+
+      otaProgressChannel.receiveBroadcastStream().listen(
+        (event) {
+          try {
+            final Map<String, dynamic> progressData = Map<String, dynamic>.from(
+              event as Map,
+            );
+            _otaProgressStreamController?.add(progressData);
+          } catch (e) {
+            print('[iOS] Error parsing OTA progress data: $e');
+          }
+        },
+        onError: (error) {
+          print('[iOS] OTA progress stream error: $error');
+        },
+      );
+    }
+
+    return _otaProgressStreamController!.stream;
+  }
+
+  // ============================================================================
+  // OTA UPDATE METHODS
+  // ============================================================================
+
+  /// Start OTA update with firmware file path
+  static Future<bool> startOtaUpdate(String filePath) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('startOtaUpdate', {
+        'filePath': filePath,
+      });
+      return result?['success'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to start OTA update: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Cancel OTA update
+  static Future<bool> cancelOtaUpdate() async {
+    try {
+      await _channel.invokeMethod('cancelOtaUpdate');
+      return true;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to cancel OTA update: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get OTA progress
+  static Future<int> getOtaProgress() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('getOtaProgress');
+      return result?['progress'] as int? ?? 0;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to get OTA progress: ${e.message}');
+      return 0;
+    }
+  }
+
+  /// Check if OTA is in progress
+  static Future<bool> isOtaInProgress() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('isOtaInProgress');
+      return result?['isInProgress'] as bool? ?? false;
+    } on PlatformException catch (e) {
+      print('[iOS] Failed to check OTA status: ${e.message}');
+      return false;
+    }
+  }
+
   // ============================================================================
   // CLEANUP
   // ============================================================================
@@ -757,5 +838,7 @@ class IOSBleScanService {
     _dataReceivedStreamController = null;
     _advancedModesStreamController?.close();
     _advancedModesStreamController = null;
+    _otaProgressStreamController?.close();
+    _otaProgressStreamController = null;
   }
 }

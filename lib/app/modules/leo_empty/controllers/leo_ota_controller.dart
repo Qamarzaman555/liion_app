@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:path_provider/path_provider.dart';
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
+import 'package:liion_app/app/modules/leo_empty/controllers/leo_home_controller.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class LeoOtaController extends GetxController {
@@ -472,6 +473,32 @@ class LeoOtaController extends GetxController {
         throw Exception('Firmware file does not exist: $filePath');
       }
 
+      // Validate firmware versions before proceeding
+      final homeController = Get.find<LeoHomeController>();
+      final currentVersion = homeController.binFileFromLeoName.value;
+      final targetVersion = binFileFromFirebaseName.value;
+
+      print("Current device firmware: $currentVersion");
+      print("Target firmware: $targetVersion");
+
+      if (currentVersion.isNotEmpty && targetVersion.isNotEmpty) {
+        // Simple version comparison - check if target is different from current
+        if (currentVersion == targetVersion) {
+          throw Exception(
+            'Device is already running firmware version $currentVersion. No update needed.',
+          );
+        }
+
+        // Additional validation could be added here for version comparison logic
+        print(
+          "Proceeding with firmware update: $currentVersion -> $targetVersion",
+        );
+      } else {
+        print(
+          "Warning: Could not validate firmware versions (current: '$currentVersion', target: '$targetVersion')",
+        );
+      }
+
       // Send initial progress
       otaProgress.value = 0.0;
       isOtaInProgress.value = true;
@@ -484,7 +511,7 @@ class LeoOtaController extends GetxController {
       isOtaInProgress.refresh();
       otaMessage.refresh();
 
-      // Start OTA update via Kotlin service
+      // Start OTA update via platform-specific service
       print("Starting OTA update with file: $filePath");
       final success = await BleScanService.startOtaUpdate(filePath);
 

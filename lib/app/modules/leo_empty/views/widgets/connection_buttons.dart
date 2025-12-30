@@ -72,14 +72,7 @@ class LeoConnectionButtons extends StatelessWidget {
                     ? AppColors.primaryInvertColor
                     : AppColors.primaryColor,
                 text: statusText,
-                onPressed: Platform.isIOS
-                    ? () {
-                        AppSnackbars.showSuccess(
-                          title: "Feature not available",
-                          message: "This feature is not available on iOS",
-                        );
-                      }
-                    : onFirmwareUpdateButtonPressed,
+                onPressed: onFirmwareUpdateButtonPressed,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

@@ -27,6 +27,11 @@ class BLEService: NSObject {
     private let dataTransferServiceUUID = CBUUID(string: "41E2B910-D0E0-4880-8988-5D4A761B9DC7")
     private let dataTransmitCharUUID = CBUUID(string: "94D2C6E0-89B3-4133-92A5-15CCED3EE729")
     
+    // OTA Service UUIDs - matching Android
+    private let otaServiceUUID = CBUUID(string: "D6F1D96D-594C-4C53-B1C6-144A1DFDE6D8")
+    private let otaDataCharUUID = CBUUID(string: "23408888-1F40-4CD8-9B89-CA8D45F8A5B0")
+    private let otaControlCharUUID = CBUUID(string: "7AD671AA-21C0-46A4-B722-270E3AE3D830")
+    
     // UART characteristics
     private var txCharacteristic: CBCharacteristic?
     private var rxCharacteristic: CBCharacteristic?
@@ -34,6 +39,10 @@ class BLEService: NSObject {
     
     // File streaming characteristics
     private var fileStreamingCharacteristic: CBCharacteristic?
+
+    // OTA characteristics
+    private var otaDataCharacteristic: CBCharacteristic?
+    private var otaControlCharacteristic: CBCharacteristic?
     
     // Track if initial setup commands have been sent (prevents duplicates)
     private var initialSetupDone = false
@@ -108,6 +117,17 @@ class BLEService: NSObject {
     private var leoLastFile = 0
     private var currentFile = 0
     private var fileCheck = 0
+
+    // OTA state variables (matching Android)
+    private var isOtaInProgress = false
+    private var otaCancelRequested = false
+    private var otaProgress = 0
+    private var otaTotalPackets = 0
+    private var otaCurrentPacket = 0
+    private let otaReadLock = DispatchSemaphore(value: 1)
+    private var lastReadValue: Data?
+    private let otaWriteLock = DispatchSemaphore(value: 0)
+    private var otaWriteCompleted = false
     private var streamFileResponseReceived = false
     private var waitingForStreamFileResponse = false
     private var lastStreamFileCommandTime: TimeInterval = 0
@@ -189,6 +209,7 @@ class BLEService: NSObject {
     var onDataReceived: ((String) -> Void)? // (rawData) - matches Android dataReceivedStream
     var onAdvancedModesUpdate: ((Bool, Bool, Bool) -> Void)? // (ghostMode, silentMode, higherChargeLimit)
     var onLedTimeoutUpdate: ((Int) -> Void)? // (timeoutSeconds)
+    var onOtaProgress: ((Int, Bool, String?) -> Void)? // (progress, inProgress, message) - matching Android
     
     private override init() {
         super.init()
@@ -2721,6 +2742,12 @@ extension BLEService: CBCentralManagerDelegate {
             txCharacteristic = nil
             rxCharacteristic = nil
             chargeLimitConfirmed = false
+
+            // Reset OTA state on disconnection (matching Android)
+            otaDataCharacteristic = nil
+            otaControlCharacteristic = nil
+            isOtaInProgress = false
+            otaCancelRequested = false
             
             // Reset file streaming state on disconnection (matching Android)
             stopFileStreaming()
@@ -2819,6 +2846,19 @@ extension BLEService: CBPeripheralDelegate {
                     }
                 }
             }
+
+            // Setup OTA service (matching Android setupOtaService)
+            if service.uuid == otaServiceUUID {
+                logger.logInfo("[OTA] Found OTA service, discovering characteristics...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    guard let self = self else { return }
+                    if self.connectionState == .connected && peripheral.state == .connected {
+                        peripheral.discoverCharacteristics([self.otaDataCharUUID, self.otaControlCharUUID], for: service)
+                    } else {
+                        self.logger.logWarning("[OTA] Connection lost before OTA characteristic discovery")
+                    }
+                }
+            }
         }
         
         // Log if file streaming service was not found
@@ -2896,6 +2936,28 @@ extension BLEService: CBPeripheralDelegate {
                                 _ = self.requestGetFiles()
                                 self.logger.logInfo("[FileStream] get_files requested automatically after enable")
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Setup OTA characteristics (matching Android setupOtaService)
+        if service.uuid == otaServiceUUID {
+            for characteristic in characteristics {
+                if characteristic.uuid == otaDataCharUUID {
+                    otaDataCharacteristic = characteristic
+                    logger.logInfo("[OTA] Found OTA data characteristic")
+                } else if characteristic.uuid == otaControlCharUUID {
+                    otaControlCharacteristic = characteristic
+                    logger.logInfo("[OTA] Found OTA control characteristic")
+
+                    // Enable notifications for OTA control characteristic
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                        guard let self = self else { return }
+                        if self.connectionState == .connected && peripheral.state == .connected {
+                            peripheral.setNotifyValue(true, for: characteristic)
+                            self.logger.logInfo("[OTA] OTA control notifications enabled")
                         }
                     }
                 }
@@ -3001,6 +3063,16 @@ extension BLEService: CBPeripheralDelegate {
                 processFileStreamingData(data)
             }
         }
+
+        // Handle OTA control characteristic response (matching Android onCharacteristicChanged OTA_CONTROL_CHAR_UUID)
+        if characteristic.uuid == otaControlCharUUID {
+            if let data = characteristic.value {
+                logger.logDebug("[OTA] Received control response: \(data.map { String(format: "%02x", $0) }.joined())")
+                otaReadLock.wait()
+                lastReadValue = data
+                otaReadLock.signal()
+            }
+        }
     }
     
     /// Called when a characteristic value is written
@@ -3012,8 +3084,424 @@ extension BLEService: CBPeripheralDelegate {
             return
         }
         
-        // Write successful (matching Android onCharacteristicWrite)
-        logger.logDebug("Characteristic written: \(characteristic.uuid)")
+       
+
+        // Handle OTA write completion (matching Android onCharacteristicWrite for OTA characteristics)
+        if characteristic.uuid == otaDataCharUUID || characteristic.uuid == otaControlCharUUID {
+            otaWriteCompleted = true
+            otaWriteLock.signal()
+        }
+    }
+
+    // MARK: - OTA Update Methods
+
+    /// Start OTA update with firmware file path
+    func startOtaUpdate(filePath: String) -> Bool {
+        guard connectionState == .connected, let _ = connectedPeripheral else {
+            logger.logError("[OTA] Cannot start OTA - device not connected")
+            sendOtaProgress(0, inProgress: false, message: "Device not connected")
+            return false
+        }
+
+        guard otaDataCharacteristic != nil && otaControlCharacteristic != nil else {
+            logger.logError("[OTA] Cannot start OTA - OTA characteristics not found")
+            sendOtaProgress(0, inProgress: false, message: "OTA characteristics not found. Device may not support OTA.")
+            return false
+        }
+
+        if isOtaInProgress {
+            logger.logWarning("[OTA] OTA already in progress")
+            return false
+        }
+
+        return performStartOtaUpdate(filePath: filePath)
+    }
+
+    /// Perform the actual OTA update start (matching Android startOtaUpdate)
+    private func performStartOtaUpdate(filePath: String) -> Bool {
+        logger.logInfo("[OTA] Starting OTA update with file: \(filePath)")
+
+        isOtaInProgress = true
+        otaCancelRequested = false
+        otaProgress = 0
+        otaCurrentPacket = 0
+
+        // Stop regular UART commands during OTA to avoid interference (matching Android)
+        stopMeasureTimer()
+        stopChargeLimitTimer()
+        logger.logDebug("[OTA] Stopped regular UART timers for OTA")
+
+        // Send initial progress
+        sendOtaProgress(0, inProgress: true, message: "Reading firmware file...")
+
+        // Read firmware file
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: filePath) else {
+            logger.logError("[OTA] Firmware file does not exist: \(filePath)")
+            sendOtaProgress(0, inProgress: false, message: "Firmware file does not exist: \(filePath)")
+            isOtaInProgress = false
+            return false
+        }
+
+        do {
+            let firmwareData = try Data(contentsOf: URL(fileURLWithPath: filePath))
+            logger.logInfo("[OTA] Firmware file read: \(firmwareData.count) bytes")
+
+            if firmwareData.isEmpty {
+                logger.logError("[OTA] Firmware file is empty")
+                sendOtaProgress(0, inProgress: false, message: "Firmware file is empty")
+                isOtaInProgress = false
+                return false
+            }
+
+            // Optimized chunk size for fast iOS OTA - target 5-6 minute completion
+            // iOS can handle larger packets reliably for much faster transfers
+            let chunkSize = 512 // Larger chunks for speed while staying safe for iOS BLE
+            otaTotalPackets = (firmwareData.count + chunkSize - 1) / chunkSize
+            let actualChunkSize = chunkSize // Same as chunkSize for simplicity
+            logger.logInfo("[OTA] Using chunk size: \(actualChunkSize), Total packets: \(otaTotalPackets)")
+
+            // Check if device is still connected
+            guard connectionState == .connected, let _ = connectedPeripheral else {
+                logger.logError("[OTA] Device not connected")
+                sendOtaProgress(0, inProgress: false, message: "Device not connected")
+                isOtaInProgress = false
+                return false
+            }
+
+            // Start OTA update in background thread
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.performOtaUpdate(firmwareData: firmwareData, chunkSize: chunkSize)
+            }
+
+            logger.logInfo("[OTA] OTA update thread started")
+            return true
+
+        } catch {
+            logger.logError("[OTA] Exception reading firmware file: \(error.localizedDescription)")
+            sendOtaProgress(0, inProgress: false, message: "Error reading firmware file: \(error.localizedDescription)")
+            isOtaInProgress = false
+            return false
+        }
+    }
+
+    /// Cancel OTA update
+    func cancelOtaUpdate() {
+        logger.logInfo("[OTA] OTA update cancelled by user")
+        otaCancelRequested = true
+        sendOtaProgress(0, inProgress: false, message: "OTA cancelled")
+    }
+
+    /// Get OTA progress
+    func getOtaProgress() -> Int {
+        return otaProgress
+    }
+
+    /// Check if OTA is in progress
+    func isOtaUpdateInProgress() -> Bool {
+        return isOtaInProgress
+    }
+
+    /// Perform the actual OTA update (matching Android performOtaUpdate)
+    private func performOtaUpdate(firmwareData: Data, chunkSize: Int) {
+        guard let peripheral = connectedPeripheral else {
+            logger.logError("[OTA] GATT is null in performOtaUpdate")
+            sendOtaProgress(0, inProgress: false, message: "Bluetooth connection lost")
+            isOtaInProgress = false
+            return
+        }
+
+        guard let dataChar = otaDataCharacteristic else {
+            logger.logError("[OTA] OTA data characteristic not found")
+            sendOtaProgress(0, inProgress: false, message: "OTA data characteristic not found. Device may not support OTA.")
+            isOtaInProgress = false
+            return
+        }
+
+        guard let controlChar = otaControlCharacteristic else {
+            logger.logError("[OTA] OTA control characteristic not found")
+            sendOtaProgress(0, inProgress: false, message: "OTA control characteristic not found. Device may not support OTA.")
+            isOtaInProgress = false
+            return
+        }
+
+        logger.logInfo("[OTA] OTA characteristics found, proceeding with update")
+
+        do {
+            logger.logInfo("[OTA] Starting OTA update: \(firmwareData.count) bytes, \(otaTotalPackets) packets")
+
+            // Basic firmware validation
+            if firmwareData.isEmpty {
+                logger.logError("[OTA] Firmware file is empty")
+                sendOtaProgress(0, inProgress: false, message: "Firmware file is empty")
+                isOtaInProgress = false
+                return
+            }
+
+            // Check if firmware starts with reasonable data (not all zeros)
+            let firstBytes = firmwareData.subdata(in: 0..<min(64, firmwareData.count))
+            let allZeros = firstBytes.allSatisfy { $0 == 0 }
+            if allZeros {
+                logger.logError("[OTA] Firmware file appears to be all zeros - corrupted!")
+                sendOtaProgress(0, inProgress: false, message: "Firmware file appears corrupted")
+                isOtaInProgress = false
+                return
+            }
+
+            // Log firmware header for debugging
+            let headerLength = min(32, firmwareData.count)
+            let headerBytes = firmwareData.subdata(in: 0..<headerLength)
+            logger.logInfo("[OTA] Firmware header: \(headerBytes.map { String(format: "%02x", $0) }.joined(separator: " "))")
+
+            // Calculate simple checksum
+            var checksum: UInt8 = 0
+            for i in 0..<min(16, firmwareData.count) {
+                checksum = (checksum &+ firmwareData[i]) & 0xFF
+            }
+            logger.logInfo("[OTA] Firmware header checksum: \(checksum)")
+
+            // Get MTU size (use default MTU for iOS - CoreBluetooth handles MTU negotiation)
+            let mtuSize = 250 // iOS typically uses larger MTU
+            let actualChunkSize = min(chunkSize, mtuSize - 3)
+            // Recalculate total packets with the actual chunk size
+            otaTotalPackets = (firmwareData.count + actualChunkSize - 1) / actualChunkSize
+            logger.logInfo("[OTA] MTU: \(mtuSize), Chunk size: \(actualChunkSize), Total packets: \(otaTotalPackets)")
+
+            // Write chunk size to data characteristic (iOS adaptation - send actual chunk size)
+            let mtuBytes = Data([UInt8(actualChunkSize & 0xFF), UInt8((actualChunkSize >> 8) & 0xFF)])
+            logger.logInfo("[OTA] Writing chunk size \(actualChunkSize) to data characteristic")
+            if !writeOtaCharacteristic(peripheral: peripheral, characteristic: dataChar, data: mtuBytes, waitForCompletion: true) {
+                logger.logError("[OTA] Failed to write MTU size")
+                sendOtaProgress(0, inProgress: false, message: "Failed to write MTU size")
+                isOtaInProgress = false
+                return
+            }
+
+            // Write 0x01 to control characteristic to start OTA
+            logger.logInfo("[OTA] Writing 0x01 to control characteristic to start OTA")
+            if !writeOtaCharacteristic(peripheral: peripheral, characteristic: controlChar, data: Data([0x01]), waitForCompletion: true) {
+                logger.logError("[OTA] Failed to start OTA")
+                sendOtaProgress(0, inProgress: false, message: "Failed to start OTA")
+                isOtaInProgress = false
+                return
+            }
+
+            // Wait for device response
+            Thread.sleep(forTimeInterval: 0.2)
+
+            // Read response from control characteristic
+            logger.logInfo("[OTA] Reading response from control characteristic")
+            guard let response = readOtaCharacteristicSync(peripheral: peripheral, characteristic: controlChar, timeoutMs: 2000) else {
+                logger.logError("[OTA] No response from device")
+                sendOtaProgress(0, inProgress: false, message: "No response from device")
+                isOtaInProgress = false
+                return
+            }
+
+            if response.isEmpty || response[0] != 2 {
+                let responseStr = response.isEmpty ? "no response" : String(response[0])
+                logger.logError("[OTA] Device not ready for OTA. Response: \(responseStr)")
+                sendOtaProgress(0, inProgress: false, message: "Device not ready for OTA (response: \(responseStr))")
+                isOtaInProgress = false
+                return
+            }
+
+            logger.logInfo("[OTA] Device ready for OTA. Starting firmware transfer...")
+
+            // Send firmware chunks with retry logic and proper flow control
+            var packetNumber = 0
+            var consecutiveFailures = 0
+            let maxConsecutiveFailures = 5
+            let retryDelayMs: TimeInterval = 0.05 // 50ms
+
+            let firmwareBytes = [UInt8](firmwareData)
+
+            for i in stride(from: 0, to: firmwareBytes.count, by: actualChunkSize) {
+                if otaCancelRequested {
+                    logger.logInfo("[OTA] OTA cancelled by user")
+                    _ = writeOtaCharacteristic(peripheral: peripheral, characteristic: controlChar, data: Data([0x04]), waitForCompletion: false)
+                    sendOtaProgress(0, inProgress: false, message: "OTA cancelled")
+                    isOtaInProgress = false
+                    return
+                }
+
+                let end = min(i + actualChunkSize, firmwareBytes.count)
+                let chunk = Array(firmwareBytes[i..<end])
+
+                if packetNumber % 100 == 0 || packetNumber < 10 {
+                    logger.logInfo("[OTA] Writing packet \(packetNumber)/\(otaTotalPackets) (\(chunk.count) bytes)")
+                }
+
+                // Retry logic for packet writes
+                var writeSuccess = false
+                var retryCount = 0
+                let maxRetries = 3
+
+                while !writeSuccess && retryCount < maxRetries && !otaCancelRequested {
+                    // Wait for completion to prevent overlapping writes
+                    writeSuccess = writeOtaCharacteristic(peripheral: peripheral, characteristic: dataChar, data: Data(chunk), waitForCompletion: true)
+
+                    if !writeSuccess {
+                        retryCount += 1
+                        consecutiveFailures += 1
+                        logger.logWarning("[OTA] Failed to write packet \(packetNumber) (attempt \(retryCount)/\(maxRetries))")
+
+                        if consecutiveFailures >= maxConsecutiveFailures {
+                            logger.logError("[OTA] Too many consecutive failures (\(consecutiveFailures)). Aborting OTA.")
+                            sendOtaProgress(0, inProgress: false, message: "Failed to write packet \(packetNumber) after \(consecutiveFailures) consecutive failures")
+                            isOtaInProgress = false
+                            return
+                        }
+
+                        // Exponential backoff: 50ms, 100ms, 200ms
+                        let backoffDelay = retryDelayMs * pow(2.0, Double(retryCount - 1))
+                        logger.logDebug("[OTA] Retrying packet \(packetNumber) after \(backoffDelay)s delay")
+                        Thread.sleep(forTimeInterval: backoffDelay)
+                    } else {
+                        consecutiveFailures = 0 // Reset on success
+                    }
+                }
+
+                if !writeSuccess {
+                    logger.logError("[OTA] Failed to write packet \(packetNumber) after \(maxRetries) attempts")
+                    sendOtaProgress(0, inProgress: false, message: "Failed to write packet \(packetNumber) after \(maxRetries) attempts")
+                    isOtaInProgress = false
+                    return
+                }
+
+                // Small delay after successful write to ensure BLE stack is ready for next packet
+                Thread.sleep(forTimeInterval: 0.005) // 5ms delay (larger packets need less time between)
+
+                packetNumber += 1
+
+                // Update progress
+                let progress = otaTotalPackets > 0 ? Int((Double(packetNumber) / Double(otaTotalPackets)) * 100) : 0
+                otaProgress = progress
+                otaCurrentPacket = packetNumber
+
+                // Send progress update frequently for smooth UI updates
+                let updateFrequency = packetNumber < 10 ? 1 : (packetNumber < 100 ? 5 : 10)
+
+                if packetNumber % updateFrequency == 0 || packetNumber == otaTotalPackets {
+                    sendOtaProgress(progress, inProgress: true, message: "Sending packet \(packetNumber)/\(otaTotalPackets)")
+                }
+            }
+
+            // Ensure 100% progress is sent after all packets
+            sendOtaProgress(100, inProgress: true, message: "All packets sent")
+
+            logger.logInfo("[OTA] All packets sent. Waiting before sending completion signal...")
+            // Add a small delay after sending all packets to ensure device is ready
+            Thread.sleep(forTimeInterval: 0.5)
+
+            logger.logInfo("[OTA] Sending completion signal...")
+
+            // Write 0x04 to control characteristic to finish
+            logger.logInfo("[OTA] Writing 0x04 to control characteristic to finish OTA")
+            // For the final 0x04 command, don't wait for write completion as device might reboot immediately
+            _ = writeOtaCharacteristic(peripheral: peripheral, characteristic: controlChar, data: Data([0x04]), waitForCompletion: false)
+
+            logger.logInfo("[OTA] Completion signal (0x04) sent. Proceeding to wait for acknowledgment/disconnection.")
+            logger.logInfo("[OTA] Completion signal (0x04) sent successfully")
+
+            // Wait for device to process - increased from 500ms to 1000ms for reliability
+            logger.logInfo("[OTA] Waiting for device to process completion signal...")
+            Thread.sleep(forTimeInterval: 1.0)
+
+            // Try to read final acknowledgment, but don't fail if device disconnects (it's rebooting)
+            logger.logInfo("[OTA] Waiting for final acknowledgment (0x05)")
+            let finalResponse = readOtaCharacteristicSync(peripheral: peripheral, characteristic: controlChar, timeoutMs: 2000)
+
+            // Check if we got a response or if device disconnected (which is normal - device reboots)
+            let deviceDisconnected = connectionState != .connected || connectedPeripheral == nil
+
+            if let response = finalResponse, !response.isEmpty {
+                logger.logInfo("[OTA] Received final response: \(response.map { String(format: "%02x", $0) }.joined())")
+                if response[0] == 5 {
+                    logger.logInfo("[OTA] OTA update successful! Received acknowledgment (0x05)")
+                    sendOtaProgress(100, inProgress: false, message: "OTA update successful")
+                } else if response[0] == 6 {
+                    logger.logError("[OTA] OTA failed! Device reported error (0x06)")
+                    sendOtaProgress(0, inProgress: false, message: "OTA failed - device reported error")
+                    isOtaInProgress = false
+                    return
+                } else {
+                    logger.logWarning("[OTA] Received unexpected response: \(response[0]) (expected 0x05)")
+                    sendOtaProgress(100, inProgress: false, message: "OTA completed with unexpected response")
+                }
+            } else if deviceDisconnected {
+                // Device disconnected after sending all packets - this is normal, device is rebooting to install firmware
+                logger.logInfo("[OTA] OTA update completed. Device disconnected (rebooting to install firmware)")
+                sendOtaProgress(100, inProgress: false, message: "OTA update completed. Device is rebooting to install firmware.")
+            } else {
+                let responseStr = finalResponse?.isEmpty ?? true ? "no response" : "empty response"
+                logger.logWarning("[OTA] OTA update may have succeeded but no acknowledgment received. Response: \(responseStr)")
+                // Still mark as success since all packets were sent
+                sendOtaProgress(100, inProgress: false, message: "OTA update completed. All packets sent successfully.")
+            }
+
+        } catch {
+            logger.logError("[OTA] OTA update failed: \(error.localizedDescription)")
+            sendOtaProgress(0, inProgress: false, message: "OTA update failed: \(error.localizedDescription)")
+        }
+
+        isOtaInProgress = false
+
+        // Restart regular UART timers after OTA completes (if still connected)
+        if connectionState == .connected && isUartReady {
+            startMeasureTimer()
+            startChargeLimitTimer()
+            logger.logDebug("[OTA] Restarted regular UART timers after OTA")
+        }
+    }
+
+    /// Read OTA characteristic synchronously (matching Android readOtaCharacteristicSync)
+    private func readOtaCharacteristicSync(peripheral: CBPeripheral, characteristic: CBCharacteristic, timeoutMs: Int) -> Data? {
+        otaReadLock.wait()
+        lastReadValue = nil
+        otaReadLock.signal()
+
+        do {
+            peripheral.readValue(for: characteristic)
+            // Wait for callback with timeout
+            let timeoutDate = Date(timeIntervalSinceNow: TimeInterval(timeoutMs) / 1000.0)
+            while lastReadValue == nil && Date() < timeoutDate && isOtaInProgress {
+                Thread.sleep(forTimeInterval: 0.01) // 10ms sleep
+            }
+            return lastReadValue
+        } catch {
+            logger.logError("[OTA] Exception in readOtaCharacteristicSync: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Write OTA characteristic (matching Android writeOtaCharacteristic)
+    private func writeOtaCharacteristic(peripheral: CBPeripheral, characteristic: CBCharacteristic, data: Data, waitForCompletion: Bool = true) -> Bool {
+        otaWriteCompleted = false
+
+        // Write the characteristic
+        peripheral.writeValue(data, for: characteristic, type: .withResponse)
+
+        if waitForCompletion {
+            // Wait for write completion with timeout
+            let timeoutResult = otaWriteLock.wait(timeout: .now() + .milliseconds(3000)) // 3 second timeout
+            if timeoutResult == .timedOut {
+                logger.logWarning("[OTA] Write completion timeout for characteristic: \(characteristic.uuid)")
+                return false
+            }
+            if !otaWriteCompleted {
+                logger.logWarning("[OTA] Write completed but otaWriteCompleted is false for characteristic: \(characteristic.uuid)")
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Send OTA progress to Flutter (matching Android sendOtaProgress)
+    private func sendOtaProgress(_ progress: Int, inProgress: Bool, message: String?) {
+        DispatchQueue.main.async {
+            self.onOtaProgress?(progress, inProgress, message ?? "")
+        }
     }
 }
 
