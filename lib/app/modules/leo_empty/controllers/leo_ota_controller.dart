@@ -23,7 +23,7 @@ class LeoOtaController extends GetxController {
   // Dialog state
   final isOtaProgressDialogOpen = false.obs;
   final isTimerDialogOpen = false.obs;
-  final secondsRemaining = 60.obs; // 1 minute timer
+  final secondsRemaining = 60.0.obs; // 1 minute timer
   final shouldShowDoneDialog =
       false.obs; // Flag to trigger done dialog on reconnection
   final isDoneDialogShowing = false.obs; // Prevent duplicate done dialogs
@@ -136,7 +136,7 @@ class LeoOtaController extends GetxController {
     }
 
     _installTimer?.cancel();
-    secondsRemaining.value = 60; // 1 minute
+    secondsRemaining.value = 60.0; // 1 minute
     isTimerDialogOpen.value = true;
     _wasOtaCompleted = true;
 
@@ -152,7 +152,7 @@ class LeoOtaController extends GetxController {
 
     _installTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (secondsRemaining.value > 0) {
-        secondsRemaining.value--;
+        secondsRemaining.value = secondsRemaining.value - 0.5;
       } else {
         timer.cancel();
         print(
@@ -181,7 +181,7 @@ class LeoOtaController extends GetxController {
     _installTimer?.cancel();
     _installTimer = null;
     isTimerDialogOpen.value = false;
-    secondsRemaining.value = 0; // Set to 0 to indicate completion
+    secondsRemaining.value = 0.0; // Set to 0 to indicate completion
     shouldShowDoneDialog.value = true; // Trigger done dialog to show
     shouldShowDoneDialog.refresh();
     print(
@@ -482,12 +482,12 @@ class LeoOtaController extends GetxController {
       print("Target firmware: $targetVersion");
 
       if (currentVersion.isNotEmpty && targetVersion.isNotEmpty) {
-        // Simple version comparison - check if target is different from current
-        if (currentVersion == targetVersion) {
-          throw Exception(
-            'Device is already running firmware version $currentVersion. No update needed.',
-          );
-        }
+        // // Simple version comparison - check if target is different from current
+        // if (currentVersion == targetVersion) {
+        //   throw Exception(
+        //     'Device is already running firmware version $currentVersion. No update needed.',
+        //   );
+        // }
 
         // Additional validation could be added here for version comparison logic
         print(
@@ -601,7 +601,7 @@ class LeoOtaController extends GetxController {
     otaTotalPackets.value = 0;
     isOtaProgressDialogOpen.value = false;
     isTimerDialogOpen.value = false;
-    secondsRemaining.value = 60;
+    secondsRemaining.value = 60.0;
     shouldShowDoneDialog.value = false;
     isDoneDialogShowing.value = false;
     hasWaitDialogShown.value = false;

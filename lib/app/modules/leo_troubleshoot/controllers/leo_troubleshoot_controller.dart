@@ -114,8 +114,7 @@ class LeoTroubleshootController extends GetxController {
       // Show file picker only if OTA is not in progress
       print('🔵 [Troubleshoot] Showing file picker');
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['bin'],
+        type: FileType.any,
       );
 
       if (result != null && result.files.single.path != null) {

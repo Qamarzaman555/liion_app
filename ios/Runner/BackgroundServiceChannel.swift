@@ -171,6 +171,12 @@ class BackgroundServiceChannel: NSObject, FlutterStreamHandler {
         case "sendUIReadyCommands":
             sendUIReadyCommands(result: result)
             
+        case "getCachedMwh":
+            getCachedMwh(result: result)
+            
+        case "getCachedSwversion":
+            getCachedSwversion(result: result)
+            
         case "startFileStreaming":
             startFileStreaming(result: result)
             
@@ -547,6 +553,18 @@ class BackgroundServiceChannel: NSObject, FlutterStreamHandler {
     private func getLastReceivedData(result: @escaping FlutterResult) {
         let data = bleService.getLastReceivedData()
         result(data)
+    }
+    
+    private func getCachedMwh(result: @escaping FlutterResult) {
+        let value = bleService.getCachedMwh()
+        loggingService.logInfo("Flutter requested cached mWh; returning: \(value)")
+        result(["value": value])
+    }
+    
+    private func getCachedSwversion(result: @escaping FlutterResult) {
+        let value = bleService.getCachedSwversion()
+        loggingService.logInfo("Flutter requested cached swversion; returning: \(value)")
+        result(["value": value])
     }
     
     private func sendUIReadyCommands(result: @escaping FlutterResult) {

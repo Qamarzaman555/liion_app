@@ -666,6 +666,62 @@ class IOSBleScanService {
     }
   }
 
+  /// Get cached mWh value saved on native side
+  static Future<String> getCachedMwh() async {
+    return await _getCachedValueWithRequest(
+      methodName: 'getCachedMwh',
+      requestCommand: 'mwh',
+      logPrefix: '[iOS] Cached mWh',
+    );
+  }
+
+  /// Get cached software version saved on native side
+  static Future<String> getCachedSwversion() async {
+    return await _getCachedValueWithRequest(
+      methodName: 'getCachedSwversion',
+      requestCommand: 'swversion',
+      logPrefix: '[iOS] Cached swversion',
+      retryDelayMs: 400,
+    );
+  }
+
+  /// Internal helper: try to read cached value from native; if empty optionally send a command to request it and retry.
+  static Future<String> _getCachedValueWithRequest({
+    required String methodName,
+    required String requestCommand,
+    required String logPrefix,
+    bool requestIfEmpty = true,
+    int retryDelayMs = 300,
+  }) async {
+    try {
+      final result = await _channel.invokeMethod<Map>(methodName);
+      String value = result?['value'] as String? ?? '';
+      print('$logPrefix called: $value');
+
+      if (value.isEmpty && requestIfEmpty) {
+        print('$logPrefix empty — sending command: $requestCommand');
+        // Try to request the value from native BLE service
+        try {
+          await sendCommand(requestCommand);
+        } catch (_) {}
+        // Wait briefly for native to process and cache the response
+        await Future.delayed(Duration(milliseconds: retryDelayMs));
+        try {
+          final retry = await _channel.invokeMethod<Map>(methodName);
+          value = retry?['value'] as String? ?? '';
+          print('$logPrefix after request: $value');
+        } catch (e) {
+          print('$logPrefix retry failed: $e');
+        }
+      }
+
+      return value;
+    } on PlatformException catch (e) {
+      print('$logPrefix failed: ${e.message}');
+      return '';
+    }
+  }
+
   /// Stream of raw received data (polls every 1 second when device is connected)
   /// Matches Android dataReceivedStream for parsing charging mode and other values
   static Stream<String> getDataReceivedStream() {

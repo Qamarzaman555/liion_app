@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
@@ -65,7 +67,11 @@ class SettingsView extends GetView<SettingsController> {
                 text: "Update App",
                 icon: Icons.repeat_rounded,
                 onPressed: () {
-                  controller.updateAppFromPlayStore();
+                  if (Platform.isIOS) {
+                    controller.updateAppFromAppStore();
+                  } else {
+                    controller.updateAppFromPlayStore();
+                  }
                 },
               ),
 

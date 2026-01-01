@@ -28,6 +28,9 @@ class LeoHomeController extends GetxController {
   final advancedHigherChargeLimitEnabled = false.obs;
   final showThankYouNote = false.obs;
   final hasConnectedOnce = false.obs;
+  final firmwareVersionStatusText = ''.obs;
+
+  final oneTimeSendCommand = true.obs;
 
   // Track if initial requests have been sent for current connection (prevents duplicates)
   String? _lastInitialRequestsAddress;
@@ -285,6 +288,17 @@ class LeoHomeController extends GetxController {
             (previousState != BleConnectionState.connected || addressChanged);
 
         if (newState == BleConnectionState.connected) {
+          if (oneTimeSendCommand.value) {
+            oneTimeSendCommand.value = false;
+            print('Sending firmware version commands');
+            await requestLeoFirmwareVersion();
+            await requestMwhValue();
+            firmwareVersionStatusText.value = firmwareStatusText();
+            print(
+              'Firmware version commands sent: ${firmwareVersionStatusText.value}',
+            );
+            return;
+          }
           // Only execute initial requests on NEW connection (not on every poll)
           if (isNewConnection) {
             hasConnectedOnce.value = true;
@@ -316,6 +330,8 @@ class LeoHomeController extends GetxController {
             connectedDeviceName.value = name;
           }
         } else if (newState == BleConnectionState.connecting) {
+          oneTimeSendCommand.value = true;
+          print('One time send command reset to ${oneTimeSendCommand.value}');
           connectingDeviceAddress.value = address;
         } else if (newState == BleConnectionState.disconnected) {
           connectedDeviceAddress.value = null;
@@ -487,7 +503,7 @@ class LeoHomeController extends GetxController {
       if (parts.length >= 2 && parts[1].toLowerCase() == 'swversion') {
         String value = parts.length > 2 ? parts[2] : parts[0];
         binFileFromLeoName.value = value.trim();
-        print('Swversion value set to: ${binFileFromLeoName.value}');
+        firmwareVersionStatusText.value = firmwareStatusText();
       }
 
       // Parse measure data - check if any part contains 'measure'
@@ -779,7 +795,15 @@ class LeoHomeController extends GetxController {
       if (Platform.isAndroid) {
         await BleScanService.sendCommand('mwh');
       } else if (Platform.isIOS) {
-        await IOSBleScanService.sendCommand('mwh');
+        // On iOS, return the cached mWh value saved by native BLE service
+        try {
+          final cached = await IOSBleScanService.getCachedMwh();
+          if (cached.isNotEmpty) {
+            mwhValue.value = cached;
+          }
+        } catch (e) {
+          // ignore and do not send command
+        }
       }
     }
   }
@@ -791,12 +815,25 @@ class LeoHomeController extends GetxController {
         await Future.delayed(const Duration(milliseconds: 300));
         await BleScanService.sendCommand('swversion');
       } else if (Platform.isIOS) {
-        await IOSBleScanService.sendCommand('measure');
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (Platform.isIOS) {
-          await Future.delayed(const Duration(milliseconds: 200));
-          await IOSBleScanService.sendCommand('swversion');
-        }
+        // Request live measure data, but fetch swversion & mwh from native cache
+        try {
+          final cachedSw = await IOSBleScanService.getCachedSwversion();
+          print('Cached swversion: $cachedSw');
+          if (cachedSw.isNotEmpty) {
+            binFileFromLeoName.value = cachedSw.trim();
+            print('Cached swversion set to: ${binFileFromLeoName.value}');
+            firmwareVersionStatusText.value = firmwareStatusText();
+          }
+        } catch (_) {}
+
+        await Future.delayed(const Duration(milliseconds: 200));
+
+        try {
+          final cachedMwh = await IOSBleScanService.getCachedMwh();
+          if (cachedMwh.isNotEmpty) {
+            mwhValue.value = cachedMwh;
+          }
+        } catch (_) {}
       }
     }
   }

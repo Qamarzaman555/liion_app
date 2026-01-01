@@ -64,20 +64,30 @@ class LeoConnectionButtons extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Obx(() {
-          final statusText = controller.firmwareStatusText();
           return Column(
             children: [
               CustomButton(
-                backgroundColor: statusText == "Leo is up-to-date"
+                backgroundColor:
+                    controller.firmwareVersionStatusText.value ==
+                            "Leo is up-to-date" ||
+                        controller.connectionState.value !=
+                            BleConnectionState.connected
                     ? AppColors.primaryInvertColor
                     : AppColors.primaryColor,
-                text: statusText,
+                text:
+                    controller.connectionState.value !=
+                        BleConnectionState.connected
+                    ? 'Leo is up-to-date'
+                    : controller.firmwareVersionStatusText.value,
                 onPressed: onFirmwareUpdateButtonPressed,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      statusText,
+                      controller.connectionState.value !=
+                              BleConnectionState.connected
+                          ? 'Leo is up-to-date'
+                          : controller.firmwareVersionStatusText.value,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

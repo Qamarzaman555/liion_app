@@ -136,7 +136,7 @@ class _WaitForInstallDialogBoxState extends State<WaitForInstallDialogBox> {
             const SizedBox(height: 16),
             Obx(
               () => Text(
-                '${(controller.secondsRemaining ~/ 60).toString().padLeft(2, '0')}:${(controller.secondsRemaining % 60).toString().padLeft(2, '0')}',
+                '${(controller.secondsRemaining.value.toInt() ~/ 60).toString().padLeft(2, '0')}:${(controller.secondsRemaining.value.toInt() % 60).toString().padLeft(2, '0')}',
                 style: const TextStyle(fontSize: 24),
               ),
             ),

@@ -31,4 +31,13 @@ class SettingsController extends GetxController {
     Uri uri = Uri.parse(url);
     await launchUrl(uri);
   }
+
+  void updateAppFromAppStore() async {
+    //const url = 'itms-beta://';
+    //const url = 'itms-beta://beta.itunes.apple.com/v1/app/6478390530';
+    const url =
+        'https://apps.apple.com/pk/app/liion-power-leo-connect/id6698877138';
+    Uri uri = Uri.parse(url);
+    await launchUrl(uri);
+  }
 }

@@ -101,6 +101,8 @@ class BLEService: NSObject {
     private let silentModeKey = "silent_mode_enabled"
     private let higherChargeLimitKey = "higher_charge_limit_enabled"
     private let serialNumberKey = "deviceSerialNumber"
+    private let mwhKey = "deviceMwh"
+    private let swversionKey = "deviceSwversion"
     
     // File streaming state (matching Android)
     private var fileStreamingAccumulatedData = ""
@@ -1151,6 +1153,36 @@ class BLEService: NSObject {
     /// Get last received raw data (matching Android dataReceivedStream)
     func getLastReceivedData() -> String {
         return lastReceivedData
+    }
+    
+    /// Get cached mWh value (saved from last "OK mwh <value>" response)
+    func getCachedMwh() -> String {
+        // Prefer in-memory cached value, fallback to persisted UserDefaults if empty
+        if !latestMwhValue.isEmpty {
+            logger.logInfo("Returning cached mWh from memory: \(latestMwhValue)")
+            return latestMwhValue
+        }
+        if let persisted = UserDefaults.standard.string(forKey: mwhKey) {
+            logger.logInfo("Returning cached mWh from UserDefaults: \(persisted)")
+            return persisted
+        }
+        logger.logInfo("No cached mWh available")
+        return ""
+    }
+
+    /// Get cached software version (saved from last "OK swversion <value>" response)
+    func getCachedSwversion() -> String {
+        // Prefer in-memory cached value, fallback to persisted UserDefaults if empty
+        if !firmwareVersion.isEmpty {
+            logger.logInfo("Returning cached swversion from memory: \(firmwareVersion)")
+            return firmwareVersion
+        }
+        if let persisted = UserDefaults.standard.string(forKey: swversionKey) {
+            logger.logInfo("Returning cached swversion from UserDefaults: \(persisted)")
+            return persisted
+        }
+        logger.logInfo("No cached swversion available")
+        return ""
     }
     
     // MARK: - File Streaming Methods (matching Android)
@@ -2313,7 +2345,10 @@ class BLEService: NSObject {
             if !mwhValue.isEmpty {
                 // Store mwh value for polling
                 latestMwhValue = mwhValue
-                logger.logInfo("MWh value: \(mwhValue)")
+                logger.logInfo("MWh value received and cached: \(mwhValue)")
+                // Persist cached mWh to UserDefaults for persistence across restarts
+                UserDefaults.standard.set(mwhValue, forKey: mwhKey)
+                logger.logDebug("MWh value saved to UserDefaults under key '\(mwhKey)'")
             }
         }
         
@@ -2322,7 +2357,10 @@ class BLEService: NSObject {
             let versionValue = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
             if !versionValue.isEmpty {
                 firmwareVersion = versionValue
-                logger.logInfo("Firmware version: \(versionValue)")
+                logger.logInfo("Firmware version received and cached: \(versionValue)")
+                // Persist firmware version to UserDefaults for persistence across restarts
+                UserDefaults.standard.set(versionValue, forKey: swversionKey)
+                logger.logDebug("Firmware version saved to UserDefaults under key '\(swversionKey)'")
             }
         }
         

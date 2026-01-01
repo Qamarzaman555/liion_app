@@ -20,10 +20,30 @@ class LeoHomeView extends GetView<LeoHomeController> {
   const LeoHomeView({super.key});
 
   static bool _didTriggerInitialFirmwareDownload = false;
+  static bool _didRegisterBinObserver = false;
 
   @override
   Widget build(BuildContext context) {
     _ensureInitialFirmwareDownload();
+    // Register an observer that reacts to changes in the Leo-reported firmware name
+    // and compares it to the cloud filename so the firmware button status updates.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_didRegisterBinObserver) {
+        _didRegisterBinObserver = true;
+        final homeController = controller;
+        ever(homeController.binFileFromLeoName, (val) {
+          try {
+            homeController.firmwareVersionStatusText.value = homeController
+                .firmwareStatusText();
+            print(
+              '🔔 [Home View] binFileFromLeoName changed: ${homeController.binFileFromLeoName.value} (cloud: ${homeController.cloudBinFileName.value})',
+            );
+          } catch (e) {
+            print('Error in bin observer: $e');
+          }
+        });
+      }
+    });
 
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
