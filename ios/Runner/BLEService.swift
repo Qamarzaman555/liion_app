@@ -172,7 +172,7 @@ class BLEService: NSObject {
     private lazy var firestore: Firestore = {
         return Firestore.firestore()
     }()
-    private let collectionName = "IOS Testing Build 1.5.0 (45)"
+    private let collectionName = "IOS Testing Build 1.5.0 (51)"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1742,7 +1742,7 @@ class BLEService: NSObject {
                 }
                 let binFileName = self.firmwareVersion
                 let appVersion = UserDefaults.standard.string(forKey: "appVersion") ?? "1.5.0"
-                let appBuildNumber = UserDefaults.standard.string(forKey: "appBuildNumber") ?? "45"
+                let appBuildNumber = UserDefaults.standard.string(forKey: "appBuildNumber") ?? "51"
                 
                 // Get device information
                 let osVersion = UIDevice.current.systemVersion

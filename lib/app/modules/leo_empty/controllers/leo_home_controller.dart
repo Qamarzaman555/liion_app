@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
@@ -15,6 +16,8 @@ import 'package:liion_app/app/modules/led_timeout/controllers/led_timeout_contro
 
 class LeoHomeController extends GetxController {
   static const _thankYouNoteSeenKey = 'first_time_thank_you_seen';
+  static const _lastConnectedDeviceAddressKey = 'last_connected_device_address';
+  static const _lastConnectedDeviceNameKey = 'last_connected_device_name';
 
   final scannedDevices = <Map<String, String>>[].obs;
   final isScanning = false.obs;
@@ -41,7 +44,6 @@ class LeoHomeController extends GetxController {
   final lastReceivedData = ''.obs;
   final receivedDataLog = <String>[].obs;
   final cloudBinFileName = ''.obs;
-  final isFirmwareDownloading = false.obs;
 
   String get leoFirmwareVersion => binFileFromLeoName.value;
   set leoFirmwareVersion(String value) {
@@ -82,6 +84,7 @@ class LeoHomeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    downloadFirmwareAtStart();
     clearCurrentGraph();
     _listenToAdapterState();
     _listenToDeviceStream();
@@ -101,10 +104,6 @@ class LeoHomeController extends GetxController {
   }
 
   String firmwareStatusText() {
-    if (isFirmwareDownloading.value) {
-      return 'Checking updates...';
-    }
-
     final leoVersion = binFileFromLeoName.value.trim();
     final cloudVersion = cloudBinFileName.value.trim();
 
@@ -114,6 +113,7 @@ class LeoHomeController extends GetxController {
   }
 
   Future<void> _loadInitialState() async {
+    final prefs = await SharedPreferences.getInstance();
     // Get adapter state
     if (Platform.isIOS) {
       final enabled = await IOSBleScanService.isBluetoothEnabled();
@@ -166,6 +166,16 @@ class LeoHomeController extends GetxController {
     }
 
     await _loadDevices();
+
+    // Attempt to auto-reconnect to the last connected device
+    final lastConnectedAddress = prefs.getString(
+      _lastConnectedDeviceAddressKey,
+    );
+    if (lastConnectedAddress != null &&
+        connectionState.value == BleConnectionState.disconnected) {
+      print('Attempting to auto-reconnect to $lastConnectedAddress');
+      await connectToDevice(lastConnectedAddress);
+    }
   }
 
   Future<void> _loadThankYouNoteState() async {
@@ -192,41 +202,78 @@ class LeoHomeController extends GetxController {
 
   /// Download firmware from Firebase at app start to compare versions.
   Future<void> downloadFirmwareAtStart() async {
-    if (isFirmwareDownloading.value) return;
+    const int maxRetries = 10;
+    const Duration retryDelay = Duration(seconds: 5);
 
-    try {
-      isFirmwareDownloading.value = true;
-      cloudBinFileName.value = '';
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      print('Firmware download attempt ${attempt + 1}/$maxRetries');
+      try {
+        cloudBinFileName.value = '';
 
-      final storage = firebase_storage.FirebaseStorage.instance;
-      final result = await storage.ref('Beta fw').listAll();
+        // Check for internet connection before attempting download
+        final hasInternet = await _checkInternetConnection();
+        if (!hasInternet) {
+          print(
+            'No internet connection, retrying in ${retryDelay.inSeconds} seconds...',
+          );
+          await Future.delayed(retryDelay);
+          continue; // Skip to next attempt if no internet
+        }
 
-      if (result.items.isEmpty) {
-        return;
-      }
+        final storage = firebase_storage.FirebaseStorage.instance;
+        final result = await storage.ref('Beta fw').listAll();
 
-      final tempDirPath = (await getTemporaryDirectory()).path;
+        if (result.items.isEmpty) {
+          print('No firmware files found in Firebase. Exiting download retry.');
+          break; // Exit loop if no files are found
+        }
 
-      for (var ref in result.items) {
-        final fileName = ref.name.replaceAll('.img', '');
-        final file = File('$tempDirPath/$fileName');
-        await ref.writeToFile(file);
+        final tempDirPath = (await getTemporaryDirectory()).path;
 
-        // Capture the first downloaded filename for version comparison.
+        for (var ref in result.items) {
+          final fileName = ref.name.replaceAll('.img', '');
+          final file = File('$tempDirPath/$fileName');
+          await ref.writeToFile(file);
+
+          if (cloudBinFileName.value.isEmpty) {
+            cloudBinFileName.value = fileName;
+          }
+        }
+
         if (cloudBinFileName.value.isEmpty) {
-          cloudBinFileName.value = fileName;
+          cloudBinFileName.value = result.items.first.name.replaceAll(
+            '.img',
+            '',
+          );
+        }
+
+        print('Firmware downloaded successfully: ${cloudBinFileName.value}');
+        return; // Exit on successful download
+      } catch (e) {
+        print(
+          'Error downloading firmware at start (attempt ${attempt + 1}): $e',
+        );
+        if (attempt < maxRetries - 1) {
+          await Future.delayed(retryDelay); // Wait before retrying
+        }
+      } finally {
+        if (attempt == maxRetries - 1 || cloudBinFileName.value.isNotEmpty) {
+          print('w${cloudBinFileName.value}');
         }
       }
+    }
+    print('Firmware download failed after $maxRetries attempts.');
+    firmwareVersionStatusText.value =
+        firmwareStatusText(); // Update status text
+  }
 
-      // Fallback to first item if somehow not set.
-      if (cloudBinFileName.value.isEmpty) {
-        cloudBinFileName.value = result.items.first.name.replaceAll('.img', '');
-      }
-    } catch (e) {
-      print('Error downloading firmware at start: $e');
-    } finally {
-      isFirmwareDownloading.value = false;
-      print('Cloud bin file name: ${cloudBinFileName.value}');
+  /// Check for active internet connection by pinging Google.
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final response = await http.head(Uri.parse('https://www.google.com'));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -309,6 +356,15 @@ class LeoHomeController extends GetxController {
             connectedDeviceName.value = name; // Store connected device name
             connectingDeviceAddress.value = null;
 
+            // Save last connected device to SharedPreferences
+            final prefs = await SharedPreferences.getInstance();
+            if (address != null) {
+              await prefs.setString(_lastConnectedDeviceAddressKey, address);
+            }
+            if (name != null) {
+              await prefs.setString(_lastConnectedDeviceNameKey, name);
+            }
+
             // Prevent duplicate initial requests for same device
             if (_lastInitialRequestsAddress != address) {
               _lastInitialRequestsAddress = address;
@@ -364,6 +420,15 @@ class LeoHomeController extends GetxController {
           connectedDeviceAddress.value = address;
           connectedDeviceName.value = name;
           connectingDeviceAddress.value = null;
+
+          // Save last connected device to SharedPreferences
+          final prefs = await SharedPreferences.getInstance();
+          if (address != null) {
+            await prefs.setString(_lastConnectedDeviceAddressKey, address);
+          }
+          if (name != null) {
+            await prefs.setString(_lastConnectedDeviceNameKey, name);
+          }
 
           // Request firmware version after OTA reconnection to get updated version
           // Add delay to ensure BLE services are discovered and UART is ready
@@ -1028,6 +1093,9 @@ class LeoHomeController extends GetxController {
   }
 
   Future<void> disconnectDevice() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastConnectedDeviceAddressKey);
+    await prefs.remove(_lastConnectedDeviceNameKey);
     if (Platform.isIOS) {
       await IOSBleScanService.disconnect();
     } else {

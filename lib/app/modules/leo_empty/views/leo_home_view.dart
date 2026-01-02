@@ -19,12 +19,10 @@ import 'widgets/thank_you_note.dart';
 class LeoHomeView extends GetView<LeoHomeController> {
   const LeoHomeView({super.key});
 
-  static bool _didTriggerInitialFirmwareDownload = false;
   static bool _didRegisterBinObserver = false;
 
   @override
   Widget build(BuildContext context) {
-    _ensureInitialFirmwareDownload();
     // Register an observer that reacts to changes in the Leo-reported firmware name
     // and compares it to the cloud filename so the firmware button status updates.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -37,6 +35,17 @@ class LeoHomeView extends GetView<LeoHomeController> {
                 .firmwareStatusText();
             print(
               '🔔 [Home View] binFileFromLeoName changed: ${homeController.binFileFromLeoName.value} (cloud: ${homeController.cloudBinFileName.value})',
+            );
+          } catch (e) {
+            print('Error in bin observer: $e');
+          }
+        });
+        ever(homeController.cloudBinFileName, (val) {
+          try {
+            homeController.firmwareVersionStatusText.value = homeController
+                .firmwareStatusText();
+            print(
+              '🔔 [Home View] cloudBinFileName changed: ${homeController.binFileFromLeoName.value} (cloud: ${homeController.cloudBinFileName.value})',
             );
           } catch (e) {
             print('Error in bin observer: $e');
@@ -101,16 +110,6 @@ class LeoHomeView extends GetView<LeoHomeController> {
         ),
       ),
     );
-  }
-
-  void _ensureInitialFirmwareDownload() {
-    if (_didTriggerInitialFirmwareDownload) {
-      return;
-    }
-    _didTriggerInitialFirmwareDownload = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.downloadFirmwareAtStart();
-    });
   }
 
   void _handleConnectionButtonTap(BuildContext context) {

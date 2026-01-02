@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
 // import 'package:liion_app/app/modules/leo_empty/views/widgets/update_leo_text.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
@@ -71,12 +70,14 @@ class LeoConnectionButtons extends StatelessWidget {
                     controller.firmwareVersionStatusText.value ==
                             "Leo is up-to-date" ||
                         controller.connectionState.value !=
-                            BleConnectionState.connected
+                            BleConnectionState.connected ||
+                        controller.cloudBinFileName.value.isEmpty
                     ? AppColors.primaryInvertColor
                     : AppColors.primaryColor,
                 text:
                     controller.connectionState.value !=
-                        BleConnectionState.connected
+                            BleConnectionState.connected ||
+                        controller.cloudBinFileName.value.isEmpty
                     ? 'Leo is up-to-date'
                     : controller.firmwareVersionStatusText.value,
                 onPressed: onFirmwareUpdateButtonPressed,
@@ -85,7 +86,8 @@ class LeoConnectionButtons extends StatelessWidget {
                   children: [
                     Text(
                       controller.connectionState.value !=
-                              BleConnectionState.connected
+                                  BleConnectionState.connected ||
+                              controller.cloudBinFileName.value.isEmpty
                           ? 'Leo is up-to-date'
                           : controller.firmwareVersionStatusText.value,
                       style: TextStyle(
@@ -97,11 +99,6 @@ class LeoConnectionButtons extends StatelessWidget {
                   ],
                 ),
               ),
-              // if (statusText != "Leo is up-to-date" &&
-              //     !controller.isFirmwareDownloading.value) ...[
-              //   const SizedBox(height: 10),
-              //   UpdateLeoText(),
-              // ],
             ],
           );
         }),
