@@ -71,3 +71,88 @@ class PngAssets {
   static const String wirelism = 'assets/pngs/Wirelism.png';
   static const String wirelismLogo = 'assets/pngs/wirelism logo.png';
 }
+
+/* -- App Image Strings -- */
+
+/// This class contains all the App Images in String formats.
+class AppImages {
+  // -- App Logos
+  static const String appLogoWhite = 'assets/new/app_logo_white.svg';
+  static const String appLogoColored = 'assets/new/app_logo_colored.svg';
+
+  // -- Default Images
+  static const String leoImageSmall = "assets/new/leo_image_sm.svg";
+  static const String leoImageLg = "assets/new/leo high res 1.png";
+  static const String phoneImage = "assets/new/phone_image.png";
+
+  // -- Symbols
+  static const String addSymbol = "assets/new/add_symbol.svg";
+  static const String backSymbol = "assets/new/back_symbol.svg";
+  static const String loadingRight = "assets/new/loading_symbol.svg";
+  static const String refresh = "assets/new/refresh.svg";
+  static const String settings = "assets/new/settings.svg";
+  static const String settingsOutlined = "assets/new/settings_outlined.svg";
+  static const String deleteIcon = "assets/new/delete_icon.svg";
+
+  // -- Leo Logos
+  static const String leoLogoOutlinedLg = "assets/new/leo_outlined_lg.svg";
+  static const String leoLogoOutlinedLgHighlighted =
+      "assets/new/leo_outlined_lg_highlighted.svg";
+
+  // -- Tab Icons
+  static const String leoTabIcon = "assets/new/leo_tab_icon.svg";
+  static const String leoTabIconColored = "assets/new/leo_tab_icon_colored.svg";
+  static const String phoneTabIcon = "assets/new/phone_tab_icon.svg";
+  static const String phoneTabIconColored =
+      "assets/new/phone_tab_icon_colored.svg";
+
+  // -- Charging Mode Icons
+  static const String smartChargingMode = "assets/new/smart_mode_icon.svg";
+  static const String smartChargingModeFilled =
+      "assets/svgs/smart_mode_icon_filled.svg";
+  static const String safeChargingMode = "assets/svgs/safe_mode_icon.svg";
+  static const String safeChargingModeFilled =
+      "assets/new/safe_mode_icon_filled.svg";
+  static const String ghostChargingMode = "assets/new/ghost_mode_icon.svg";
+  static const String ghostChargingModeFilled =
+      "assets/new/ghost_mode_icon_filled.svg";
+
+  static const String smartChargingModeImage =
+      "assets/new/smart_mode_image.png";
+  static const String safeChargingModeImage = "assets/new/safe_mode_image.png";
+  static const String ghostChargingModeImage =
+      "assets/new/ghost_mode_image.png";
+
+  // -- About Screen Icons
+  static const String appNameIcon = "assets/new/app_package_name_info_icon.svg";
+  static const String appPackageNameInfoIcon =
+      "assets/new/app_package_name_info_icon.svg";
+  static const String appVersionInfoIcon =
+      "assets/new/app_version_info_icon.svg";
+  static const String appBuildNoInfoIcon =
+      "assets/new/app_build_no_info_icon.svg";
+  static const String leoFirmwareInfoIcon =
+      "assets/new/leo_firmware_info_icon.svg";
+
+  // -- Settings Screen Icons
+  static const String helpIcon = "assets/new/help_icon.svg";
+  static const String batteryOptimizationIcon =
+      "assets/new/battery_optimization_icon.svg";
+  static const String backgroundModeIcon =
+      "assets/new/background_mode_icon.svg";
+
+  // -- Battery Icons
+  static const String batteryLevel =
+      "assets/new/battery_level_icon_charging.svg";
+  static const String batteryIconOutlined = "assets/new/battery_level_icon.svg";
+
+  // -- Battery Health Dot Icons
+  static const String healthGood =
+      "assets/new/good_battery_health_dot_icon.svg";
+  static const String healthAverage =
+      "assets/new/average_battery_health_dot_icon.svg";
+  static const String healthPoor = "assets/new/bad_battery_health_dot_icon.svg";
+
+  // -- Battery Temperature Icon
+  static const String temperatureIcon = "assets/new/temperature_icon.svg";
+}

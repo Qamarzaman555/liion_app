@@ -16,4 +16,21 @@ To get started, please connect your Leo by pressing ‘Connect’ and update it 
 
 If you have any suggestions, you can share your feedback under “Settings > Feedback”. For support, feel free to contact us at contact@liionpower.nl.
 ''';
+
+  // -- Bluetooth Access Screen
+  static const String btAccessTitle = "We Need Bluetooth Access";
+  static const String btAccessSubTitle =
+      """To discover connect, and control your leo, we need you to allow Bluetooth access.
+      
+This is essential to use leo.""";
+
+  // -- Notification Access Screen
+  static const String notificationAccessTitle = "We Need Notification Access";
+  static const String notificationAccessSubTitle =
+      "To consistently provide you with realtime information about your phone's battery level and status, we need notification access";
+
+  // -- Background Access Screen
+  static const String bgAccessTitle = "Keep Leo Running Smoothly";
+  static const String bgAccessSubTitle =
+      "To enable Leo's core functionalities like setting a custom charge limit and getting battery history our app needs to run continuously in the background.";
 }

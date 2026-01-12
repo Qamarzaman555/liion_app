@@ -27,7 +27,7 @@ class SplashController extends GetxController
 
   void _navigateToHome() {
     Future.delayed(const Duration(seconds: 3), () {
-      Get.offAllNamed(AppRoutes.navBarView);
+      Get.offAllNamed(AppRoutes.newNavBarView);
     });
   }
 
