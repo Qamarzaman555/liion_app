@@ -106,9 +106,9 @@ class LeoHomeScreen extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  const Color(0xFF00C896).withOpacity(0.8),
-                  const Color(0xFF00C896).withOpacity(0.4),
-                  const Color(0xFF00C896).withOpacity(0.1),
+                  const Color.fromARGB(255, 54, 230, 1).withOpacity(0.6),
+                  const Color.fromARGB(255, 54, 230, 1).withOpacity(0.3),
+                  const Color.fromARGB(255, 54, 230, 1).withOpacity(0.05),
                 ],
                 stops: const [0.0, 0.7, 1.0],
               ),
@@ -127,36 +127,15 @@ class LeoHomeScreen extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  const Color(0xFF00A876).withOpacity(0.6),
-                  const Color(0xFF00A876).withOpacity(0.3),
-                  const Color(0xFF00A876).withOpacity(0.05),
+                  const Color.fromARGB(255, 95, 246, 49).withOpacity(0.6),
+                  const Color.fromARGB(255, 95, 246, 49).withOpacity(0.3),
+                  const Color.fromARGB(255, 54, 230, 1).withOpacity(0.05),
                 ],
                 stops: const [0.0, 0.6, 1.0],
               ),
             ),
           ),
         ),
-
-        // // Additional accent circle (center-right)
-        // Positioned(
-        //   top: screenSize.height * 0.4,
-        //   right: -screenSize.width * 0.2,
-        //   child: Container(
-        //     height: screenSize.height * 0.4,
-        //     width: screenSize.height * 0.4,
-        //     decoration: BoxDecoration(
-        //       shape: BoxShape.circle,
-        //       gradient: RadialGradient(
-        //         colors: [
-        //           const Color(0xFF00E8A6).withOpacity(0.4),
-        //           const Color(0xFF00E8A6).withOpacity(0.2),
-        //           Colors.transparent,
-        //         ],
-        //         stops: const [0.0, 0.5, 1.0],
-        //       ),
-        //     ),
-        //   ),
-        // ),
       ],
     );
   }

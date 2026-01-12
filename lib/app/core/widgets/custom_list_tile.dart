@@ -9,6 +9,9 @@ class CustomListTile extends StatelessWidget {
   final String titleText, suffixIconPath;
   final Color? backgroundColor;
   final double? fontSize;
+  final Widget? svgIcon;
+  final double? suffixIconTopPadding;
+  final double? spaceBtwSection;
   const CustomListTile({
     super.key,
     this.backgroundColor,
@@ -16,6 +19,9 @@ class CustomListTile extends StatelessWidget {
     required this.titleText,
     required this.suffixIconPath,
     this.fontSize,
+    this.svgIcon,
+    this.suffixIconTopPadding,
+    this.spaceBtwSection,
   });
 
   @override
@@ -38,11 +44,12 @@ class CustomListTile extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Image.asset(
-                    AppImages.leoImageLg,
-                    height: MediaQuery.sizeOf(context).width * 0.3,
-                  ),
-                  const SizedBox(width: 8),
+                  svgIcon ??
+                      Image.asset(
+                        AppImages.leoImageLg,
+                        height: MediaQuery.sizeOf(context).width * 0.3,
+                      ),
+                  SizedBox(width: spaceBtwSection ?? 8),
                   Expanded(
                     child: Text(
                       titleText,
@@ -60,7 +67,7 @@ class CustomListTile extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 18,
+              top: suffixIconTopPadding ?? 18,
               right: 18,
               child: SvgPicture.asset(suffixIconPath, height: 18),
             ),

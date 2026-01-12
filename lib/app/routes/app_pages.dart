@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:liion_app/app/modules/device_detail/views/device_detail_screen.dart';
+import 'package:liion_app/app/modules/device_list/views/device_list_screen.dart';
 import 'package:liion_app/app/modules/leo_home_screen/views/leo_home_screen.dart';
+import 'package:liion_app/app/modules/scanning/views/leo_scanning.dart';
 import 'package:liion_app/app/modules/startup_screen/views/bluetooth_access_screen.dart';
 import 'package:liion_app/app/modules/startup_screen/views/location_access_screen.dart';
 import 'package:liion_app/app/modules/startup_screen/views/notification_access_screen.dart';
@@ -62,7 +65,7 @@ class AppPages {
           children: [
             GetPage(
               name: AppRoutes.scan,
-              page: () => const ScanScreen(),
+              page: () => const ScanningLeoScreen(),
               bindings: [],
             ),
             GetPage(

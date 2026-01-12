@@ -47,10 +47,7 @@ class NewNavBarView extends GetView<NewNavBarController> {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: SafeArea(
-                  top: false,
-                  child: AnimatedBottomNavBar(),
-                ),
+                child: SafeArea(top: false, child: AnimatedBottomNavBar()),
               ),
             ],
           ),
@@ -82,100 +79,6 @@ class HomePhoneDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(child: Text('Home Phone Detail Screen'));
-  }
-}
-
-class ScanScreen extends StatelessWidget {
-  const ScanScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Scan Screen'),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Get.back(id: 1); // Use id: 1 for Leo tab navigator
-          },
-        ),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text('Scan Screen'),
-          ElevatedButton(
-            onPressed: () {
-              Get.toNamed(
-                '${AppRoutes.newNavBarView}${AppRoutes.leoHome}${AppRoutes.deviceList}',
-                id: 1,
-              );
-            },
-            child: Text('Go to Device List Screen'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class DeviceListScreen extends StatelessWidget {
-  const DeviceListScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Device List Screen'),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Get.back(id: 1); // Use id: 1 for Leo tab navigator
-          },
-        ),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text('Device List Screen'),
-          ElevatedButton(
-            onPressed: () {
-              Get.toNamed(
-                '${AppRoutes.newNavBarView}${AppRoutes.leoHome}${AppRoutes.deviceDetail}',
-                id: 1,
-              );
-            },
-            child: Text('Go to Device Detail Screen'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class DeviceDetailScreen extends StatelessWidget {
-  const DeviceDetailScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Device Detail Screen'),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Get.back(id: 1); // Use id: 1 for Leo tab navigator
-          },
-        ),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [Text('Device Detail Screen')],
-      ),
-    );
   }
 }
 
