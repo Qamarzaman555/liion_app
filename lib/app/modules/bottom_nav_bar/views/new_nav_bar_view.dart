@@ -35,11 +35,25 @@ class NewNavBarView extends GetView<NewNavBarController> {
           }
         },
         child: Scaffold(
-          body: IndexedStack(
-            index: controller.currentIndex.value,
-            children: [_buildLeoTab(), _buildHomeTab()],
+          body: Stack(
+            children: [
+              // Main content
+              IndexedStack(
+                index: controller.currentIndex.value,
+                children: [_buildLeoTab(), _buildHomeTab()],
+              ),
+              // Bottom navbar overlaid on top
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: AnimatedBottomNavBar(),
+                ),
+              ),
+            ],
           ),
-          bottomNavigationBar: AnimatedBottomNavBar(),
         ),
       ),
     );
@@ -58,34 +72,6 @@ class NewNavBarView extends GetView<NewNavBarController> {
       key: _homeTabNavigatorKey,
       onGenerateRoute: (settings) =>
           AppPages.onGenerateNestedRoute(2, settings),
-    );
-  }
-}
-
-// Placeholder Screens (You'll replace these with your actual screens)
-class LeoHomeScreen extends StatelessWidget {
-  const LeoHomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text('Leo Home Screen'),
-          ElevatedButton(
-            onPressed: () {
-              // Example: Navigate to a different screen within the Leo tab
-              // Navigator.of(context).pushNamed('/scan');
-              Get.toNamed(
-                '${AppRoutes.newNavBarView}${AppRoutes.leoHome}${AppRoutes.scan}',
-                id: 1,
-              );
-            },
-            child: const Text('Go to Scan Screen (Leo Tab)'),
-          ),
-        ],
-      ),
     );
   }
 }

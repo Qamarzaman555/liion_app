@@ -13,90 +13,77 @@ class AnimatedBottomNavBar extends GetView<NewNavBarController> {
     return Obx(
       () => Padding(
         padding: const EdgeInsets.only(left: 32, right: 32, bottom: 12),
-        child: Container(
+        child: Card(
+          // elevation: 3,
+          elevation: 0,
           margin: const EdgeInsets.only(bottom: 8),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: NewAppColors.containerBorder, width: 1),
-            ),
-            child: Card(
-              // elevation: 3,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => controller.switchToTab('Leo'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(
-                          color: controller.selectedTab.value == "Leo"
-                              ? NewAppColors.navBarSelected
-                              : NewAppColors.transparent,
-                          borderRadius: BorderRadius.circular(26),
+
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => controller.switchToTab('Leo'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: controller.selectedTab.value == "Leo"
+                          ? NewAppColors.navBarSelected
+                          : NewAppColors.transparent,
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SvgPicture.asset(SvgAssets.leoTabIcon, height: 36),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Leo',
+                          style: TextStyle(
+                            color: Color(0xFF545454),
+                            fontWeight: FontWeight.w500,
+                            fontFamily: 'SF Pro Text',
+                            fontSize: 14,
+                          ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SvgPicture.asset(
-                              SvgAssets.safeModeIcon,
-                              height: 40,
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Leo',
-                              style: TextStyle(
-                                color: Color(0xFF545454),
-                                fontWeight: FontWeight.w500,
-                                fontFamily: 'SF Pro Text',
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => controller.switchToTab('Phone'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(
-                          color: controller.selectedTab.value == "Phone"
-                              ? NewAppColors.navBarSelected
-                              : NewAppColors.transparent,
-                          borderRadius: BorderRadius.circular(26),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => controller.switchToTab('Phone'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: controller.selectedTab.value == "Phone"
+                          ? NewAppColors.navBarSelected
+                          : NewAppColors.transparent,
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SvgPicture.asset(SvgAssets.phoneTabIcon, height: 36),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Phone',
+                          style: TextStyle(
+                            color: Color(0xFF545454),
+                            fontWeight: FontWeight.w500,
+                            fontFamily: 'SF Pro Text',
+                            fontSize: 14,
+                          ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SvgPicture.asset(
-                              AppImages.phoneTabIcon,
-                              height: 40,
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Phone',
-                              style: TextStyle(
-                                color: Color(0xFF545454),
-                                fontWeight: FontWeight.w500,
-                                fontFamily: 'SF Pro Text',
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),

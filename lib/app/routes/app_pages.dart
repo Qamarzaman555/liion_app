@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:liion_app/app/modules/leo_home_screen/views/leo_home_screen.dart';
 import 'package:liion_app/app/modules/startup_screen/views/bluetooth_access_screen.dart';
 import 'package:liion_app/app/modules/startup_screen/views/location_access_screen.dart';
 import 'package:liion_app/app/modules/startup_screen/views/notification_access_screen.dart';
 import 'app_routes.dart';
 import '../modules/splash/views/splash_view.dart';
 import '../modules/splash/bindings/splash_binding.dart';
-import 'package:liion_app/app/modules/startup_screen/views/new_nav_bar_view.dart';
+import 'package:liion_app/app/modules/bottom_nav_bar/views/new_nav_bar_view.dart';
 import 'package:liion_app/app/modules/startup_screen/bindings/new_nav_bar_binding.dart';
 import '../modules/battery/charge_limit/views/charge_limit_view.dart';
 import '../modules/battery/charge_limit/charge_limit_binding.dart';

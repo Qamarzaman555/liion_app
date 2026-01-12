@@ -23,6 +23,10 @@ class SvgAssets {
   static const String checkCircleFilled =
       'assets/icons/check_circle_filled.svg';
 
+  // Tab icons
+  static const String leoTabIcon = 'assets/icons/leo_tab.svg';
+  static const String phoneTabIcon = 'assets/icons/phone_tab.svg';
+
   // Mode icons
   static const String fastChargeIcon = 'assets/icons/fast_charge_icon.svg';
   static const String fastChargeIconFilled =
@@ -82,7 +86,7 @@ class AppImages {
 
   // -- Default Images
   static const String leoImageSmall = "assets/new/leo_image_sm.svg";
-  static const String leoImageLg = "assets/new/leo high res 1.png";
+  static const String leoImageLg = "assets/pngs/leo high res 1.png";
   static const String phoneImage = "assets/new/phone_image.png";
 
   // -- Symbols
