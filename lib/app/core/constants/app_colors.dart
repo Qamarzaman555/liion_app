@@ -50,6 +50,7 @@ class NewAppColors {
 
   // Background Container Colors
   static const Color lightContainer = Color(0xFFf6f6f6);
+  static const Color mediumContainer = Color(0xFFF0F0F2);
   static Color darkContainer = NewAppColors.textWhite.withOpacity(0.1);
 
   // Card Colors

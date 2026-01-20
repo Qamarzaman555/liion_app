@@ -6,17 +6,31 @@ import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/sizes.dart';
 import 'package:liion_app/app/core/widgets/custom_list_tile.dart';
+import 'package:liion_app/app/modules/leo_empty/controllers/leo_home_controller.dart';
 import 'package:liion_app/app/routes/app_routes.dart';
+import 'package:liion_app/app/services/ble_scan_service.dart';
 
-class LeoHomeScreen extends StatelessWidget {
+class LeoHomeScreen extends GetView<LeoHomeController> {
   const LeoHomeScreen({super.key});
+
+  static bool _didTriggerInitialFirmwareDownload = false;
 
   @override
   Widget build(BuildContext context) {
+    _ensureInitialFirmwareDownload();
+
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (controller.connectionState.value == BleConnectionState.connected) {
+    //     Get.offAllNamed(
+    //       '${AppRoutes.newNavBarView}${AppRoutes.leoHome}${AppRoutes.deviceDetail}',
+    //     );
+    //   }
+    // });
+
     return SafeArea(
       child: Scaffold(
         backgroundColor: Colors.black,
-
+        resizeToAvoidBottomInset: false,
         body: Stack(
           children: [
             _buildBackgroundGradient(context),
@@ -72,11 +86,8 @@ class LeoHomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSizes.spaceBtwTexts),
                   CustomListTile(
-                    onTap: () {
-                      Get.toNamed(
-                        '${AppRoutes.newNavBarView}${AppRoutes.leoHome}${AppRoutes.scan}',
-                        id: 1,
-                      );
+                    onTap: () async {
+                      await _handleAddDeviceTap(context);
                     },
                     titleText: "Leo: The Battery Life Extender",
                     suffixIconPath: AppImages.addSymbol,
@@ -87,6 +98,42 @@ class LeoHomeScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _ensureInitialFirmwareDownload() {
+    if (_didTriggerInitialFirmwareDownload) {
+      return;
+    }
+    _didTriggerInitialFirmwareDownload = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.downloadFirmwareAtStart();
+    });
+  }
+
+  Future<void> _handleAddDeviceTap(BuildContext context) async {
+    // Check if device is already connected
+    if (controller.connectionState.value == BleConnectionState.connected) {
+      // Navigate to device detail if connected
+      Get.toNamed(
+        '${AppRoutes.newNavBarView}${AppRoutes.leoHome}${AppRoutes.deviceDetail}',
+        id: 1,
+      );
+      return;
+    }
+
+    // Check Bluetooth state
+    if (!controller.isBluetoothOn) {
+      BleScanService.requestEnableBluetooth();
+      return;
+    }
+
+    await controller.rescan();
+
+    // Navigate to scanning screen
+    Get.toNamed(
+      '${AppRoutes.newNavBarView}${AppRoutes.leoHome}${AppRoutes.scan}',
+      id: 1,
     );
   }
 

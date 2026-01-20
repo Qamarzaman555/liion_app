@@ -1,32 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/sizes.dart';
+import 'package:liion_app/app/modules/leo_empty/controllers/leo_home_controller.dart';
+import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
 
-class ChargingModeExpansionTile extends StatelessWidget {
+class ChargingModeExpansionTile extends GetView<LeoHomeController> {
   const ChargingModeExpansionTile({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: NewAppColors.whiteBackground,
-        borderRadius: BorderRadius.circular(AppSizes.md),
-        border: Border.all(color: NewAppColors.containerBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Header (always visible)
-          GestureDetector(
-            onTap: () {},
-            child: Padding(
+    return Obx(() {
+      final currentMode = controller.currentMode.value;
+      final modeName = _getModeName(currentMode);
+      final modeDescription = _getModeDescription(currentMode);
+
+      return Container(
+        decoration: BoxDecoration(
+          color: NewAppColors.whiteBackground,
+          borderRadius: BorderRadius.circular(AppSizes.md),
+          border: Border.all(color: NewAppColors.containerBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Header (always visible)
+            Padding(
               padding: const EdgeInsets.all(AppSizes.md),
               child: Row(
                 children: [
@@ -45,50 +51,55 @@ class ChargingModeExpansionTile extends StatelessWidget {
                       ),
                     ),
                     child: Image.asset(
-                      _getModeIcon('Smart Mode', 'Smart Mode'),
+                      _getModeIcon(currentMode),
                       height: 50,
                       width: 50,
                     ),
                   ),
                   const SizedBox(width: AppSizes.sm),
                   Expanded(
-                    child: Row(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Smart Mode',
+                          modeName,
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
                             fontFamily: "SF Pro Text",
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          modeDescription,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.grey.shade600,
+                            fontFamily: "SF Pro Text",
+                          ),
+                        ),
                       ],
-                    ),
-                  ),
-                  Text(
-                    'Smart Mode',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w400,
-                      fontSize: 12,
-                      color: Colors.black87,
-                      fontFamily: "SF Pro Text",
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          // Expandable content
-          // if (controller.isExpanded.value)
-          if (true)
+            // Expandable content - show all modes
             Padding(
               padding: const EdgeInsets.all(AppSizes.sm),
               child: Column(
-                children: ['Smart Mode', 'Safe Mode'].map((mode) {
-                  final isSelected = 'Smart Mode' == mode;
+                children: [
+                  ChargingMode.smart,
+                  ChargingMode.ghost,
+                  ChargingMode.safe,
+                ].map((mode) {
+                  final isSelected = currentMode == mode;
+                  final modeName = _getModeName(mode);
+                  final modeDesc = _getModeDescription(mode);
+
                   return GestureDetector(
-                    onTap: () {},
+                    onTap: () => controller.updateChargingMode(mode),
                     child: Container(
                       margin: const EdgeInsets.only(bottom: AppSizes.sm),
                       decoration: BoxDecoration(
@@ -123,7 +134,7 @@ class ChargingModeExpansionTile extends StatelessWidget {
                                 ),
                               ),
                               child: Image.asset(
-                                _getModeIcon(mode, 'Smart Mode'),
+                                _getModeIcon(mode),
                                 height: 40,
                                 width: 40,
                               ),
@@ -135,7 +146,7 @@ class ChargingModeExpansionTile extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    mode,
+                                    modeName,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w500,
                                       fontSize: 14,
@@ -145,7 +156,7 @@ class ChargingModeExpansionTile extends StatelessWidget {
                                   ),
                                   const SizedBox(height: AppSizes.xs),
                                   Text(
-                                    'Smart Mode',
+                                    modeDesc,
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w400,
@@ -158,6 +169,12 @@ class ChargingModeExpansionTile extends StatelessWidget {
                               ),
                             ),
                             // Selection Indicator
+                            if (isSelected)
+                              const Icon(
+                                Icons.check_circle,
+                                color: NewAppColors.accent,
+                                size: 20,
+                              ),
                           ],
                         ),
                       ),
@@ -166,40 +183,42 @@ class ChargingModeExpansionTile extends StatelessWidget {
                 }).toList(),
               ),
             ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    });
   }
-}
 
-String _getModeIcon(String mode, String selectedMode) {
-  switch (mode) {
-    case 'Smart Mode':
-      return selectedMode == 'Smart Mode'
-          ? AppImages.smartChargingModeImage
-          : AppImages.smartChargingModeImage; // Green leaf for eco-friendly
-    case 'Safe Mode':
-      return selectedMode == 'Safe Mode'
-          ? AppImages.safeChargingModeImage
-          : AppImages.safeChargingModeImage;
-    case 'Ghost Mode':
-      return selectedMode == 'Ghost Mode'
-          ? AppImages.ghostChargingModeImage
-          : AppImages.ghostChargingModeImage; // Lightning bolt for speed
-    default:
-      return AppImages.smartChargingModeImage;
+  String _getModeName(ChargingMode mode) {
+    switch (mode) {
+      case ChargingMode.smart:
+        return 'Smart Mode';
+      case ChargingMode.ghost:
+        return 'Ghost Mode';
+      case ChargingMode.safe:
+        return 'Safe Mode';
+    }
   }
-}
 
-Color _getModeIconColor(String mode) {
-  switch (mode) {
-    case 'Smart Mode':
-      return Colors.green; // Green for eco-friendly
-    case 'Safe Mode':
-      return Colors.green; // Green shield
-    case 'Ghost Mode':
-      return Colors.blue; // Blue for speed/performance
-    default:
-      return NewAppColors.error;
+  String _getModeDescription(ChargingMode mode) {
+    switch (mode) {
+      case ChargingMode.smart:
+        return 'Optimizes charging to prioritize battery health';
+      case ChargingMode.ghost:
+        return 'Fast, unrestricted charging with no optimizations';
+      case ChargingMode.safe:
+        return 'Blocks data lines for public charging ports';
+    }
+  }
+
+  String _getModeIcon(ChargingMode mode) {
+    switch (mode) {
+      case ChargingMode.smart:
+        return AppImages.smartChargingModeImage;
+      case ChargingMode.ghost:
+        return AppImages.ghostChargingModeImage;
+      case ChargingMode.safe:
+        return AppImages.safeChargingModeImage;
+    }
   }
 }
