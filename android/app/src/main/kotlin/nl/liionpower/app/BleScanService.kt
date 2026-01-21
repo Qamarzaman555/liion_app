@@ -302,6 +302,8 @@ class BleScanService : Service() {
     
     // File streaming state
     private var fileStreamingAccumulatedData = StringBuilder()
+    private var rawFileDataAccumulator = StringBuilder() // Accumulate raw file data separately
+    private var rawFileData: String = "" // Store raw file data for CSV collection
     private var isFileStreamingActive = false
     private var fileStreamingNextFileRunnable: Runnable? = null
     private val FILE_STREAMING_DELAY_MS = 7000L // 7 seconds delay after ETX (recovery timer will restart if stopped due to interception)
@@ -353,10 +355,12 @@ class BleScanService : Service() {
     private var lastStreamFileCommandTime = 0L // Timestamp when we last sent stream_file command
     private var streamFileTimeoutRunnable: Runnable? = null
     private val STREAM_FILE_TIMEOUT_MS = 10000L // 10 seconds timeout
+    private var stxProcessedForCurrentFile = false // Flag to track if STX has been processed for current file
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (124)"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (125)"
+    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (125) CSV"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -887,10 +891,8 @@ class BleScanService : Service() {
                     android.util.Log.i("BleScanService", "[FileStream] Starting file streaming from file $currentFile")
                     android.util.Log.i("BleScanService", "[FileStream] ========================================")
                     
-                // Start streaming from first file
+                // Start streaming from first file (recovery timer is started inside startFileStreaming)
                 startFileStreaming()
-                // Start recovery timer to check if file streaming stops unexpectedly
-                startFileStreamingRecovery()
                     getFilesRangePending = false
                     getFilesTimeoutRunnable?.let { handler.removeCallbacks(it) }
                 } else if (getFilesRangePending) {
@@ -1028,11 +1030,22 @@ class BleScanService : Service() {
             return
         }
         
+        // Prevent duplicate requests - if we're already waiting for a response or streaming is active, don't start again
+        if (waitingForStreamFileResponse || isFileStreamingActive) {
+            android.util.Log.w("BleScanService", "[FileStream] Already waiting for response or streaming active. Current file: $currentFile, waiting: $waitingForStreamFileResponse, active: $isFileStreamingActive")
+            return
+        }
+        
         isFileStreamingActive = true
         currentFile = leoFirstFile
         streamFileResponseReceived = false
         waitingForStreamFileResponse = true // Mark that we're waiting for stream_file response
         lastStreamFileCommandTime = System.currentTimeMillis() // Track when we sent the command
+        stxProcessedForCurrentFile = false // Reset STX processed flag for new file
+        
+        // Start recovery timer when requesting the first file so it can detect if streaming doesn't start
+        // (Set waitingForStreamFileResponse first so recovery timer knows we're waiting)
+        startFileStreamingRecovery()
         
         android.util.Log.i("BleScanService", "[FileStream] Requesting file $currentFile")
         enqueueCommand("app_msg stream_file $currentFile")
@@ -1049,10 +1062,20 @@ class BleScanService : Service() {
             return
         }
         
+        // Prevent duplicate requests - if we're already waiting for a response, don't request again
+        if (waitingForStreamFileResponse) {
+            android.util.Log.w("BleScanService", "[FileStream] Already waiting for response for file $currentFile, skipping duplicate request")
+            return
+        }
+        
+        // Restart recovery timer when requesting a new file so it can detect if streaming doesn't start
+        startFileStreamingRecovery()
+        
         // Reset response flag when requesting new file so recovery timer can detect if no response
         streamFileResponseReceived = false
         waitingForStreamFileResponse = true // Mark that we're waiting for stream_file response
         lastStreamFileCommandTime = System.currentTimeMillis() // Track when we sent the command
+        stxProcessedForCurrentFile = false // Reset STX processed flag for new file
         cancelStreamFileTimeout()
         
         android.util.Log.i("BleScanService", "[FileStream] Requesting file $currentFile")
@@ -1122,14 +1145,15 @@ class BleScanService : Service() {
         
         fileStreamingRecoveryRunnable = Runnable {
             // Check if we should restart file streaming
-            // Conditions: connected, UART ready, valid file range, current file within range, not actively streaming
+            // Conditions: connected, UART ready, valid file range, current file within range, not actively streaming, and not waiting for response
             if (connectionState == STATE_CONNECTED && 
                 isUartReady && 
                 leoFirstFile > 0 && 
                 leoLastFile > 0 &&
                 currentFile >= leoFirstFile && 
                 currentFile <= leoLastFile && 
-                !isFileStreamingActive) {
+                !isFileStreamingActive &&
+                !waitingForStreamFileResponse) { // Don't restart if we're already waiting for a response
                 
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
                 android.util.Log.i("BleScanService", "[FileStream] Recovery: File streaming stopped but should be active")
@@ -1289,8 +1313,12 @@ class BleScanService : Service() {
             val receivedString = String(data, Charsets.UTF_8)
             android.util.Log.d("BleScanService", "[FileStream] Received ${data.size} bytes")
             
-            // Append incoming data to accumulatedData
+            // Append incoming data to accumulatedData for processing
             fileStreamingAccumulatedData.append(receivedString)
+            // Also accumulate raw data separately (without clearing during processing)
+            if (isFileStreamingActive) {
+                rawFileDataAccumulator.append(receivedString)
+            }
             android.util.Log.v("BleScanService", "[FileStream] Accumulated data length: ${fileStreamingAccumulatedData.length}")
             
             // Split the accumulated data by newline (\n) to identify potential complete data points
@@ -1460,7 +1488,8 @@ class BleScanService : Service() {
             }
             
             // Handle start (STX) and end (ETX) indicators
-            if (stxDetected || fileStreamingAccumulatedData.toString().contains('\u0002')) {
+            if ((stxDetected || fileStreamingAccumulatedData.toString().contains('\u0002')) && !stxProcessedForCurrentFile) {
+                stxProcessedForCurrentFile = true // Mark STX as processed for this file
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
                 android.util.Log.i("BleScanService", "[FileStream] STX detected - Stream start for file $currentFile")
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
@@ -1471,8 +1500,13 @@ class BleScanService : Service() {
                 chargeDataList.clear()
                 processedDataPoints.clear()
                 hasUnwantedCharacters = false
+                rawFileData = "" // Clear raw data for new stream
+                rawFileDataAccumulator.clear() // Clear raw data accumulator for new stream
                 // Cancel timeout since we received STX
                 cancelStreamFileTimeout()
+            } else if (stxDetected || fileStreamingAccumulatedData.toString().contains('\u0002')) {
+                // STX detected but already processed - this indicates duplicate stream
+                android.util.Log.w("BleScanService", "[FileStream] STX detected again for file $currentFile but already processed - possible duplicate stream")
             }
             
             if (etxDetected || fileStreamingAccumulatedData.toString().contains('\u0003')) {
@@ -1484,18 +1518,26 @@ class BleScanService : Service() {
                 
                 isFileStreamingActive = false
                 cancelStreamFileTimeout()
+                // Stop recovery timer during cooldown period to prevent restarting the same file
+                stopFileStreamingRecovery()
+                
+                // Capture raw file data from accumulator (contains all data received during streaming)
+                rawFileData = rawFileDataAccumulator.toString()
+                android.util.Log.d("BleScanService", "[FileStream] Captured raw file data: ${rawFileData.length} characters")
                 
                 // Store data to Firebase/local storage using snapshot of current list
                 val dataSnapshot = chargeDataList.toList()
                 val fileNumberToDelete = currentFile // Capture current file number for deletion after upload
                 if (!hasUnwantedCharacters) {
-                    storeDataToFirebase(dataSnapshot, fileNumberToDelete)
+                    storeDataToFirebase(dataSnapshot, fileNumberToDelete, rawFileData)
                 } else {
                     android.util.Log.w("BleScanService", "[FileStream] Skipping Firebase upload due to unwanted characters in data")
                 }
                 
                 // Reset for next file
                 fileStreamingAccumulatedData.clear()
+                rawFileData = "" // Clear raw data after storing
+                rawFileDataAccumulator.clear() // Clear raw data accumulator for next file
                 chargeDataList.clear()
                 previousChargeData = null
                 processedDataPoints.clear()
@@ -1554,7 +1596,7 @@ class BleScanService : Service() {
         }
     }
     
-    private fun storeDataToFirebase(dataSnapshot: List<ChargeData> = chargeDataList.toList(), fileNumber: Int = currentFile) {
+    private fun storeDataToFirebase(dataSnapshot: List<ChargeData> = chargeDataList.toList(), fileNumber: Int = currentFile, rawData: String = rawFileData) {
         handler.post {
             try {
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
@@ -1689,10 +1731,10 @@ class BleScanService : Service() {
                 
                 if (!isOnline) {
                     android.util.Log.w("BleScanService", "[FileStream] No internet connection. Saving data locally for later sync.")
-                    saveToLocalStorage(serialNumber, currentSession.toString(), fileName, firebaseObject, fileNumber)
+                    saveToLocalStorage(serialNumber, currentSession.toString(), fileName, firebaseObject, fileNumber, rawData)
                 } else {
                     android.util.Log.i("BleScanService", "[FileStream] Internet connection available. Uploading to Firebase...")
-                    uploadToFirebase(fileName, firebaseObject, currentSession.toString(), serialNumber, sentSessions, fileNumber)
+                    uploadToFirebase(fileName, firebaseObject, currentSession.toString(), serialNumber, sentSessions, fileNumber, rawData)
                 }
                 
             } catch (e: Exception) {
@@ -1708,11 +1750,14 @@ class BleScanService : Service() {
         sessionId: String,
         serialNumber: String,
         sentSessions: MutableSet<String>,
-        fileNumber: Int
+        fileNumber: Int,
+        rawData: String = ""
     ) {
         try {
             val docId = fileName.split(".json").first()
+            android.util.Log.d("BleScanService", "[FileStream] uploadToFirebase called with rawData length: ${rawData.length}")
             
+            // Upload to main collection
             firestore.collection(COLLECTION_NAME)
                 .document(docId)
                 .set(firebaseObject, SetOptions.merge())
@@ -1723,13 +1768,47 @@ class BleScanService : Service() {
                     android.util.Log.i("BleScanService", "[FileStream] Session: $sessionId")
                     android.util.Log.i("BleScanService", "[FileStream] ========================================")
                     
+                    // Upload raw CSV data to separate collection if available
+                    if (rawData.isNotEmpty()) {
+                        android.util.Log.d("BleScanService", "[FileStream] Uploading raw CSV data (${rawData.length} chars) to collection: $CSV_COLLECTION_NAME")
+                        // Extract session from firebaseObject or use sessionId
+                        val sessionValue = (firebaseObject["session"] as? Number)?.toInt() ?: sessionId.toIntOrNull() ?: 0
+                        val csvObject = mapOf(
+                            "raw_data" to rawData,
+                            "timestamp" to (System.currentTimeMillis() / 1000),
+                            "DateTime" to SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.US).apply {
+                                timeZone = TimeZone.getTimeZone("UTC")
+                            }.format(Date()),
+                            "session" to sessionValue,
+                            "serial_number" to serialNumber.split("\\").first().trim()
+                        )
+                        
+                        firestore.collection(CSV_COLLECTION_NAME)
+                            .document(docId)
+                            .set(csvObject, SetOptions.merge())
+                            .addOnSuccessListener {
+                                android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                                android.util.Log.i("BleScanService", "[FileStream] Raw CSV data successfully stored to Firebase!")
+                                android.util.Log.i("BleScanService", "[FileStream] Collection: $CSV_COLLECTION_NAME")
+                                android.util.Log.i("BleScanService", "[FileStream] Document ID: $docId")
+                                android.util.Log.i("BleScanService", "[FileStream] Raw data size: ${rawData.length} characters")
+                                android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                            }
+                            .addOnFailureListener { e ->
+                                android.util.Log.e("BleScanService", "[FileStream] Failed to upload raw CSV data: ${e.message}")
+                                e.printStackTrace()
+                            }
+                    } else {
+                        android.util.Log.w("BleScanService", "[FileStream] Raw CSV data is empty, skipping upload to CSV collection")
+                    }
+                    
                     // Add this session to the list of sent sessions
                     sentSessions.add(sessionId)
                     prefs?.edit()?.putStringSet("sentSessions_${connectedDeviceAddress?.replace(":", "")}", sentSessions)?.apply()
                     
                     // Remove from pending uploads if it was a retry
                     val pendingKey = "pending_upload_${serialNumber}_$sessionId"
-                    prefs?.edit()?.remove(pendingKey)?.remove("${pendingKey}_data")?.apply()
+                    prefs?.edit()?.remove(pendingKey)?.remove("${pendingKey}_data")?.remove("${pendingKey}_raw_data")?.apply()
                     
                     // Delete file from device after successful upload
                     if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
@@ -1737,22 +1816,18 @@ class BleScanService : Service() {
                             enqueueCommand("app_msg rm_file $fileNumber")
                             android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
                         }, 500) // Small delay to ensure Firebase operation completes
-                    } else if (fileNumber < 0) {
-                        android.util.Log.w("BleScanService", "[FileStream] Cannot delete file - invalid file number: $fileNumber")
-                    } else {
-                        android.util.Log.w("BleScanService", "[FileStream] Cannot delete file $fileNumber - not connected or UART not ready")
                     }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
                     android.util.Log.e("BleScanService", "[FileStream] Saving data locally for later sync")
                     // If upload fails, save locally for retry
-                    saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber)
+                    saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber, rawData)
                 }
         } catch (e: Exception) {
             android.util.Log.e("BleScanService", "[FileStream] Error uploading to Firebase: ${e.message}")
             e.printStackTrace()
-            saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber)
+            saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber, rawData)
         }
     }
     
@@ -1761,7 +1836,8 @@ class BleScanService : Service() {
         sessionId: String,
         fileName: String,
         firebaseObject: Map<String, Any>,
-        fileNumber: Int
+        fileNumber: Int,
+        rawData: String = ""
     ) {
         try {
             // Store pending upload info
@@ -1784,6 +1860,16 @@ class BleScanService : Service() {
                 prefs?.edit()?.putString("${pendingKey}_data", firebaseJson)?.apply()
             } catch (e: Exception) {
                 android.util.Log.w("BleScanService", "[FileStream] Could not serialize firebase object, saving reference only: ${e.message}")
+            }
+            
+            // Save raw data if available
+            if (rawData.isNotEmpty()) {
+                try {
+                    prefs?.edit()?.putString("${pendingKey}_raw_data", rawData)?.apply()
+                    android.util.Log.d("BleScanService", "[FileStream] Raw data saved locally for session $sessionId")
+                } catch (e: Exception) {
+                    android.util.Log.w("BleScanService", "[FileStream] Could not save raw data: ${e.message}")
+                }
             }
             
             android.util.Log.i("BleScanService", "[FileStream] Data saved locally for session $sessionId. Will sync when online.")
@@ -1870,7 +1956,7 @@ class BleScanService : Service() {
                         // Check if already sent
                         if (sentSessions.contains(sessionId)) {
                             android.util.Log.d("BleScanService", "[FileStream] Session $sessionId already sent, removing from pending.")
-                            prefs?.edit()?.remove(dataKey)?.remove("pending_upload_${serialForSync}_$sessionId")?.apply()
+                            prefs?.edit()?.remove(dataKey)?.remove("pending_upload_${serialForSync}_$sessionId")?.remove("${dataKey}_raw_data")?.apply()
                             continue
                         }
                         
@@ -1908,8 +1994,12 @@ class BleScanService : Service() {
                         val firebaseObject = JSONObject(firebaseJson)
                         val firebaseMap = jsonObjectToMap(firebaseObject)
                         
+                        // Get raw data if available
+                        val rawDataKey = "${dataKey}_raw_data"
+                        val rawData = prefs?.getString(rawDataKey, "") ?: ""
+                        
                         // Try to upload (async, so we'll check success in callback)
-                        uploadToFirebase(fileName, firebaseMap, sessionId, serialNumber, sentSessions, fileNumber)
+                        uploadToFirebase(fileName, firebaseMap, sessionId, serialNumber, sentSessions, fileNumber, rawData)
                         // Note: Success will be logged in uploadToFirebase callback
                         // For sync, we'll count it as attempted
                         successCount++
@@ -2009,6 +2099,9 @@ class BleScanService : Service() {
             stopFileStreaming()
             return
         }
+        
+        // Stop recovery timer during cooldown period to prevent restarting files
+        stopFileStreamingRecovery()
         
         val delaySeconds = FILE_STREAMING_DELAY_MS / 1000
         android.util.Log.i("BleScanService", "[FileStream] ========================================")
