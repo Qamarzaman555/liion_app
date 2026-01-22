@@ -106,16 +106,37 @@ class BluetoothManager(DeviceManager):
             if len(self.available_clients) == 0:
                 self.scan()
 
-            # Support passing either the raw ID (e.g. "O3HBOR0BO") or full name ("Leo USB O3HBOR0BO")
-            lookup_key = device_id.strip()
-            if lookup_key in self.available_clients:
-                pass
-            elif lookup_key.startswith("Leo USB "):
-                lookup_key = lookup_key
+            lookup_key = None
+            device_id_clean = device_id.strip()
+            device_id_upper = device_id_clean.upper()
+            
+            # Try exact match first (case-sensitive)
+            if device_id_clean in self.available_clients:
+                lookup_key = device_id_clean
+            # Try exact match (case-insensitive)
+            elif device_id_upper in {k.upper(): k for k in self.available_clients.keys()}:
+                lookup_key = {k.upper(): k for k in self.available_clients.keys()}[device_id_upper]
+            # Try with "Leo USB " prefix (case-insensitive)
+            elif f"Leo USB {device_id_clean}".upper() in {k.upper(): k for k in self.available_clients.keys()}:
+                lookup_key = {k.upper(): k for k in self.available_clients.keys()}[f"Leo USB {device_id_clean}".upper()]
+            # Try partial match - check if device_id is contained in any device name (case-insensitive)
             else:
-                prefixed = f"Leo USB {lookup_key}"
-                if prefixed in self.available_clients:
-                    lookup_key = prefixed
+                for available_name in self.available_clients.keys():
+                    if device_id_upper in available_name.upper():
+                        lookup_key = available_name
+                        log.info(f"💡 Found partial match: '{device_id_clean}' -> '{available_name}'")
+                        break
+
+            if lookup_key is None:
+                # Device not found - show helpful error message
+                log.warning(f"❌ '{device_id_clean}' not found")
+                if len(self.available_clients) > 0:
+                    log.info("💡 Available devices:")
+                    for name in sorted(self.available_clients.keys()):
+                        # Extract serial number from "Leo USB EVNC1OLGG" format
+                        serial = name.replace("Leo USB ", "").strip() if "Leo USB " in name else name
+                        log.info(f"   • {serial} (full name: '{name}')")
+                raise KeyError(f"Device '{device_id_clean}' not found")
 
             self.address = self.available_clients[lookup_key].address
             log.info("🔌 Connecting to %s" % device_id)
@@ -124,8 +145,9 @@ class BluetoothManager(DeviceManager):
 
             self.run_async(self.client.connect())
             self.device = BleDevice(self, self.client)
-        except (BleakDeviceNotFoundError, KeyError):
-            log.warning("❌ %s not found" % device_id)
+        except (BleakDeviceNotFoundError, KeyError) as e:
+            # Error already logged above
+            pass
         except BleakDBusError:
             log.exception("BLE stack error. Try restarting Bluetooth service.")
         except BleakError as e:

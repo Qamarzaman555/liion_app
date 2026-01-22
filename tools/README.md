@@ -166,4 +166,5 @@ source .venv/bin/activate && ./connect.py --bluetooth 'Leo USB O3HBOR0BO'
 source .venv/bin/activate && python3 connect.py --bluetooth EVNC1O6P6
 '''
 ### Stream
+# change first and last file number first -- tools/leo/bluetooth/interface.py
 get all files

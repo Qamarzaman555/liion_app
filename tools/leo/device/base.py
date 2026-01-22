@@ -63,13 +63,55 @@ class Device(ABC):
 
     def __call__(self, cmd, *args):
         """Dynamically handle commands."""
-        try:
-            if hasattr(self, cmd):
+        # Try the command as-is first
+        if hasattr(self, cmd):
+            try:
                 return getattr(self, cmd)(*args)
-        except TypeError:
-            log.warning(f"⚠️ Unknown parameters {args} for '{cmd}'")
-        else:
-            log.warning("⚠️ Unknown command '%s'" % cmd)
+            except TypeError:
+                log.warning(f"⚠️ Unknown parameters {args} for '{cmd}'")
+                # Fall through to send command anyway
+        
+        # If command not found, try various combinations to match multi-word commands
+        if args:
+            # Strategy 1: Join all parts with underscores: "get" + ["all", "files"] -> "get_all_files"
+            joined_cmd = f"{cmd}_{'_'.join(str(a) for a in args)}"
+            if hasattr(self, joined_cmd):
+                try:
+                    return getattr(self, joined_cmd)()
+                except TypeError:
+                    pass
+            
+            # Strategy 2: Join cmd with last arg (common pattern): "get" + ["files"] -> "get_files"
+            # This handles "get files" -> "get_files"
+            if len(args) == 1:
+                simple_joined = f"{cmd}_{args[0]}"
+                if hasattr(self, simple_joined):
+                    try:
+                        return getattr(self, simple_joined)()
+                    except TypeError:
+                        pass
+            
+            # Strategy 3: Skip "all" and join cmd with last arg: "get" + ["all", "files"] -> "get_files"
+            # This handles "get all files" -> "get_files"
+            if len(args) >= 2 and args[0].lower() == "all":
+                skip_all_cmd = f"{cmd}_{args[-1]}"
+                if hasattr(self, skip_all_cmd):
+                    try:
+                        return getattr(self, skip_all_cmd)()
+                    except TypeError:
+                        pass
+            
+            # Strategy 4: Try joining cmd with first arg: "get" + ["all", "files"] -> "get_all"
+            if len(args) > 1:
+                partial_cmd = f"{cmd}_{args[0]}"
+                if hasattr(self, partial_cmd):
+                    try:
+                        return getattr(self, partial_cmd)(*args[1:])
+                    except TypeError:
+                        pass
+        
+        # Command not found as a method
+        log.warning("⚠️ Unknown command '%s'" % cmd)
 
         # Let's send it anyway
         self.send_command(f"{cmd} {' '.join(map(str, args))}" if args else f"{cmd}")
