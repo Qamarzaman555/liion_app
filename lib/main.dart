@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -27,13 +28,29 @@ void main() async {
 }
 
 Future<void> _requestPermissionsAndStartService() async {
-  // Request BLE and notification permissions
-  final statuses = await [
+  // Check Android version - location permission not needed for Android 12+ (API 31+)
+  final deviceInfo = DeviceInfoPlugin();
+  int androidSdkVersion = 0;
+  
+  if (Platform.isAndroid) {
+    final androidInfo = await deviceInfo.androidInfo;
+    androidSdkVersion = androidInfo.version.sdkInt;
+  }
+
+  // Build permission list - location only needed for Android 11 and below (API 30 and below)
+  final permissions = <Permission>[
     Permission.bluetoothScan,
     Permission.bluetoothConnect,
-    Permission.locationWhenInUse,
     Permission.notification,
-  ].request();
+  ];
+
+  // Only add location permission for Android 11 and below (API 30 and below)
+  if (androidSdkVersion <= 30) {
+    permissions.add(Permission.locationWhenInUse);
+  }
+
+  // Request permissions
+  final statuses = await permissions.request();
 
   // Check if BLE permissions are granted
   if (statuses[Permission.bluetoothScan]!.isGranted &&
