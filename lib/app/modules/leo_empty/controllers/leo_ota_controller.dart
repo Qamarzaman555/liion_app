@@ -390,17 +390,8 @@ class LeoOtaController extends GetxController {
 
       checkDownloadedFiles();
       print("End of download folder");
-
-      AppSnackbars.showSuccess(
-        title: 'Download Complete',
-        message: 'Firmware downloaded successfully.',
-      );
     } catch (e) {
       print("Error in downloadFolder: $e");
-      AppSnackbars.showSuccess(
-        title: 'Download Failed',
-        message: 'Failed to download firmware: $e',
-      );
     } finally {
       isDownloadingFirmware.value = false;
     }
@@ -439,10 +430,7 @@ class LeoOtaController extends GetxController {
       print(
         '🟡 [OTA Controller] OTA already in progress - showing existing progress dialog',
       );
-      AppSnackbars.showSuccess(
-        title: 'Update In Progress',
-        message: 'OTA update is already in progress.',
-      );
+
       return;
     }
 

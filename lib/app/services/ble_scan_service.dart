@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class BleConnectionState {
   static const int disconnected = 0;
@@ -843,5 +846,90 @@ class BleScanService {
       print('Failed to minimize app: ${e.message}');
       return false;
     }
+  }
+
+  /// Check if required BLE permissions are granted
+  static Future<bool> arePermissionsGranted() async {
+    if (!Platform.isAndroid) return true;
+
+    final bluetoothScanStatus = await Permission.bluetoothScan.status;
+    final bluetoothConnectStatus = await Permission.bluetoothConnect.status;
+
+    return bluetoothScanStatus.isGranted && bluetoothConnectStatus.isGranted;
+  }
+
+  /// Check if permissions are granted and start service if needed
+  /// This should be called when app resumes (e.g., after returning from settings)
+  static Future<bool> checkPermissionsAndStartService() async {
+    if (!Platform.isAndroid) return true;
+
+    // Check if permissions are granted
+    if (await arePermissionsGranted()) {
+      // Ensure service is started
+      await startService();
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Request BLE permissions if not already granted
+  /// Returns true if permissions are granted, false otherwise
+  static Future<bool> requestPermissionsIfNeeded() async {
+    if (!Platform.isAndroid) return true;
+
+    // Check if permissions are already granted
+    if (await arePermissionsGranted()) {
+      await startService();
+      return true;
+    }
+
+    // Check if permissions are permanently denied
+    final bluetoothScanStatus = await Permission.bluetoothScan.status;
+    final bluetoothConnectStatus = await Permission.bluetoothConnect.status;
+
+    final isPermanentlyDenied =
+        bluetoothScanStatus.isPermanentlyDenied ||
+        bluetoothConnectStatus.isPermanentlyDenied;
+
+    // If permanently denied, don't try to request (it won't show dialog)
+    // Return false so the UI can show a dialog with "Open Settings" button
+    if (isPermanentlyDenied) {
+      return false;
+    }
+
+    // Check Android version - location permission not needed for Android 12+ (API 31+)
+    final deviceInfo = DeviceInfoPlugin();
+    int androidSdkVersion = 0;
+
+    final androidInfo = await deviceInfo.androidInfo;
+    androidSdkVersion = androidInfo.version.sdkInt;
+
+    // Build permission list - location only needed for Android 11 and below (API 30 and below)
+    final permissions = <Permission>[
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.notification,
+    ];
+
+    // Only add location permission for Android 11 and below (API 30 and below)
+    if (androidSdkVersion <= 30) {
+      permissions.add(Permission.locationWhenInUse);
+    }
+
+    // Request permissions
+    final statuses = await permissions.request();
+
+    // Check if BLE permissions are granted
+    final areGranted =
+        statuses[Permission.bluetoothScan]!.isGranted &&
+        statuses[Permission.bluetoothConnect]!.isGranted;
+
+    // If permissions are granted, ensure service is started
+    if (areGranted) {
+      await checkPermissionsAndStartService();
+    }
+
+    return areGranted;
   }
 }

@@ -111,15 +111,6 @@ class BatteryController extends GetxController {
     if (success) {
       // Reload health info to reflect the reset
       await _loadInitialHealth();
-      AppSnackbars.showSuccess(
-        title: 'Success',
-        message: 'Battery health readings reset',
-      );
-    } else {
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'Failed to reset battery health readings',
-      );
     }
   }
 

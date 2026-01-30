@@ -33,15 +33,8 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    final success = await BleScanService.setGhostMode(value);
+    await BleScanService.setGhostMode(value);
     ghostModeEnabled.value = value;
-
-    AppSnackbars.showSuccess(
-      title: success ? "Ghost Mode Updated" : "Update Failed",
-      message: success
-          ? "Ghost Mode has been updated to ${value ? "Enabled" : "Disabled"}"
-          : "Could not update Ghost Mode. Please try again.",
-    );
   }
 
   Future<void> requestAdvancedSilentMode(bool value) async {
@@ -54,15 +47,8 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    final success = await BleScanService.setSilentMode(value);
+    await BleScanService.setSilentMode(value);
     silentModeEnabled.value = value;
-
-    AppSnackbars.showSuccess(
-      title: success ? "Silent Mode Updated" : "Update Failed",
-      message: success
-          ? "Silent Mode has been updated to ${value ? "Enabled" : "Disabled"}"
-          : "Could not update Silent Mode. Please try again.",
-    );
   }
 
   Future<void> requestAdvancedHigherChargeLimit(bool value) async {
@@ -75,14 +61,7 @@ class AdvancedSettingsController extends GetxController {
       return;
     }
 
-    final success = await BleScanService.setHigherChargeLimit(value);
+    await BleScanService.setHigherChargeLimit(value);
     higherChargeLimitEnabled.value = value;
-
-    AppSnackbars.showSuccess(
-      title: success ? "Higher Charge Limit Updated" : "Update Failed",
-      message: success
-          ? "Higher Charge Limit has been updated to ${value ? "Enabled" : "Disabled"}"
-          : "Could not update Higher Charge Limit. Please try again.",
-    );
   }
 }

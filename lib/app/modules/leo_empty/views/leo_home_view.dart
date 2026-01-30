@@ -15,6 +15,7 @@ import 'widgets/metrics_summary.dart';
 import 'widgets/wait_for_install_dialog.dart';
 import 'widgets/ota_done_dialog.dart';
 import 'widgets/thank_you_note.dart';
+import 'widgets/permission_denied_dialog.dart';
 
 class LeoHomeView extends GetView<LeoHomeController> {
   const LeoHomeView({super.key});
@@ -89,9 +90,25 @@ class LeoHomeView extends GetView<LeoHomeController> {
     });
   }
 
-  void _handleConnectionButtonTap(BuildContext context) {
+  void _handleConnectionButtonTap(BuildContext context) async {
     if (!controller.isBluetoothOn) {
       BleScanService.requestEnableBluetooth();
+      return;
+    }
+
+    // Check and request permissions if needed
+    // This will also check if permissions were granted when user returns from settings
+    final hasPermissions = await BleScanService.requestPermissionsIfNeeded();
+    if (!hasPermissions) {
+      // Show dialog with option to open settings
+      await showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) => const PermissionDeniedDialog(),
+      );
+      // After dialog is dismissed, check again in case user granted permissions
+      // This handles the case when user returns from settings
+      await BleScanService.checkPermissionsAndStartService();
       return;
     }
 

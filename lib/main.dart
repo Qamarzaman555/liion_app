@@ -31,7 +31,7 @@ Future<void> _requestPermissionsAndStartService() async {
   // Check Android version - location permission not needed for Android 12+ (API 31+)
   final deviceInfo = DeviceInfoPlugin();
   int androidSdkVersion = 0;
-  
+
   if (Platform.isAndroid) {
     final androidInfo = await deviceInfo.androidInfo;
     androidSdkVersion = androidInfo.version.sdkInt;

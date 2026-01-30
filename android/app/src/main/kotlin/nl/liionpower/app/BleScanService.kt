@@ -359,8 +359,8 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (127)"
-    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (127) CSV"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (130)"
+    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (130) CSV"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -3972,7 +3972,7 @@ class BleScanService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Liion Power")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_search)
+            .setSmallIcon(R.drawable.ic_notification_logo)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

@@ -129,23 +129,35 @@ class LeoMetricsSummary extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.all(10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                const Icon(
+                  Icons.bolt,
+                  color: AppColors.secondaryColor,
+                  size: 22,
+                ),
+                const Text('Total Charges'),
+                const SizedBox(width: 12),
+                Obx(
+                  () => _MetricValueChip(
+                    value: '${controller.mwhValue.value} mWh',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          color: AppColors.whiteColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
             child: Column(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    const Icon(
-                      Icons.bolt,
-                      color: AppColors.secondaryColor,
-                      size: 22,
-                    ),
-                    const Text('Total Charges'),
-                    const SizedBox(width: 12),
-                    Obx(
-                      () => _MetricValueChip(value: controller.mwhValue.value),
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 16),
                 Obx(() {
                   if (controller.isPastGraphLoading.value) {

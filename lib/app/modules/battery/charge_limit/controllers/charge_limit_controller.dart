@@ -89,10 +89,6 @@ class ChargeLimitController extends GetxController {
     if (success) {
       chargeLimit.value = limit;
       chargeLimitEnabled.value = true;
-      AppSnackbars.showSuccess(
-        title: 'Success',
-        message: 'Charge limit set to $limit%',
-      );
     } else {
       AppSnackbars.showSuccess(
         title: 'Error',
@@ -107,12 +103,6 @@ class ChargeLimitController extends GetxController {
     final success = await BleScanService.setChargeLimitEnabled(enabled);
     if (success) {
       chargeLimitEnabled.value = enabled;
-      AppSnackbars.showSuccess(
-        title: enabled ? 'Charge Limit Enabled' : 'Charge Limit Disabled',
-        message: enabled
-            ? 'Limit set to ${chargeLimit.value}%'
-            : 'Leo will use default charge limit',
-      );
     }
   }
 
