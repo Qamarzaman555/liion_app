@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:path_provider/path_provider.dart';
@@ -66,7 +67,7 @@ class LeoOtaController extends GetxController {
     _connectionSubscription = BleScanService.connectionStream.listen((event) {
       final newState = event['state'] as int;
 
-      print(
+      debugPrint(
         'Connection state changed: previous=$_previousConnectionState, new=$newState, wasOtaCompleted=$_wasOtaCompleted, timerActive=$isInstallTimerActive, secondsRemaining=${secondsRemaining.value}, disconnectedDuringTimer=$_disconnectedDuringTimer',
       );
 
@@ -75,7 +76,7 @@ class LeoOtaController extends GetxController {
           (isInstallTimerActive || secondsRemaining.value > 0) &&
           _previousConnectionState == BleConnectionState.connected &&
           newState == BleConnectionState.disconnected) {
-        print('Device disconnected during timer period');
+        debugPrint('Device disconnected during timer period');
         _disconnectedDuringTimer = true;
       }
 
@@ -89,10 +90,10 @@ class LeoOtaController extends GetxController {
           (isInstallTimerActive ||
               isTimerDialogOpen.value ||
               secondsRemaining.value > 0)) {
-        print(
+        debugPrint(
           '🟢 [OTA Controller] Device reconnected after OTA - cancelling timer and showing done dialog',
         );
-        print(
+        debugPrint(
           '🟢 [OTA Controller] isTimerDialogOpen: ${isTimerDialogOpen.value}, secondsRemaining: ${secondsRemaining.value}',
         );
 
@@ -104,7 +105,7 @@ class LeoOtaController extends GetxController {
         _disconnectedDuringTimer = false; // Reset flag
         shouldShowDoneDialog.value = true; // Trigger done dialog to show
         shouldShowDoneDialog.refresh();
-        print(
+        debugPrint(
           '🟢 [OTA Controller] Timer cancelled, shouldShowDoneDialog=${shouldShowDoneDialog.value}',
         );
       }
@@ -116,7 +117,7 @@ class LeoOtaController extends GetxController {
   /// Public method to close wait dialog when device reconnects
   void handleDeviceReconnected() {
     if (isTimerDialogOpen.value && _wasOtaCompleted) {
-      print('Handling device reconnection - closing wait dialog');
+      debugPrint('Handling device reconnection - closing wait dialog');
       _closeWaitDialogAndShowDone();
       // Trigger a rebuild to show done dialog
       isTimerDialogOpen.refresh();
@@ -126,11 +127,11 @@ class LeoOtaController extends GetxController {
   /// Start the install timer and show wait dialog
   /// Made public so dialog can start it when showing (in case device disconnects before acknowledgment)
   void startInstallTimer() async {
-    print('🟡 [OTA Controller] startInstallTimer called');
+    debugPrint('🟡 [OTA Controller] startInstallTimer called');
 
     // Prevent starting timer multiple times
     if (_wasOtaCompleted && isInstallTimerActive) {
-      print('🟡 [OTA Controller] Timer already active - skipping');
+      debugPrint('🟡 [OTA Controller] Timer already active - skipping');
       return;
     }
 
@@ -145,7 +146,7 @@ class LeoOtaController extends GetxController {
         (currentConnectionState == BleConnectionState.disconnected);
     _previousConnectionState = currentConnectionState;
 
-    print(
+    debugPrint(
       '🟡 [OTA Controller] Starting install timer: currentConnectionState=$currentConnectionState, disconnectedDuringTimer=$_disconnectedDuringTimer, isTimerDialogOpen=${isTimerDialogOpen.value}',
     );
 
@@ -154,17 +155,17 @@ class LeoOtaController extends GetxController {
         secondsRemaining.value--;
       } else {
         timer.cancel();
-        print(
+        debugPrint(
           '🟢 [OTA Controller] Timer completed - secondsRemaining reached 0, isTimerDialogOpen: ${isTimerDialogOpen.value}',
         );
         // Timer completed - show done dialog if wait dialog is still open
         if (isTimerDialogOpen.value) {
-          print(
+          debugPrint(
             '🟢 [OTA Controller] Timer dialog is open - closing and showing done dialog',
           );
           _closeWaitDialogAndShowDone();
         } else {
-          print(
+          debugPrint(
             '🟡 [OTA Controller] Timer dialog is NOT open - setting shouldShowDoneDialog flag',
           );
           shouldShowDoneDialog.value = true;
@@ -176,14 +177,14 @@ class LeoOtaController extends GetxController {
 
   /// Close wait dialog and show done dialog
   void _closeWaitDialogAndShowDone() {
-    print('🟢 [OTA Controller] _closeWaitDialogAndShowDone called');
+    debugPrint('🟢 [OTA Controller] _closeWaitDialogAndShowDone called');
     _installTimer?.cancel();
     _installTimer = null;
     isTimerDialogOpen.value = false;
     secondsRemaining.value = 0; // Set to 0 to indicate completion
     shouldShowDoneDialog.value = true; // Trigger done dialog to show
     shouldShowDoneDialog.refresh();
-    print(
+    debugPrint(
       '🟢 [OTA Controller] Wait dialog closed, shouldShowDoneDialog=${shouldShowDoneDialog.value}',
     );
   }
@@ -206,17 +207,17 @@ class LeoOtaController extends GetxController {
         // This handles the case where progress stream doesn't send the 100% event
         // Check this even if inProgress is false (device may disconnect before acknowledgment)
         if (progress == 100 && (!_wasOtaCompleted || !isInstallTimerActive)) {
-          print(
+          debugPrint(
             '🟢 [OTA Controller] Progress polling detected 100% - starting install timer',
           );
-          print(
+          debugPrint(
             '🟢 [OTA Controller] wasOtaCompleted: $_wasOtaCompleted, isInstallTimerActive: $isInstallTimerActive, inProgress: $inProgress',
           );
           startInstallTimer();
         }
 
         if (progress != (otaProgress.value * 100).round()) {
-          print(
+          debugPrint(
             'Progress polling: Updating from ${otaProgress.value * 100}% to $progress%',
           );
           otaProgress.value = progress / 100.0;
@@ -224,7 +225,7 @@ class LeoOtaController extends GetxController {
         }
 
         if (inProgress != isOtaInProgress.value) {
-          print(
+          debugPrint(
             'Progress polling: Updating inProgress from ${isOtaInProgress.value} to $inProgress',
           );
           isOtaInProgress.value = inProgress;
@@ -237,7 +238,7 @@ class LeoOtaController extends GetxController {
           return;
         }
       } catch (e) {
-        print('Error polling progress: $e');
+        debugPrint('Error polling progress: $e');
         // Stop polling on error if OTA is not in progress and timer started
         if (!isOtaInProgress.value && _wasOtaCompleted) {
           timer.cancel();
@@ -251,12 +252,12 @@ class LeoOtaController extends GetxController {
     _otaProgressSubscription?.cancel();
     _otaProgressSubscription = BleScanService.otaProgressStream.listen(
       (event) {
-        print('OTA Progress Event: $event');
+        debugPrint('OTA Progress Event: $event');
         final progress = event['progress'] as int? ?? 0;
         final inProgress = event['inProgress'] as bool? ?? false;
         final message = event['message'] as String? ?? '';
 
-        print(
+        debugPrint(
           'OTA Progress: $progress%, InProgress: $inProgress, Message: $message',
         );
 
@@ -275,8 +276,8 @@ class LeoOtaController extends GetxController {
               int.tryParse(packetMatch.group(2) ?? '0') ?? 0;
         }
 
-        print(
-          'Updated UI - Progress: $progressValue (${progress}%), InProgress: $inProgress, Message: $message',
+        debugPrint(
+          'Updated UI - Progress: $progressValue ($progress%), InProgress: $inProgress, Message: $message',
         );
 
         // Force UI refresh
@@ -291,34 +292,34 @@ class LeoOtaController extends GetxController {
 
         if (progress == 100) {
           // OTA completed successfully (all packets sent)
-          print(
+          debugPrint(
             '🟢 [OTA Controller] OTA completed successfully - progress reached 100%',
           );
-          print(
+          debugPrint(
             '🟢 [OTA Controller] inProgress: $inProgress, isOtaProgressDialogOpen: ${isOtaProgressDialogOpen.value}',
           );
 
           // When progress reaches 100%, always start the timer if not already started
           // This ensures timer runs even if progress dialog was dismissed
           if (!_wasOtaCompleted || !isInstallTimerActive) {
-            print(
+            debugPrint(
               '🟢 [OTA Controller] Starting install timer (progress reached 100%)',
             );
             startInstallTimer();
           } else {
-            print('🟡 [OTA Controller] Timer already started - skipping');
+            debugPrint('🟡 [OTA Controller] Timer already started - skipping');
           }
         } else if (!inProgress &&
             message.isNotEmpty &&
             (message.toLowerCase().contains('fail') ||
                 message.toLowerCase().contains('error'))) {
           // OTA failed - close dialogs and reset state
-          print('OTA failed: $message');
+          debugPrint('OTA failed: $message');
           _handleOtaFailure(message);
         }
       },
       onError: (error) {
-        print('OTA progress stream error: $error');
+        debugPrint('OTA progress stream error: $error');
         isOtaInProgress.value = false;
       },
       cancelOnError: false,
@@ -333,21 +334,21 @@ class LeoOtaController extends GetxController {
 
       // Clear cache first
       await clearCache();
-      print("Start of download folder");
+      debugPrint("Start of download folder");
 
       firebase_storage.FirebaseStorage storage =
           firebase_storage.FirebaseStorage.instance;
-      print("After storage initialization");
+      debugPrint("After storage initialization");
 
       firebase_storage.ListResult result = await storage
           .ref(folderName)
           .listAll();
-      print("After storage found");
+      debugPrint("After storage found");
 
       List<Future<void>> downloadTasks = [];
       String tempDirPath = (await getTemporaryDirectory()).path;
 
-      print("Results length is ${result.items.length}");
+      debugPrint("Results length is ${result.items.length}");
 
       if (result.items.isEmpty) {
         AppSnackbars.showSuccess(
@@ -367,14 +368,16 @@ class LeoOtaController extends GetxController {
 
         binFileFromFirebaseName.value = fileName;
 
-        print("File name just received is $fileName");
+        debugPrint("File name just received is $fileName");
         File file = File('$tempDirPath/$fileName');
 
         downloadTasks.add(
           ref.writeToFile(file).then((_) {
             completedDownloads++;
             downloadProgress.value = completedDownloads / totalFiles;
-            print("Downloaded $fileName ($completedDownloads/$totalFiles)");
+            debugPrint(
+              "Downloaded $fileName ($completedDownloads/$totalFiles)",
+            );
           }),
         );
       }
@@ -385,13 +388,13 @@ class LeoOtaController extends GetxController {
       if (result.items.isNotEmpty) {
         String firstFileName = result.items.first.name.replaceAll('.img', '');
         cloudBinFilePath.value = '$tempDirPath/$firstFileName';
-        print("Cloud bin file path set to: ${cloudBinFilePath.value}");
+        debugPrint("Cloud bin file path set to: ${cloudBinFilePath.value}");
       }
 
       checkDownloadedFiles();
-      print("End of download folder");
+      debugPrint("End of download folder");
     } catch (e) {
-      print("Error in downloadFolder: $e");
+      debugPrint("Error in downloadFolder: $e");
     } finally {
       isDownloadingFirmware.value = false;
     }
@@ -410,24 +413,24 @@ class LeoOtaController extends GetxController {
         }
       }
     } catch (e) {
-      print("Error clearing cache: $e");
+      debugPrint("Error clearing cache: $e");
     }
   }
 
   /// Check downloaded files
   void checkDownloadedFiles() {
     // Implementation to verify downloaded files if needed
-    print("Checking downloaded files...");
+    debugPrint("Checking downloaded files...");
   }
 
   /// Start OTA update process
   Future<void> startOtaUpdate(String? binFilePath) async {
-    print(
+    debugPrint(
       '🔵 [OTA Controller] startOtaUpdate called - isOtaInProgress: ${isOtaInProgress.value}, isOtaProgressDialogOpen: ${isOtaProgressDialogOpen.value}',
     );
 
     if (isOtaInProgress.value) {
-      print(
+      debugPrint(
         '🟡 [OTA Controller] OTA already in progress - showing existing progress dialog',
       );
 
@@ -447,7 +450,7 @@ class LeoOtaController extends GetxController {
     try {
       // Enable wake lock
       await WakelockPlus.enable();
-      print("Wake lock enabled");
+      debugPrint("Wake lock enabled");
 
       final filePath = binFilePath ?? cloudBinFilePath.value;
       if (filePath.isEmpty) {
@@ -473,7 +476,7 @@ class LeoOtaController extends GetxController {
       otaMessage.refresh();
 
       // Start OTA update via Kotlin service
-      print("Starting OTA update with file: $filePath");
+      debugPrint("Starting OTA update with file: $filePath");
       final success = await BleScanService.startOtaUpdate(filePath);
 
       if (!success) {
@@ -488,12 +491,12 @@ class LeoOtaController extends GetxController {
         );
       }
 
-      print("OTA update started successfully");
+      debugPrint("OTA update started successfully");
 
       // Start periodic progress check as backup
       _startProgressPolling();
     } catch (e) {
-      print("Error in startOtaUpdate: $e");
+      debugPrint("Error in startOtaUpdate: $e");
       await WakelockPlus.disable();
       AppSnackbars.showSuccess(
         title: 'Update Failed',
@@ -505,7 +508,7 @@ class LeoOtaController extends GetxController {
   /// Cancel OTA update
   Future<void> cancelOtaUpdate() async {
     try {
-      print("Cancelling OTA update...");
+      debugPrint("Cancelling OTA update...");
 
       // Stop progress polling
       _progressPollingTimer?.cancel();
@@ -516,9 +519,9 @@ class LeoOtaController extends GetxController {
       // Reset all OTA state
       resetOtaState();
 
-      print("OTA update cancelled - UI state updated");
+      debugPrint("OTA update cancelled - UI state updated");
     } catch (e) {
-      print("Error cancelling OTA update: $e");
+      debugPrint("Error cancelling OTA update: $e");
       // Still update UI state even if cancel fails
       _progressPollingTimer?.cancel();
       resetOtaState();
@@ -527,7 +530,7 @@ class LeoOtaController extends GetxController {
 
   /// Handle OTA failure - close dialogs and reset state
   void _handleOtaFailure(String message) {
-    print('Handling OTA failure: $message');
+    debugPrint('Handling OTA failure: $message');
     AppSnackbars.showSuccess(
       title: 'Update Failed',
       message: 'Failed to update firmware: $message',
@@ -554,7 +557,7 @@ class LeoOtaController extends GetxController {
 
   /// Reset all OTA state to initial values
   void resetOtaState() {
-    print('🔄 [OTA Controller] resetOtaState called');
+    debugPrint('🔄 [OTA Controller] resetOtaState called');
     isOtaInProgress.value = false;
     otaProgress.value = 0.0;
     otaMessage.value = '';
@@ -580,6 +583,6 @@ class LeoOtaController extends GetxController {
     isTimerDialogOpen.refresh();
     shouldShowDoneDialog.refresh();
 
-    print("🔄 [OTA Controller] OTA state reset complete");
+    debugPrint("🔄 [OTA Controller] OTA state reset complete");
   }
 }

@@ -359,8 +359,8 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (130)"
-    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (130) CSV"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (131)"
+    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (131) CSV"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -407,6 +407,10 @@ class BleScanService : Service() {
     private val commandQueue: ArrayDeque<String> = ArrayDeque()
     private var commandProcessing = false
     private val COMMAND_GAP_MS = 250L
+    private var waitingForResponse = false
+    private var lastCommandSent: String? = null
+    private val RESPONSE_TIMEOUT_MS = 2000L
+    private var responseTimeoutRunnable: Runnable? = null
     
     // Advanced modes request throttling
     private var advancedRequestInProgress = false
@@ -964,6 +968,17 @@ class BleScanService : Service() {
                 chargeLimitConfirmed = numeric == 1
                 MainActivity.sendChargeLimitConfirmed(chargeLimitConfirmed)
                 handleAdvancedModeResponse("charge_limit", numeric)
+            }
+        }
+
+        // Check if this response matches our last sent command
+        val responseCmd = parts.getOrNull(1)?.lowercase() ?: parts.getOrNull(2)?.lowercase()
+        if (waitingForResponse && lastCommandSent != null) {
+            // Some responses have "OK py_msg <cmd>", others just "OK <cmd>"
+            if (parts.contains(lastCommandSent) || (responseCmd != null && lastCommandSent!!.contains(responseCmd))) {
+                waitingForResponse = false
+                lastCommandSent = null
+                cancelResponseTimeout()
             }
         }
         
@@ -1529,11 +1544,40 @@ class BleScanService : Service() {
                 var dataPoint = allDataPoints[i]
                 
                 // Detect and remove STX/ETX control characters
-                if (dataPoint.contains('\u0002')) {
+                if (dataPoint.contains('\u0002') && !stxProcessedForCurrentFile) {
                     stxDetected = true
+                    stxProcessedForCurrentFile = true // Mark STX as processed IMMEDIATELY
+                    
+                    android.util.Log.i("BleScanService", "[FileStream] STX detected in data point - stream start for file $currentFile")
+                    android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                    
+                    // Reset processing state for new stream IMMEDIATELY when STX is found
+                    chargeDataList.clear()
+                    processedDataPoints.clear()
+                    previousChargeData = null
+                    hasUnwantedCharacters = false
+                    rawFileData = ""
+                    
+                    // Also trim raw data accumulator to remove everything before STX
+                    val rawDataStr = rawFileDataAccumulator.toString()
+                    val rawStxPos = rawDataStr.indexOf('\u0002')
+                    if (rawStxPos >= 0) {
+                        val rawDataAfterSTX = rawDataStr.substring(rawStxPos + 1)
+                        rawFileDataAccumulator.clear()
+                        rawFileDataAccumulator.append(rawDataAfterSTX)
+                    }
+                    
+                    isFileStreamingActive = true
+                    streamFileResponseReceived = true
+                    waitingForStreamFileResponse = false
+                    cancelStreamFileTimeout()
+                    
                     dataPoint = dataPoint.replace("\u0002", "")
-                    android.util.Log.i("BleScanService", "[FileStream] STX detected in data point")
+                } else if (dataPoint.contains('\u0002')) {
+                    // STX detected but already processed - this indicates duplicate stream or data bit
+                    dataPoint = dataPoint.replace("\u0002", "")
                 }
+                
                 if (dataPoint.contains('\u0003')) {
                     etxDetected = true
                     dataPoint = dataPoint.replace("\u0003", "")
@@ -1691,11 +1735,11 @@ class BleScanService : Service() {
                 fileStreamingAccumulatedData.clear()
             }
             
-            // Handle start (STX) and end (ETX) indicators
-            if ((stxDetected || receivedDataContainsSTX || fileStreamingAccumulatedData.toString().contains('\u0002')) && !stxProcessedForCurrentFile) {
+            // Handle start (STX) indicators if not caught in loop (e.g. packet with ONLY STX)
+            if ((receivedDataContainsSTX || fileStreamingAccumulatedData.toString().contains('\u0002')) && !stxProcessedForCurrentFile) {
                 stxProcessedForCurrentFile = true // Mark STX as processed for this file
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
-                android.util.Log.i("BleScanService", "[FileStream] STX detected - Stream start for file $currentFile")
+                android.util.Log.i("BleScanService", "[FileStream] STX detected (fallback) - Stream start for file $currentFile")
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
                 isFileStreamingActive = true
                 streamFileResponseReceived = true
@@ -1720,18 +1764,15 @@ class BleScanService : Service() {
                     }
                 }
                 
-                // Reset processing state for new stream (but keep raw data accumulator which now has data after STX)
-                previousChargeData = null // Reset previous data for new stream
+                // Reset processing state for new stream
+                previousChargeData = null 
                 chargeDataList.clear()
                 processedDataPoints.clear()
                 hasUnwantedCharacters = false
-                rawFileData = "" // Clear raw data string (will be populated from accumulator at ETX)
+                rawFileData = ""
                 
                 // Cancel timeout since we received STX
                 cancelStreamFileTimeout()
-            } else if (stxDetected || receivedDataContainsSTX || fileStreamingAccumulatedData.toString().contains('\u0002')) {
-                // STX detected but already processed - this indicates duplicate stream
-                android.util.Log.w("BleScanService", "[FileStream] STX detected again for file $currentFile but already processed - possible duplicate stream")
             }
             
             if (etxDetected || receivedDataContainsETX || fileStreamingAccumulatedData.toString().contains('\u0003')) {
@@ -2064,6 +2105,20 @@ class BleScanService : Service() {
                     android.util.Log.i("BleScanService", "[FileStream] Session: $sessionId")
                     android.util.Log.i("BleScanService", "[FileStream] ========================================")
                     
+                    val pendingKey = "pending_upload_${serialNumber}_$sessionId"
+                    val dataKeyToRemove = "${pendingKey}_data"
+                    val rawDataKeyToRemove = "${pendingKey}_raw_data"
+                    
+                    val finalizeUpload = {
+                        // Add this session to the list of sent sessions
+                        sentSessions.add(sessionId)
+                        val addressKey = connectedDeviceAddress?.replace(":", "") ?: "unknown"
+                        prefs?.edit()?.putStringSet("sentSessions_$addressKey", sentSessions)?.apply()
+                        
+                        // Remove from pending uploads
+                        prefs?.edit()?.remove(pendingKey)?.remove(dataKeyToRemove)?.remove(rawDataKeyToRemove)?.apply()
+                    }
+
                     // Upload raw CSV data to separate collection if available
                     if (rawData.isNotEmpty()) {
                         android.util.Log.d("BleScanService", "[FileStream] Uploading raw CSV data (${rawData.length} chars) to collection: $CSV_COLLECTION_NAME")
@@ -2083,36 +2138,26 @@ class BleScanService : Service() {
                             .document(docId)
                             .set(csvObject, SetOptions.merge())
                             .addOnSuccessListener {
-                                android.util.Log.i("BleScanService", "[FileStream] ========================================")
                                 android.util.Log.i("BleScanService", "[FileStream] Raw CSV data successfully stored to Firebase!")
-                                android.util.Log.i("BleScanService", "[FileStream] Collection: $CSV_COLLECTION_NAME")
-                                android.util.Log.i("BleScanService", "[FileStream] Document ID: $docId")
-                                android.util.Log.i("BleScanService", "[FileStream] Raw data size: ${rawData.length} characters")
-                                android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                                finalizeUpload()
                             }
                             .addOnFailureListener { e ->
                                 android.util.Log.e("BleScanService", "[FileStream] Failed to upload raw CSV data: ${e.message}")
                                 e.printStackTrace()
+                                // Note: We don't call finalizeUpload here so it can retry both later
                             }
                     } else {
                         android.util.Log.w("BleScanService", "[FileStream] Raw CSV data is empty, skipping upload to CSV collection")
+                        finalizeUpload()
                     }
-                    
-                    // Add this session to the list of sent sessions
-                    sentSessions.add(sessionId)
-                    prefs?.edit()?.putStringSet("sentSessions_${connectedDeviceAddress?.replace(":", "")}", sentSessions)?.apply()
-                    
-                    // Remove from pending uploads if it was a retry
-                    val pendingKey = "pending_upload_${serialNumber}_$sessionId"
-                    prefs?.edit()?.remove(pendingKey)?.remove("${pendingKey}_data")?.remove("${pendingKey}_raw_data")?.apply()
                     
                     // Delete file from device after successful upload
-                    if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                        handler.postDelayed({
-                            enqueueCommand("app_msg rm_file $fileNumber")
-                            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
-                        }, 500) // Small delay to ensure Firebase operation completes
-                    }
+                    // if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                    //     handler.postDelayed({
+                    //         enqueueCommand("app_msg rm_file $fileNumber")
+                    //         android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
+                    //     }, 500) // Small delay to ensure Firebase operation completes
+                    // }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
@@ -2252,7 +2297,8 @@ class BleScanService : Service() {
                         // Check if already sent
                         if (sentSessions.contains(sessionId)) {
                             android.util.Log.d("BleScanService", "[FileStream] Session $sessionId already sent, removing from pending.")
-                            prefs?.edit()?.remove(dataKey)?.remove("pending_upload_${serialForSync}_$sessionId")?.remove("${dataKey}_raw_data")?.apply()
+                            val rawDataKeyToRemove = dataKey.replace("_data", "_raw_data")
+                            prefs?.edit()?.remove(dataKey)?.remove("pending_upload_${serialForSync}_$sessionId")?.remove(rawDataKeyToRemove)?.apply()
                             continue
                         }
                         
@@ -2291,7 +2337,7 @@ class BleScanService : Service() {
                         val firebaseMap = jsonObjectToMap(firebaseObject)
                         
                         // Get raw data if available
-                        val rawDataKey = "${dataKey}_raw_data"
+                        val rawDataKey = dataKey.replace("_data", "_raw_data")
                         val rawData = prefs?.getString(rawDataKey, "") ?: ""
                         
                         // Try to upload (async, so we'll check success in callback)
@@ -2473,10 +2519,52 @@ class BleScanService : Service() {
             commandProcessing = false
             return
         }
+
+        // If we're waiting for a response from a critical command, don't send next yet
+        // However, we don't want to block the queue forever if a response is missed
+        if (waitingForResponse) {
+            // Check again in a bit
+            handler.postDelayed({ processCommandQueue() }, 100)
+            return
+        }
+
         commandProcessing = true
         val command = commandQueue.removeFirst()
+        
+        // Critical commands that we should wait for a response for
+        val criticalCommands = listOf("mwh", "serial", "swversion", "measure", "chmode")
+        val isCritical = criticalCommands.any { command.startsWith(it, ignoreCase = true) } || 
+                         command.contains("py_msg")
+
+        if (isCritical) {
+            waitingForResponse = true
+            lastCommandSent = command.split(" ").first().lowercase()
+            
+            // Set a timeout to clear waiting state if device ignores us
+            startResponseTimeout()
+        }
+
         writeCommandImmediate(command)
+        
+        // Even for non-critical commands, keep a gap
         handler.postDelayed({ processCommandQueue() }, COMMAND_GAP_MS)
+    }
+
+    private fun startResponseTimeout() {
+        cancelResponseTimeout()
+        responseTimeoutRunnable = Runnable {
+            if (waitingForResponse) {
+                android.util.Log.w("BleScanService", "Command response timeout for: $lastCommandSent")
+                waitingForResponse = false
+                lastCommandSent = null
+            }
+        }
+        handler.postDelayed(responseTimeoutRunnable!!, RESPONSE_TIMEOUT_MS)
+    }
+
+    private fun cancelResponseTimeout() {
+        responseTimeoutRunnable?.let { handler.removeCallbacks(it) }
+        responseTimeoutRunnable = null
     }
 
     private fun sendChargeLimitCommand() {

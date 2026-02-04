@@ -665,19 +665,19 @@ class LeoHomeController extends GetxController {
     // concurrent BLE writes (prevents "prior command not finished" errors).
     await _enqueueCommand(
       () => requestLedTimeout(),
-      delayAfter: const Duration(milliseconds: 150),
+      delayAfter: const Duration(milliseconds: 300),
     );
     await _enqueueCommand(
       () => requestMwhValue(),
-      delayAfter: const Duration(milliseconds: 200),
+      delayAfter: const Duration(milliseconds: 400),
     );
     await _enqueueCommand(
       () => requestLeoFirmwareVersion(),
-      delayAfter: const Duration(milliseconds: 200),
+      delayAfter: const Duration(milliseconds: 400),
     );
     await _enqueueCommand(
       () => requestChargingMode(),
-      delayAfter: const Duration(milliseconds: 150),
+      delayAfter: const Duration(milliseconds: 300),
     );
   }
 
