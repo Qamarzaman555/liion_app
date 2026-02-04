@@ -2152,12 +2152,12 @@ class BleScanService : Service() {
                     }
                     
                     // Delete file from device after successful upload
-                    // if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                    //     handler.postDelayed({
-                    //         enqueueCommand("app_msg rm_file $fileNumber")
-                    //         android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
-                    //     }, 500) // Small delay to ensure Firebase operation completes
-                    // }
+                    if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                        handler.postDelayed({
+                            enqueueCommand("app_msg rm_file $fileNumber")
+                            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
+                        }, 500) // Small delay to ensure Firebase operation completes
+                    }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
