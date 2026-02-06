@@ -15,7 +15,10 @@ class ChargeLimitView extends GetView<ChargeLimitController> {
 
   @override
   Widget build(BuildContext context) {
-    final batteryController = Get.find<BatteryController>();
+    // Safely get BatteryController - it should be initialized in ChargeLimitBinding
+    final batteryController = Get.isRegistered<BatteryController>()
+        ? Get.find<BatteryController>()
+        : Get.put(BatteryController());
 
     return Scaffold(
       backgroundColor: AppColors.whiteColor,
@@ -62,29 +65,11 @@ Widget _buildHeader(BatteryController batteryController) {
   return Padding(
     padding: const EdgeInsets.only(left: 20, right: 20, top: 20),
     child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
         IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.blackColor),
           onPressed: () => Get.back(),
-        ),
-        Obx(
-          () => Container(
-            decoration: BoxDecoration(
-              color: AppColors.yellowColor,
-              borderRadius: BorderRadius.circular(20.0),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-            child: Text(
-              "${batteryController.phoneBatteryLevel.value}%",
-              style: const TextStyle(
-                color: Colors.white,
-                fontFamily: 'Inter',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
         ),
       ],
     ),

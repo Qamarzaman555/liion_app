@@ -158,7 +158,7 @@ class FeedbackView extends GetView<FeedbackController> {
                     text: 'Send Feedback',
                     onPressed: () =>
                         controller.handleFeedbackSubmission(context),
-                    backgroundColor: AppColors.secondaryColor,
+                    backgroundColor: AppColors.primaryColor,
                     isLoading: controller.loading.value,
                     height: 60,
                     child: Row(

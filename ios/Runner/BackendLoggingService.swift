@@ -17,6 +17,9 @@ class BackendLoggingService {
     private var appVersion: String?
     private var buildNumber: String?
     
+    // Backend logging disabled flag - set to true to disable all backend logging
+    private let isBackendLoggingDisabled = true
+    
     private let dateFormatter: DateFormatter
     private let serialQueue = DispatchQueue(label: "nl.liionpower.app.backendlogging", qos: .utility)
     
@@ -39,6 +42,12 @@ class BackendLoggingService {
     
     /// Initialize the logging service
     func initialize(appVersion: String, buildNumber: String) {
+        // Backend logging disabled - skip initialization
+        if isBackendLoggingDisabled {
+            print("[BackendLogging] Backend logging is disabled - skipping initialization")
+            return
+        }
+        
         self.appVersion = appVersion
         self.buildNumber = buildNumber
         
@@ -339,6 +348,11 @@ class BackendLoggingService {
     // MARK: - Logging
     
     func log(_ message: String, level: String) {
+        // Backend logging disabled - return early without sending any logs
+        if isBackendLoggingDisabled {
+            return
+        }
+        
         if !isInitialized || sessionId == nil || deviceKey == nil {
             print("[BackendLogging] Logging skipped - not initialized. Level: \(level), Message: \(message)")
             return

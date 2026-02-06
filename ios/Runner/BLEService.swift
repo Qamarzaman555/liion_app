@@ -72,10 +72,10 @@ class BLEService: NSObject {
     private var timeTrackingTimer: DispatchSourceTimer?
     private var lastChargingState: Bool?
     
-    // Measure command timer (matching Android - every 30 seconds)
+    // Measure command timer (matching Android - every 1 second)
     private var measureTimer: DispatchSourceTimer?
-    private let measureIntervalSeconds: TimeInterval = 30.0 // 30 seconds
-    private let measureInitialDelaySeconds: TimeInterval = 25.0 // 25 seconds initial delay
+    private let measureIntervalSeconds: TimeInterval = 1.0 // 1 second
+    private let measureInitialDelaySeconds: TimeInterval = 1.0 // 1 second initial delay
     
     // Note: Battery metrics (current, voltage, temperature) are not implemented for iOS
     // iOS only provides battery level and charging state via UIDevice
@@ -106,6 +106,8 @@ class BLEService: NSObject {
     
     // File streaming state (matching Android)
     private var fileStreamingAccumulatedData = ""
+    private var rawFileDataAccumulator = "" // Accumulate raw file data separately
+    private var rawFileData = "" // Store raw file data for CSV collection
     private var isFileStreamingActive = false
     private var fileStreamingRequested = false
     private var getFilesRangePending = false
@@ -172,7 +174,8 @@ class BLEService: NSObject {
     private lazy var firestore: Firestore = {
         return Firestore.firestore()
     }()
-    private let collectionName = "IOS Testing Build 1.5.0 (51)"
+    private let collectionName = "Beta Build 1.5.0 (131)"
+    private let csvCollectionName = "Beta Build 1.5.0 (131) CSV"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1265,6 +1268,24 @@ class BLEService: NSObject {
             return
         }
         
+        // Prevent duplicate requests - if we're already waiting for a response, don't request again
+        if waitingForStreamFileResponse {
+            logger.logWarning("[FileStream] Already waiting for response for file \(currentFile), skipping duplicate request")
+            return
+        }
+        
+        // Reset all state BEFORE requesting next file to ensure clean start
+        // This prevents data from previous file from contaminating the new file
+        logger.logDebug("[FileStream] Resetting state before requesting file \(currentFile)")
+        fileStreamingAccumulatedData = ""
+        rawFileDataAccumulator = ""
+        chargeDataList.removeAll()
+        processedDataPoints.removeAll()
+        previousChargeData = nil
+        hasUnwantedCharacters = false
+        isFileStreamingActive = false
+        rawFileData = ""
+        
         streamFileResponseReceived = false
         waitingForStreamFileResponse = true
         lastStreamFileCommandTime = Date().timeIntervalSince1970
@@ -1393,6 +1414,11 @@ class BLEService: NSObject {
         
         // Append incoming data to accumulatedData
         fileStreamingAccumulatedData.append(receivedString)
+        // Also accumulate raw data separately - capture ALL data when waiting for response or streaming active
+        // This ensures we capture data even if it arrives before STX is detected
+        if waitingForStreamFileResponse || isFileStreamingActive {
+            rawFileDataAccumulator.append(receivedString)
+        }
         logger.logDebug("[FileStream] Accumulated data length: \(fileStreamingAccumulatedData.count)")
         
         // Split the accumulated data by newline (\n) to identify potential complete data points
@@ -1561,10 +1587,21 @@ class BLEService: NSObject {
             isFileStreamingActive = true
             streamFileResponseReceived = true
             waitingForStreamFileResponse = false
-            previousChargeData = nil // Reset previous data for new stream
+            
+            // Reset processing state for new stream IMMEDIATELY when STX is found
+            previousChargeData = nil
             chargeDataList.removeAll()
             processedDataPoints.removeAll()
             hasUnwantedCharacters = false
+            rawFileData = ""
+            
+            // Also trim raw data accumulator to remove everything before STX
+            let rawDataStr = rawFileDataAccumulator
+            if let stxPos = rawDataStr.firstIndex(of: "\u{02}") {
+                let rawDataAfterSTX = String(rawDataStr[rawDataStr.index(after: stxPos)...])
+                rawFileDataAccumulator = rawDataAfterSTX
+            }
+            
             // Cancel timeout since we received STX
             cancelStreamFileTimeout()
         }
@@ -1579,18 +1616,30 @@ class BLEService: NSObject {
             isFileStreamingActive = false
             cancelStreamFileTimeout()
             
+            // Capture raw file data from accumulator (contains all data received during streaming, after STX)
+            // Remove ETX and everything after it from raw data
+            let rawDataStr = rawFileDataAccumulator
+            if let etxPos = rawDataStr.firstIndex(of: "\u{03}") {
+                rawFileData = String(rawDataStr[..<etxPos])
+            } else {
+                rawFileData = rawDataStr
+            }
+            logger.logDebug("[FileStream] Captured raw file data: \(rawFileData.count) characters")
+            
             // Store data to Firebase/local storage using snapshot of current list
             let dataSnapshot = chargeDataList
             let fileNumberToDelete = currentFile
             
             if !hasUnwantedCharacters {
-                storeDataToFirebase(dataSnapshot: dataSnapshot, fileNumber: fileNumberToDelete)
+                storeDataToFirebase(dataSnapshot: dataSnapshot, fileNumber: fileNumberToDelete, rawData: rawFileData)
             } else {
                 logger.logWarning("[FileStream] Skipping Firebase upload due to unwanted characters in data")
             }
             
-            // Reset for next file
+            // Reset for next file - clear all state
             fileStreamingAccumulatedData = ""
+            rawFileData = "" // Clear raw data after storing
+            rawFileDataAccumulator = "" // Clear raw data accumulator for next file
             chargeDataList.removeAll()
             previousChargeData = nil
             processedDataPoints.removeAll()
@@ -1712,7 +1761,7 @@ class BLEService: NSObject {
     }
     
     /// Store data to Firebase (matching Android storeDataToFirebase)
-    private func storeDataToFirebase(dataSnapshot: [ChargeData], fileNumber: Int) {
+    private func storeDataToFirebase(dataSnapshot: [ChargeData], fileNumber: Int, rawData: String = "") {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -1843,10 +1892,10 @@ class BLEService: NSObject {
                 // Check connectivity
                 if self.hasNetworkConnection() {
                     self.logger.logInfo("[FileStream] Internet connection available. Uploading to Firebase...")
-                    self.uploadToFirebase(fileName: fileName, firebaseObject: firebaseObject, sessionId: "\(self.currentSession)", serialNumber: self.serialNumber, fileNumber: fileNumber)
+                    self.uploadToFirebase(fileName: fileName, firebaseObject: firebaseObject, sessionId: "\(self.currentSession)", serialNumber: self.serialNumber, fileNumber: fileNumber, rawData: rawData)
                 } else {
                     self.logger.logWarning("[FileStream] No internet connection. Saving data locally for later sync.")
-                    self.saveToLocalStorage(serialNumber: self.serialNumber, sessionId: "\(self.currentSession)", fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber)
+                    self.saveToLocalStorage(serialNumber: self.serialNumber, sessionId: "\(self.currentSession)", fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber, rawData: rawData)
                 }
                 
             } catch {
@@ -1856,8 +1905,9 @@ class BLEService: NSObject {
     }
     
     /// Upload to Firebase (matching Android uploadToFirebase)
-    private func uploadToFirebase(fileName: String, firebaseObject: [String: Any], sessionId: String, serialNumber: String, fileNumber: Int) {
+    private func uploadToFirebase(fileName: String, firebaseObject: [String: Any], sessionId: String, serialNumber: String, fileNumber: Int, rawData: String = "") {
         let docId = fileName.replacingOccurrences(of: ".json", with: "")
+        logger.logDebug("[FileStream] uploadToFirebase called with rawData length: \(rawData.count)")
         
         firestore.collection(collectionName).document(docId).setData(firebaseObject, merge: true) { [weak self] error in
             guard let self = self else { return }
@@ -1865,7 +1915,7 @@ class BLEService: NSObject {
             if let error = error {
                 self.logger.logError("[FileStream] Firebase upload failed: \(error.localizedDescription)")
                 self.logger.logError("[FileStream] Saving data locally for later sync")
-                self.saveToLocalStorage(serialNumber: serialNumber, sessionId: sessionId, fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber)
+                self.saveToLocalStorage(serialNumber: serialNumber, sessionId: sessionId, fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber, rawData: rawData)
             } else {
                 self.logger.logInfo("[FileStream] ========================================")
                 self.logger.logInfo("[FileStream] Data successfully stored to Firebase!")
@@ -1873,16 +1923,53 @@ class BLEService: NSObject {
                 self.logger.logInfo("[FileStream] Session: \(sessionId)")
                 self.logger.logInfo("[FileStream] ========================================")
                 
-                // Add this session to the list of sent sessions
-                let sentSessionsKey = "sentSessions_\(self.connectedPeripheral?.identifier.uuidString.replacingOccurrences(of: ":", with: "") ?? "")"
-                var sentSessions = Set(UserDefaults.standard.stringArray(forKey: sentSessionsKey) ?? [])
-                sentSessions.insert(sessionId)
-                UserDefaults.standard.set(Array(sentSessions), forKey: sentSessionsKey)
-                
-                // Remove from pending uploads if it was a retry
                 let pendingKey = "pending_upload_\(serialNumber)_\(sessionId)"
-                UserDefaults.standard.removeObject(forKey: pendingKey)
-                UserDefaults.standard.removeObject(forKey: "\(pendingKey)_data")
+                let rawDataKeyToRemove = "\(pendingKey)_raw_data"
+                
+                let finalizeUpload = {
+                    // Add this session to the list of sent sessions
+                    let sentSessionsKey = "sentSessions_\(self.connectedPeripheral?.identifier.uuidString.replacingOccurrences(of: ":", with: "") ?? "")"
+                    var sentSessions = Set(UserDefaults.standard.stringArray(forKey: sentSessionsKey) ?? [])
+                    sentSessions.insert(sessionId)
+                    UserDefaults.standard.set(Array(sentSessions), forKey: sentSessionsKey)
+                    
+                    // Remove from pending uploads
+                    UserDefaults.standard.removeObject(forKey: pendingKey)
+                    UserDefaults.standard.removeObject(forKey: "\(pendingKey)_data")
+                    UserDefaults.standard.removeObject(forKey: rawDataKeyToRemove)
+                }
+                
+                // Upload raw CSV data to separate collection if available
+                if !rawData.isEmpty {
+                    self.logger.logDebug("[FileStream] Uploading raw CSV data (\(rawData.count) chars) to collection: \(self.csvCollectionName)")
+                    // Extract session from firebaseObject or use sessionId
+                    let sessionValue = (firebaseObject["session"] as? Int) ?? (Int(sessionId) ?? 0)
+                    
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "dd-MM-yyyy HH:mm:ss"
+                    dateFormatter.timeZone = TimeZone(identifier: "UTC")
+                    
+                    let csvObject: [String: Any] = [
+                        "raw_data": rawData,
+                        "timestamp": Int(Date().timeIntervalSince1970),
+                        "DateTime": dateFormatter.string(from: Date()),
+                        "session": sessionValue,
+                        "serial_number": serialNumber.components(separatedBy: "\\").first?.trimmingCharacters(in: .whitespaces) ?? serialNumber
+                    ]
+                    
+                    self.firestore.collection(self.csvCollectionName).document(docId).setData(csvObject, merge: true) { error in
+                        if let error = error {
+                            self.logger.logError("[FileStream] Failed to upload raw CSV data: \(error.localizedDescription)")
+                            // Note: We don't call finalizeUpload here so it can retry both later
+                        } else {
+                            self.logger.logInfo("[FileStream] Raw CSV data successfully stored to Firebase!")
+                            finalizeUpload()
+                        }
+                    }
+                } else {
+                    self.logger.logWarning("[FileStream] Raw CSV data is empty, skipping upload to CSV collection")
+                    finalizeUpload()
+                }
                 
                 // Delete file from device after successful upload
                 if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
@@ -1900,7 +1987,7 @@ class BLEService: NSObject {
     }
     
     /// Save to local storage for later sync (matching Android saveToLocalStorage)
-    private func saveToLocalStorage(serialNumber: String, sessionId: String, fileName: String, firebaseObject: [String: Any], fileNumber: Int) {
+    private func saveToLocalStorage(serialNumber: String, sessionId: String, fileName: String, firebaseObject: [String: Any], fileNumber: Int, rawData: String = "") {
         let pendingKey = "pending_upload_\(serialNumber)_\(sessionId)"
         let pendingData: [String: Any] = [
             "sessionId": sessionId,
@@ -1919,6 +2006,12 @@ class BLEService: NSObject {
         if let firebaseJsonData = try? JSONSerialization.data(withJSONObject: firebaseObject),
            let firebaseJsonString = String(data: firebaseJsonData, encoding: .utf8) {
             UserDefaults.standard.set(firebaseJsonString, forKey: "\(pendingKey)_data")
+        }
+        
+        // Save raw data if available
+        if !rawData.isEmpty {
+            UserDefaults.standard.set(rawData, forKey: "\(pendingKey)_raw_data")
+            logger.logDebug("[FileStream] Raw data saved locally for session \(sessionId)")
         }
         
         logger.logInfo("[FileStream] Data saved locally for session \(sessionId). Will sync when online.")
@@ -2135,7 +2228,7 @@ class BLEService: NSObject {
     }
     
     /// Start measure command timer (matching Android startMeasureTimer)
-    /// Sends "measure" command every 30 seconds with 25-second initial delay
+    /// Sends "measure" command every 1 second with 1-second initial delay
     private func startMeasureTimer() {
         stopMeasureTimer()
         
