@@ -1,0 +1,59 @@
+{
+  "mode": 0,
+  "data": [
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 0,
+      "temp": 40.0,
+      "c": -1.19,
+      "cprofile": null,
+      "soc": -1,
+      "v": 4.76,
+      "cl": -1,
+      "cp": 0,
+      "mwh": 11567,
+      "ts": 12.675
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 0,
+      "temp": 40.0,
+      "c": -0.601,
+      "cprofile": null,
+      "v": 4.92,
+      "soc": -1,
+      "cl": -1,
+      "cp": 0,
+      "mwh": 11618,
+      "ts": 70.677
+    }
+  ],
+  "sw": {
+    "patch": 0,
+    "minor": 5,
+    "major": 1,
+    "build": 124,
+    "type": "Release"
+  },
+  "session": 4,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": false,
+    "charge_limit": -1,
+    "ghost_mode_beta": false
+  },
+  "serial_number": "EVNCHMB5J",
+  "model": "Leo",
+  "firmware": "Release_v1.5.23-rc9",
+  "device": {
+    "os": "Android",
+    "model": "GM1903",
+    "type": "mobile",
+    "version": 12,
+    "brand": "OnePlus"
+  },
+  "DateTime": "08-02-2026 15:57:48",
+  "timestamp": 1770566268
+}

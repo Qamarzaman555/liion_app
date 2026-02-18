@@ -1,0 +1,143 @@
+{
+  "mode": 0,
+  "data": [
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 2,
+      "temp": 31.3,
+      "c": 0.595,
+      "cprofile": null,
+      "soc": 0,
+      "v": 5.03,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 2963999,
+      "ts": 373843.361
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 18,
+      "temp": 31.3,
+      "c": 0.613,
+      "cprofile": null,
+      "soc": 0,
+      "v": 5.04,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 2964013,
+      "ts": 373859.357
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 80,
+      "temp": 31.3,
+      "c": 0.364,
+      "cprofile": null,
+      "soc": 0,
+      "v": 5.04,
+      "cl": -1,
+      "cp": 1,
+      "ts": 373920.364,
+      "mwh": 2964048
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 148,
+      "temp": 30.3,
+      "c": 0.769,
+      "cprofile": null,
+      "v": 5.03,
+      "soc": 0,
+      "cl": -1,
+      "cp": 1,
+      "ts": 373989.359,
+      "mwh": 2964086
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 210,
+      "temp": 30.3,
+      "c": 0.337,
+      "cprofile": null,
+      "v": 5.04,
+      "soc": 0,
+      "cl": -1,
+      "cp": 1,
+      "ts": 374050.366,
+      "mwh": 2964120
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 274,
+      "temp": 31.3,
+      "c": 0.631,
+      "cprofile": null,
+      "v": 5.03,
+      "soc": 0,
+      "cl": -1,
+      "cp": 1,
+      "ts": 374115.357,
+      "mwh": 2964151
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 336,
+      "temp": 30.3,
+      "c": 0.335,
+      "cprofile": null,
+      "soc": 0,
+      "v": 5.04,
+      "cl": -1,
+      "cp": 1,
+      "ts": 374176.368,
+      "mwh": 2964182
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 442,
+      "temp": 30.3,
+      "c": 0.483,
+      "cprofile": null,
+      "v": 5.0,
+      "soc": 0,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 2964234,
+      "ts": 374283.361
+    }
+  ],
+  "sw": {
+    "patch": 0,
+    "minor": 5,
+    "major": 1,
+    "build": 124,
+    "type": "Release"
+  },
+  "session": 21120,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": true,
+    "charge_limit": -1,
+    "ghost_mode_beta": true
+  },
+  "serial_number": "O3HBRRCBB",
+  "model": "Leo",
+  "firmware": "Release_v1.5.23-rc9",
+  "device": {
+    "os": "Android",
+    "model": "GM1903",
+    "type": "mobile",
+    "brand": "OnePlus",
+    "version": 12
+  },
+  "DateTime": "03-02-2026 06:39:49",
+  "timestamp": 1770100789
+}

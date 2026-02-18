@@ -1,0 +1,9 @@
+
+Install docker image
+
+docker pull bhaavan/battery-historian
+
+Run docker
+
+docker run -d --name battery-historian -p 9999:9999 bhaavan/battery-historian
+

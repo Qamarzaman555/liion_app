@@ -1,0 +1,87 @@
+{
+  "mode": 0,
+  "sw": {
+    "patch": 0,
+    "major": 1,
+    "minor": 5,
+    "build": 124,
+    "type": "Release"
+  },
+  "data": [
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 4,
+      "temp": 34.0,
+      "c": -0.56,
+      "cprofile": null,
+      "v": 4.89,
+      "soc": -1,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 53604,
+      "ts": 20.879
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 62,
+      "temp": 37.0,
+      "c": -0.453,
+      "cprofile": null,
+      "soc": 17,
+      "v": 4.88,
+      "cl": 90,
+      "cp": 1,
+      "mwh": 53639,
+      "ts": 78.877
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 134,
+      "temp": 39.0,
+      "c": -0.812,
+      "cprofile": null,
+      "soc": 17,
+      "v": 4.69,
+      "cl": 90,
+      "cp": 1,
+      "mwh": 53682,
+      "ts": 150.881
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 268,
+      "temp": 40.0,
+      "c": -0.024,
+      "cprofile": null,
+      "v": 5.07,
+      "soc": 18,
+      "cl": 90,
+      "cp": 1,
+      "ts": 284.883,
+      "mwh": 53825
+    }
+  ],
+  "session": 19,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": true,
+    "charge_limit": 90,
+    "ghost_mode_beta": false
+  },
+  "serial_number": "EVNCHMB5J",
+  "model": "Leo",
+  "firmware": "Release_v1.5.23-rc9",
+  "device": {
+    "os": "Android",
+    "model": "GM1903",
+    "type": "mobile",
+    "brand": "OnePlus",
+    "version": 12
+  },
+  "DateTime": "08-02-2026 15:59:40",
+  "timestamp": 1770566380
+}

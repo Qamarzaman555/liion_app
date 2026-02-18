@@ -1,0 +1,115 @@
+{
+  "mode": 0,
+  "data": [
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 4,
+      "temp": 31.0,
+      "c": -0.49,
+      "cprofile": null,
+      "soc": -1,
+      "v": 4.89,
+      "cl": -1,
+      "cp": 1,
+      "ts": 17.377,
+      "mwh": 35890
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 62,
+      "temp": 34.0,
+      "c": -0.449,
+      "cprofile": null,
+      "v": 4.86,
+      "soc": 71,
+      "cl": 72,
+      "cp": 1,
+      "mwh": 35925,
+      "ts": 75.375
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 364,
+      "temp": 35.0,
+      "c": -0.453,
+      "cprofile": null,
+      "soc": 71,
+      "v": 4.9,
+      "cl": 72,
+      "cp": 1,
+      "ts": 376.375,
+      "mwh": 36109
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 444,
+      "temp": 35.0,
+      "c": 0.01,
+      "cprofile": null,
+      "soc": 72,
+      "v": 0.61,
+      "cl": 72,
+      "cp": 1,
+      "mwh": 36159,
+      "ts": 457.375
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 924,
+      "temp": 35.0,
+      "c": -0.129,
+      "cprofile": null,
+      "soc": 71,
+      "v": 4.9,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 36159,
+      "ts": 937.377
+    },
+    {
+      "sc": null,
+      "ff": 0,
+      "ct": 986,
+      "temp": 35.0,
+      "c": -0.451,
+      "cprofile": null,
+      "soc": 71,
+      "v": 4.9,
+      "cl": -1,
+      "cp": 1,
+      "ts": 998.377,
+      "mwh": 36195
+    }
+  ],
+  "sw": {
+    "patch": 0,
+    "minor": 5,
+    "major": 1,
+    "build": 124,
+    "type": "Release"
+  },
+  "session": 13,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": true,
+    "charge_limit": -1,
+    "ghost_mode_beta": false
+  },
+  "model": "Leo",
+  "serial_number": "EVNCHMB5J",
+  "device": {
+    "os": "Android",
+    "model": "GM1903",
+    "type": "mobile",
+    "brand": "OnePlus",
+    "version": 12
+  },
+  "firmware": "Release_v1.5.23-rc9",
+  "DateTime": "08-02-2026 15:58:57",
+  "timestamp": 1770566337
+}

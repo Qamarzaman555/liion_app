@@ -1,0 +1,143 @@
+{
+  "mode": 0,
+  "sw": {
+    "patch": 0,
+    "major": 1,
+    "minor": 5,
+    "build": 124,
+    "type": "Release"
+  },
+  "data": [
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 4,
+      "temp": 22.0,
+      "c": -0.804,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 4.71,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 145275,
+      "ts": 9.736
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 8,
+      "temp": 23.0,
+      "c": -0.019,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 5.03,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 145278,
+      "ts": 13.737
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 10,
+      "temp": 23.0,
+      "c": -0.8,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 4.71,
+      "cl": -1,
+      "cp": 1,
+      "ts": 14.735,
+      "mwh": 145279
+    },
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 12,
+      "temp": 24.0,
+      "c": -0.804,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 4.71,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 145282,
+      "ts": 17.737
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 0,
+      "temp": 0.0,
+      "c": -0.8,
+      "cprofile": 0,
+      "v": 1634.0,
+      "soc": -1,
+      "cl": -1,
+      "cp": -1,
+      "mwh": 0,
+      "ts": 42.737
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 3490,
+      "temp": 34.0,
+      "c": 0.011,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 5.08,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 148925,
+      "ts": 3495.735
+    },
+    {
+      "sc": 2,
+      "ff": 1634,
+      "ct": 3492,
+      "temp": 35.0,
+      "c": 0.011,
+      "cprofile": -1,
+      "soc": -1,
+      "v": 5.08,
+      "cl": 0,
+      "cp": 1,
+      "mwh": 148925,
+      "ts": 3496.735
+    },
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 3492,
+      "temp": 35.0,
+      "c": 0.011,
+      "cprofile": 0,
+      "v": 5.08,
+      "soc": -1,
+      "cl": -1,
+      "cp": 1,
+      "ts": 3496.735,
+      "mwh": 148925
+    }
+  ],
+  "session": 114,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": true,
+    "charge_limit": -1,
+    "ghost_mode_beta": false
+  },
+  "serial_number": "EVNCHMB5J",
+  "model": "Leo",
+  "device": {
+    "os": "Android",
+    "model": "GM1903",
+    "type": "mobile",
+    "brand": "OnePlus",
+    "version": 12
+  },
+  "firmware": "Release_v1.5.23-rc9",
+  "DateTime": "08-02-2026 16:13:47",
+  "timestamp": 1770567227
+}

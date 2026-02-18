@@ -1,0 +1,143 @@
+{
+  "mode": 0,
+  "sw": {
+    "patch": 0,
+    "minor": 5,
+    "major": 1,
+    "build": 51,
+    "type": "Release"
+  },
+  "data": [
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 0,
+      "temp": 38.8,
+      "c": 0.734,
+      "cprofile": 0,
+      "v": 8.46,
+      "soc": 52,
+      "cl": -1,
+      "cp": 0,
+      "mwh": 690772,
+      "ts": 11.69
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 0,
+      "temp": 38.8,
+      "c": 0.173,
+      "cprofile": 0,
+      "v": 5.36,
+      "soc": 52,
+      "cl": -1,
+      "cp": 0,
+      "ts": 12.689,
+      "mwh": 690773
+    },
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 0,
+      "temp": 38.8,
+      "c": 0.219,
+      "cprofile": 0,
+      "v": 5.23,
+      "soc": 52,
+      "cl": -1,
+      "cp": 0,
+      "ts": 13.688,
+      "mwh": 690773
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 17,
+      "temp": 37.8,
+      "c": 1.064,
+      "cprofile": 0,
+      "v": 5.1,
+      "soc": 52,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 690783,
+      "ts": 23.446
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 17,
+      "temp": 38.8,
+      "c": 1.062,
+      "cprofile": 0,
+      "soc": 52,
+      "v": 5.1,
+      "cl": -1,
+      "cp": 1,
+      "ts": 23.779,
+      "mwh": 690783
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 17,
+      "temp": 38.8,
+      "c": 1.081,
+      "cprofile": 0,
+      "soc": 52,
+      "v": 5.1,
+      "cl": -1,
+      "cp": 1,
+      "ts": 30.689,
+      "mwh": 690783
+    },
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 17,
+      "temp": 38.8,
+      "c": 1.064,
+      "cprofile": 0,
+      "v": 5.1,
+      "soc": 52,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 690783,
+      "ts": 41.691
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 17,
+      "temp": 38.8,
+      "c": 1.081,
+      "cprofile": 0,
+      "v": 5.1,
+      "soc": 52,
+      "cl": -1,
+      "cp": 1,
+      "ts": 52.687,
+      "mwh": 690783
+    }
+  ],
+  "session": 4229,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": false,
+    "charge_limit": -1,
+    "ghost_mode_beta": false
+  },
+  "model": "Leo",
+  "serial_number": "EVNC1OLRE",
+  "firmware": "Release_v1.5.23-rc9",
+  "device": {
+    "os": "iOS",
+    "model": "iPhone",
+    "type": "mobile",
+    "brand": "Apple",
+    "version": "18.5"
+  },
+  "DateTime": "06-02-2026 08:23:26",
+  "timestamp": 1770366206
+}

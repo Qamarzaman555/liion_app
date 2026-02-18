@@ -1,0 +1,7 @@
+{
+  "session": 2111,
+  "serial_number": "O3HBRRCBB",
+  "raw_data": "\u0002timestamp;session;current;volt;soc;mwh;mode;charge phase;charge time;temperature;fault flags;flags;charge limit\r\n369796.657;2111;1.341;5.02;0;2959778;0;1;0;33.3;0;3;-1\r\n",
+  "DateTime": "03-02-2026 06:38:40",
+  "timestamp": 1770100720
+}

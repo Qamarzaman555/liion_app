@@ -1,0 +1,7 @@
+{
+  "session": 1670,
+  "serial_number": "EVNCHME8F",
+  "raw_data": "\u0002timestamp;session;current;volt;soc;mwh;mode;charge phase;charge time;temperature;fault flags;flags;charge limit;startup count;harge profile\r\n39.436;1670;0.378;6.40;-1;1880711;1;1;25;33.9;0;1;-1;0;0\r\n42.438;1670;1.011;6.28;-1;1880713;1;1;28;32.9;0;1;-1;0;0\r\n53.436;;0.729;;;;;;;;;;;;\r\n56.438;1670;0.018;6.46;-1;1880734;1;1;42;33.9;0;1;-1;0;0\r\n",
+  "DateTime": "11-02-2026 09:57:32",
+  "timestamp": 1770803852
+}

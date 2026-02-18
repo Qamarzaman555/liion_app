@@ -1,0 +1,7 @@
+{
+  "session": 38,
+  "serial_number": "EVNCHMB5J",
+  "raw_data": "timestamp;session;current;volt;soc;mwh;mode;charge phase;charge time;temperature;fault flags;flags;charge limit\r\n12.125;38;-0.28;4.95;-1;93562;0;1;4;29.0;0;2;-1\r\n70.123;38;-0.329;4.95;-1;93588;0;1;62;33.0;0;2;-1\r\n371.125;38;-0.328;4.96;-1;93723;0;1;364;36.0;0;2;-1\r\n672.125;38;-0.330;4.96;-1;93858;0;1;664;37.0;0;2;-1\r\n",
+  "DateTime": "08-02-2026 16:02:00",
+  "timestamp": 1770566520
+}

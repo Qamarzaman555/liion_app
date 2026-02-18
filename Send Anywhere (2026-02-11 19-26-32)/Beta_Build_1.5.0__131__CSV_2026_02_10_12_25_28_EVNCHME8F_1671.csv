@@ -1,0 +1,5 @@
+timestamp;session;current;volt;soc;mwh;mode;charge phase;charge time;temperature;fault flags;flags;charge limit;startup count;harge profile
+37.599;1671;0.166;6.44;-1;1880709;1;1;24;32.9;0;1;-1;0;0
+40.600;1671;0.794;6.33;-1;1880709;1;1;27;32.9;0;1;-1;0;0
+42.602;1671;0.016;6.46;-1;1880712;1;1;29;32.9;0;1;-1;0;0
+43.600;1671;0.016;6.46;-1;1880712;1;1;30;33.9;0;1;-1;0;0

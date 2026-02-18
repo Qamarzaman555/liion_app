@@ -1,0 +1,73 @@
+{
+  "mode": 0,
+  "sw": {
+    "patch": 0,
+    "major": 1,
+    "minor": 5,
+    "build": 124,
+    "type": "Release"
+  },
+  "data": [
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 212,
+      "temp": 33.9,
+      "c": 1.451,
+      "cprofile": 0,
+      "v": 4.9,
+      "soc": -1,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 1880719,
+      "ts": 248.79
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 225,
+      "temp": 33.9,
+      "c": 0.016,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 5.16,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 1880743,
+      "ts": 261.77
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 226,
+      "temp": 33.9,
+      "c": 0.017,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 5.16,
+      "cl": -1,
+      "cp": 1,
+      "ts": 262.77,
+      "mwh": 1880743
+    }
+  ],
+  "session": 1672,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": false,
+    "charge_limit": -1,
+    "ghost_mode_beta": true
+  },
+  "model": "Leo",
+  "serial_number": "EVNCHME8F",
+  "device": {
+    "os": "Android",
+    "model": "2107113SG",
+    "type": "mobile",
+    "version": 12,
+    "brand": "Xiaomi"
+  },
+  "firmware": "Release_v1.5.23-rc9-1-g95409e4",
+  "DateTime": "10-02-2026 12:25:35",
+  "timestamp": 1770726335
+}

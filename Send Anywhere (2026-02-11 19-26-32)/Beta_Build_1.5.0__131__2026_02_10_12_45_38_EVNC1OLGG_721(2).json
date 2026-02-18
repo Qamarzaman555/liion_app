@@ -1,0 +1,87 @@
+{
+  "mode": 0,
+  "data": [
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 0,
+      "temp": 37.9,
+      "c": 0.465,
+      "cprofile": null,
+      "v": 5.11,
+      "soc": 35,
+      "cl": 90,
+      "cp": 0,
+      "ts": 9.651,
+      "mwh": 530832
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 0,
+      "temp": 37.9,
+      "c": 0.465,
+      "cprofile": null,
+      "v": 5.11,
+      "soc": 35,
+      "cl": 90,
+      "cp": 1,
+      "ts": 10.649,
+      "mwh": 530832
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 7,
+      "temp": 37.9,
+      "c": 0.474,
+      "cprofile": null,
+      "v": 5.01,
+      "soc": 35,
+      "cl": 90,
+      "cp": 1,
+      "ts": 17.649,
+      "mwh": 530837
+    },
+    {
+      "ff": 0,
+      "sc": null,
+      "ct": 11,
+      "temp": 37.9,
+      "c": 0.467,
+      "cprofile": null,
+      "v": 5.09,
+      "soc": 35,
+      "cl": 90,
+      "cp": 1,
+      "ts": 21.651,
+      "mwh": 530840
+    }
+  ],
+  "sw": {
+    "patch": 0,
+    "major": 1,
+    "minor": 5,
+    "build": 124,
+    "type": "Release"
+  },
+  "session": 721,
+  "flags": {
+    "silent": true,
+    "higher_charge_limit": true,
+    "charge_limit": 90,
+    "ghost_mode_beta": true
+  },
+  "model": "Leo",
+  "serial_number": "EVNC1OLGG",
+  "device": {
+    "os": "Android",
+    "model": "SM-A055F",
+    "type": "mobile",
+    "version": 14,
+    "brand": "samsung"
+  },
+  "firmware": "Release_v1.5.23-rc9",
+  "DateTime": "10-02-2026 12:45:38",
+  "timestamp": 1770727538
+}

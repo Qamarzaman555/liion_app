@@ -1,0 +1,7 @@
+{
+  "session": 713,
+  "serial_number": "EVNC1OLGG",
+  "raw_data": "\u0002timestamp;session;current;volt;soc;mwh;mode;charge phase;charge time;temperature;fault flags;flags;charge limit;startup count;harge profile\r\n42.99;713;0.452;5.19;52;507089;0;1;27;36.9;0;7;-1;0;0\r\n",
+  "DateTime": "06-02-2026 07:05:20",
+  "timestamp": 1770361520
+}

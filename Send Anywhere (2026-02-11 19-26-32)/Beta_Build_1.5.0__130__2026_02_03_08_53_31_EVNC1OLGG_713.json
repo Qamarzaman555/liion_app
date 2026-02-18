@@ -1,0 +1,45 @@
+{
+  "mode": 0,
+  "data": [
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 27,
+      "temp": 36.9,
+      "c": 0.452,
+      "cprofile": 0,
+      "v": 5.19,
+      "soc": 52,
+      "cl": -1,
+      "cp": 1,
+      "ts": 42.99,
+      "mwh": 507089
+    }
+  ],
+  "sw": {
+    "patch": 0,
+    "minor": 5,
+    "major": 1,
+    "build": 124,
+    "type": "Release"
+  },
+  "session": 713,
+  "flags": {
+    "silent": true,
+    "higher_charge_limit": true,
+    "charge_limit": -1,
+    "ghost_mode_beta": true
+  },
+  "serial_number": "EVNC1OLGG",
+  "model": "Leo",
+  "firmware": "Release_v1.5.23-rc9",
+  "device": {
+    "os": "Android",
+    "model": "SM-A055F",
+    "type": "mobile",
+    "version": 14,
+    "brand": "samsung"
+  },
+  "DateTime": "03-02-2026 08:53:31",
+  "timestamp": 1770108811
+}

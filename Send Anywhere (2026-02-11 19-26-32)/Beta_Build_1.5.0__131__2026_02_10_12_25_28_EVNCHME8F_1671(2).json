@@ -1,0 +1,87 @@
+{
+  "mode": 1,
+  "data": [
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 24,
+      "temp": 32.9,
+      "c": 0.166,
+      "cprofile": 0,
+      "v": 6.44,
+      "soc": -1,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 1880709,
+      "ts": 37.599
+    },
+    {
+      "ff": 0,
+      "sc": 0,
+      "ct": 27,
+      "temp": 32.9,
+      "c": 0.794,
+      "cprofile": 0,
+      "v": 6.33,
+      "soc": -1,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 1880709,
+      "ts": 40.6
+    },
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 29,
+      "temp": 32.9,
+      "c": 0.016,
+      "cprofile": 0,
+      "v": 6.46,
+      "soc": -1,
+      "cl": -1,
+      "cp": 1,
+      "mwh": 1880712,
+      "ts": 42.602
+    },
+    {
+      "sc": 0,
+      "ff": 0,
+      "ct": 30,
+      "temp": 33.9,
+      "c": 0.016,
+      "cprofile": 0,
+      "soc": -1,
+      "v": 6.46,
+      "cl": -1,
+      "cp": 1,
+      "ts": 43.6,
+      "mwh": 1880712
+    }
+  ],
+  "sw": {
+    "patch": 0,
+    "major": 1,
+    "minor": 5,
+    "build": 124,
+    "type": "Release"
+  },
+  "session": 1671,
+  "flags": {
+    "silent": false,
+    "higher_charge_limit": false,
+    "charge_limit": -1,
+    "ghost_mode_beta": true
+  },
+  "serial_number": "EVNCHME8F",
+  "model": "Leo",
+  "firmware": "Release_v1.5.23-rc9-1-g95409e4",
+  "device": {
+    "os": "Android",
+    "model": "2107113SG",
+    "type": "mobile",
+    "version": 12,
+    "brand": "Xiaomi"
+  },
+  "DateTime": "10-02-2026 12:25:28",
+  "timestamp": 1770726328
+}
