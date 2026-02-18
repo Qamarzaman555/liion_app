@@ -359,8 +359,8 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (131)"
-    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (131) CSV"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (132)"
+    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (132) CSV"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -746,96 +746,87 @@ class BleScanService : Service() {
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
+            val charUuid = characteristic.uuid
+            val value = characteristic.value?.copyOf() ?: return
             handler.post {
-                if (characteristic.uuid == RX_CHAR_UUID) {
-                    val receivedData = String(characteristic.value, Charsets.UTF_8).trim()
+                if (charUuid == RX_CHAR_UUID) {
+                    val receivedData = String(value, Charsets.UTF_8).trim()
                     logger.logCommandResponse(receivedData)
                     handleReceivedData(receivedData)
                     MainActivity.sendDataReceived(receivedData)
-                } else if (characteristic.uuid == DATA_TRANSMIT_CHAR_UUID) {
-                    // Handle file streaming responses and data
-                    characteristic.value?.let { value ->
-                        val receivedString = String(value, Charsets.UTF_8)
-                        val trimmedData = receivedString.trim()
-                        val parts = trimmedData.split(" ")
-                        
-                        // Check if this is a stream_file response: "OK py_msg stream_file <fileCheck>"
-                        // fileCheck: 1 = file exists and streaming started, -1 = file doesn't exist
-                        if (parts.size >= 4 && parts.getOrNull(2) == "stream_file") {
-                            try {
-                                val fileCheckValue = parts[3].toIntOrNull()
+                } else if (charUuid == DATA_TRANSMIT_CHAR_UUID) {
+                    val receivedString = String(value, Charsets.UTF_8)
+                    val trimmedData = receivedString.trim()
+                    val parts = trimmedData.split(" ")
+                    
+                    // Check if this is a stream_file response: "OK py_msg stream_file <fileCheck>"
+                    // fileCheck: 1 = file exists and streaming started, -1 = file doesn't exist
+                    if (parts.size >= 4 && parts.getOrNull(2) == "stream_file") {
+                        try {
+                            val fileCheckValue = parts[3].toIntOrNull()
+                            
+                            if (fileCheckValue != null) {
+                                fileCheck = fileCheckValue
+                                streamFileResponseReceived = true // Mark response as received
+                                waitingForStreamFileResponse = false // No longer waiting
+                                cancelStreamFileTimeout() // Cancel any pending timeout
+                                android.util.Log.i("BleScanService", "[FileStream] stream_file response: fileCheck=$fileCheck for file $currentFile")
                                 
-                                if (fileCheckValue != null) {
-                                    fileCheck = fileCheckValue
-                                    streamFileResponseReceived = true // Mark response as received
-                                    waitingForStreamFileResponse = false // No longer waiting
-                                    cancelStreamFileTimeout() // Cancel any pending timeout
-                                    android.util.Log.i("BleScanService", "[FileStream] stream_file response: fileCheck=$fileCheck for file $currentFile")
-                                    
-                                    when (fileCheck) {
-                                        1 -> {
-                                            // File exists and is being streamed, wait for ETX
-                                            android.util.Log.i("BleScanService", "[FileStream] File $currentFile exists and streaming started")
-                                            isFileStreamingActive = true
-                                            stxProcessedForCurrentFile = false // Reset STX flag for new stream
-                                            // Start timeout timer
-                                            startStreamFileTimeout()
-                                        }
-                                        -1 -> {
-                                            // File doesn't exist, move to next file after delay
-                                            android.util.Log.w("BleScanService", "[FileStream] File $currentFile doesn't exist")
-                                            
-                                            // Schedule next file request after delay
-                                            scheduleNextFileAfterDelay()
-                                        }
+                                when (fileCheck) {
+                                    1 -> {
+                                        // File exists and is being streamed, wait for ETX
+                                        android.util.Log.i("BleScanService", "[FileStream] File $currentFile exists and streaming started")
+                                        isFileStreamingActive = true
+                                        stxProcessedForCurrentFile = false // Reset STX flag for new stream
+                                        // Start timeout timer
+                                        startStreamFileTimeout()
                                     }
-                                    // Return early - this was a response, not file data
-                                    return@post
+                                    -1 -> {
+                                        // File doesn't exist, move to next file after delay
+                                        android.util.Log.w("BleScanService", "[FileStream] File $currentFile doesn't exist")
+                                        
+                                        // Schedule next file request after delay
+                                        scheduleNextFileAfterDelay()
+                                    }
                                 }
-                            } catch (e: Exception) {
-                                android.util.Log.e("BleScanService", "[FileStream] Error parsing stream_file response: ${e.message}")
-                            }
-                        }
-                        
-                        // Check if this is an ERROR response for stream_file
-                        if (parts.size >= 2 && parts.getOrNull(0) == "ERROR" && parts.getOrNull(1) == "py_msg") {
-                            val currentTime = System.currentTimeMillis()
-                            val timeSinceStreamFileCommand = currentTime - lastStreamFileCommandTime
-                            // Only treat as file streaming error if:
-                            // 1. We're waiting for stream_file response
-                            // 2. Current file is in valid range
-                            // 3. ERROR came within 3 seconds of sending stream_file command
-                            if (waitingForStreamFileResponse && 
-                                currentFile >= leoFirstFile && 
-                                currentFile <= leoLastFile &&
-                                timeSinceStreamFileCommand > 0 &&
-                                timeSinceStreamFileCommand < 3000) { // 3 seconds window
-                                
-                                android.util.Log.w("BleScanService", "[FileStream] ========================================")
-                                android.util.Log.w("BleScanService", "[FileStream] ERROR response received - stream_file command intercepted for file $currentFile")
-                                android.util.Log.w("BleScanService", "[FileStream] Time since stream_file command: ${timeSinceStreamFileCommand}ms")
-                                android.util.Log.w("BleScanService", "[FileStream] File doesn't exist, moving to next file")
-                                android.util.Log.w("BleScanService", "[FileStream] ========================================")
-                                
-                                // Mark that we got a response (even though it's an error) and reset state
-                                streamFileResponseReceived = true
-                                waitingForStreamFileResponse = false
-                                cancelStreamFileTimeout()
-                                isFileStreamingActive = false
-                                
-                                // File doesn't exist, move to next file after delay
-                                scheduleNextFileAfterDelay()
-                                // Return early - this was an error response, not file data
+                                // Return early - this was a response, not file data
                                 return@post
-                            } else if (waitingForStreamFileResponse) {
-                                // Log that we got an ERROR but it's not for file streaming (probably advanced mode)
-                                android.util.Log.d("BleScanService", "[FileStream] ERROR py_msg received but not for file streaming (time since command: ${timeSinceStreamFileCommand}ms, window: 0-3000ms)")
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("BleScanService", "[FileStream] Error parsing stream_file response: ${e.message}")
                         }
-                        
-                        // If we get here, this is actual file data, process it
-                        processFileStreamingData(value)
                     }
+                    
+                    // Check if this is an ERROR response for stream_file
+                    if (parts.size >= 2 && parts.getOrNull(0) == "ERROR" && parts.getOrNull(1) == "py_msg") {
+                        val currentTime = System.currentTimeMillis()
+                        val timeSinceStreamFileCommand = currentTime - lastStreamFileCommandTime
+                        if (waitingForStreamFileResponse && 
+                            currentFile >= leoFirstFile && 
+                            currentFile <= leoLastFile &&
+                            timeSinceStreamFileCommand > 0 &&
+                            timeSinceStreamFileCommand < 3000) {
+                            
+                            android.util.Log.w("BleScanService", "[FileStream] ========================================")
+                            android.util.Log.w("BleScanService", "[FileStream] ERROR response received - stream_file command intercepted for file $currentFile")
+                            android.util.Log.w("BleScanService", "[FileStream] Time since stream_file command: ${timeSinceStreamFileCommand}ms")
+                            android.util.Log.w("BleScanService", "[FileStream] File doesn't exist, moving to next file")
+                            android.util.Log.w("BleScanService", "[FileStream] ========================================")
+                            
+                            streamFileResponseReceived = true
+                            waitingForStreamFileResponse = false
+                            cancelStreamFileTimeout()
+                            isFileStreamingActive = false
+                            
+                            scheduleNextFileAfterDelay()
+                            return@post
+                        } else if (waitingForStreamFileResponse) {
+                            android.util.Log.d("BleScanService", "[FileStream] ERROR py_msg received but not for file streaming (time since command: ${timeSinceStreamFileCommand}ms, window: 0-3000ms)")
+                        }
+                    }
+                    
+                    // If we get here, this is actual file data, process it
+                    processFileStreamingData(value)
                 }
             }
         }
@@ -1053,21 +1044,25 @@ class BleScanService : Service() {
                 val endFile = parts.getOrNull(4)?.toIntOrNull()
                 
                 if (startFile != null && endFile != null) {
+                    getFilesTimeoutRunnable?.let { handler.removeCallbacks(it) }
                     getFilesRangePending = false
+                    
                     leoFirstFile = startFile
                     leoLastFile = endFile
-                    currentFile = leoFirstFile
                     
-                    android.util.Log.i("BleScanService", "[FileStream] ========================================")
-                    android.util.Log.i("BleScanService", "[FileStream] get_files response received")
-                    android.util.Log.i("BleScanService", "[FileStream] File range: $startFile to $endFile")
-                    android.util.Log.i("BleScanService", "[FileStream] Starting file streaming from file $currentFile")
-                    android.util.Log.i("BleScanService", "[FileStream] ========================================")
-                    
-                // Start streaming from first file (recovery timer is started inside startFileStreaming)
-                startFileStreaming()
-                    getFilesRangePending = false
-                    getFilesTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                    if (!isFileStreamingActive && !waitingForStreamFileResponse && currentFile < leoFirstFile) {
+                        currentFile = leoFirstFile
+                        
+                        android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                        android.util.Log.i("BleScanService", "[FileStream] get_files response received")
+                        android.util.Log.i("BleScanService", "[FileStream] File range: $startFile to $endFile")
+                        android.util.Log.i("BleScanService", "[FileStream] Starting file streaming from file $currentFile")
+                        android.util.Log.i("BleScanService", "[FileStream] ========================================")
+                        
+                        startFileStreaming()
+                    } else {
+                        android.util.Log.d("BleScanService", "[FileStream] get_files response received but streaming already in progress (currentFile=$currentFile, active=$isFileStreamingActive, waiting=$waitingForStreamFileResponse)")
+                    }
                 } else if (getFilesRangePending) {
                     // One controlled retry of get_files + py_msg if range missing and not retried yet
                     if (!getFilesRetryDone) {
@@ -2151,13 +2146,13 @@ class BleScanService : Service() {
                         finalizeUpload()
                     }
                     
-                    // Delete file from device after successful upload
-                    if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                        handler.postDelayed({
-                            enqueueCommand("app_msg rm_file $fileNumber")
-                            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
-                        }, 500) // Small delay to ensure Firebase operation completes
-                    }
+                    // // Delete file from device after successful upload
+                    // if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                    //     handler.postDelayed({
+                    //         enqueueCommand("app_msg rm_file $fileNumber")
+                    //         android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
+                    //     }, 500) // Small delay to ensure Firebase operation completes
+                    // }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
