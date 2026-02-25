@@ -356,11 +356,12 @@ class BleScanService : Service() {
     private var streamFileTimeoutRunnable: Runnable? = null
     private val STREAM_FILE_TIMEOUT_MS = 10000L // 10 seconds timeout
     private var stxProcessedForCurrentFile = false // Flag to track if STX has been processed for current file
+    private var headerDataPacketDetectedForCurrentFile = false // Set true when Leo sends timestamp header row for current file
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (132)"
-    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (132) CSV"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (133)"
+    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (133) CSV"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -680,6 +681,7 @@ class BleScanService : Service() {
                                         android.util.Log.i("BleScanService", "[FileStream] File $currentFile exists and streaming started")
                                         isFileStreamingActive = true
                                         stxProcessedForCurrentFile = false // Reset STX flag for new stream
+                                        headerDataPacketDetectedForCurrentFile = false
                                         // Start timeout timer
                                         startStreamFileTimeout()
                                     }
@@ -778,6 +780,7 @@ class BleScanService : Service() {
                                         android.util.Log.i("BleScanService", "[FileStream] File $currentFile exists and streaming started")
                                         isFileStreamingActive = true
                                         stxProcessedForCurrentFile = false // Reset STX flag for new stream
+                                        headerDataPacketDetectedForCurrentFile = false
                                         // Start timeout timer
                                         startStreamFileTimeout()
                                     }
@@ -1042,13 +1045,14 @@ class BleScanService : Service() {
             try {
                 val startFile = parts.getOrNull(3)?.toIntOrNull()
                 val endFile = parts.getOrNull(4)?.toIntOrNull()
+            
                 
                 if (startFile != null && endFile != null) {
                     getFilesTimeoutRunnable?.let { handler.removeCallbacks(it) }
                     getFilesRangePending = false
-                    
                     leoFirstFile = startFile
                     leoLastFile = endFile
+        
                     
                     if (!isFileStreamingActive && !waitingForStreamFileResponse && currentFile < leoFirstFile) {
                         currentFile = leoFirstFile
@@ -1216,6 +1220,7 @@ class BleScanService : Service() {
         previousChargeData = null
         hasUnwantedCharacters = false
         stxProcessedForCurrentFile = false
+        headerDataPacketDetectedForCurrentFile = false
         rawFileData = ""
         
         currentFile = leoFirstFile
@@ -1260,6 +1265,7 @@ class BleScanService : Service() {
         hasUnwantedCharacters = false
         isFileStreamingActive = false
         stxProcessedForCurrentFile = false
+        headerDataPacketDetectedForCurrentFile = false
         rawFileData = ""
         
         // Restart recovery timer when requesting a new file so it can detect if streaming doesn't start
@@ -1327,9 +1333,25 @@ class BleScanService : Service() {
         isFileStreamingActive = false
         streamFileResponseReceived = false
         waitingForStreamFileResponse = false
+        fileStreamingRequested = false
+        currentFile = 0
+        leoFirstFile = 0
+        leoLastFile = 0
+        fileStreamingAccumulatedData.clear()
+        rawFileDataAccumulator.clear()
+        chargeDataList.clear()
+        processedDataPoints.clear()
+        previousChargeData = null
+        hasUnwantedCharacters = false
+        stxProcessedForCurrentFile = false
+        headerDataPacketDetectedForCurrentFile = false
+        rawFileData = ""
+        serialRequested = false
         cancelStreamFileTimeout()
         stopFileStreamingRecovery()
-        android.util.Log.i("BleScanService", "[FileStream] File streaming stopped")
+        fileStreamingNextFileRunnable?.let { handler.removeCallbacks(it) }
+        fileStreamingNextFileRunnable = null
+        android.util.Log.i("BleScanService", "[FileStream] File streaming stopped and state fully reset")
     }
     
     private fun startFileStreamingRecovery() {
@@ -1551,6 +1573,7 @@ class BleScanService : Service() {
                     processedDataPoints.clear()
                     previousChargeData = null
                     hasUnwantedCharacters = false
+                    headerDataPacketDetectedForCurrentFile = false
                     rawFileData = ""
                     
                     // Also trim raw data accumulator to remove everything before STX
@@ -1595,6 +1618,7 @@ class BleScanService : Service() {
                 
                 // Skip header rows (e.g., timestamp;session;...)
                 if (columns[0].trim().lowercase() == "timestamp") {
+                    headerDataPacketDetectedForCurrentFile = true
                     android.util.Log.d("BleScanService", "[FileStream] Skipped header row")
                     continue
                 }
@@ -1764,6 +1788,7 @@ class BleScanService : Service() {
                 chargeDataList.clear()
                 processedDataPoints.clear()
                 hasUnwantedCharacters = false
+                headerDataPacketDetectedForCurrentFile = false
                 rawFileData = ""
                 
                 // Cancel timeout since we received STX
@@ -1791,8 +1816,11 @@ class BleScanService : Service() {
                     if (dataBeforeETX.isNotEmpty()) {
                         // Process this last data point if it's valid
                         val columns = dataBeforeETX.split(';')
-                        if (columns.isNotEmpty() && columns[0].trim().isNotEmpty() && 
-                            columns[0].trim().lowercase() != "timestamp" &&
+                        if (columns.isNotEmpty() && columns[0].trim().isNotEmpty() &&
+                            columns[0].trim().lowercase() == "timestamp") {
+                            headerDataPacketDetectedForCurrentFile = true
+                            android.util.Log.d("BleScanService", "[FileStream] Detected header row before ETX")
+                        } else if (columns.isNotEmpty() && columns[0].trim().isNotEmpty() &&
                             !processedDataPoints.contains(dataBeforeETX)) {
                             try {
                                 val timestampValue = parseOrNull(columns[0]) { it.toDouble() }
@@ -1855,12 +1883,16 @@ class BleScanService : Service() {
                     rawDataStr
                 }
                 android.util.Log.d("BleScanService", "[FileStream] Captured raw file data: ${rawFileData.length} characters")
+                val isCorruptedFile = !headerDataPacketDetectedForCurrentFile
+                if (isCorruptedFile) {
+                    android.util.Log.w("BleScanService", "[FileStream] Missing header data packet for file $currentFile. Marking file as corrupted.")
+                }
                 
                 // Store data to Firebase/local storage using snapshot of current list
                 val dataSnapshot = chargeDataList.toList()
                 val fileNumberToDelete = currentFile // Capture current file number for deletion after upload
                 if (!hasUnwantedCharacters) {
-                    storeDataToFirebase(dataSnapshot, fileNumberToDelete, rawFileData)
+                    storeDataToFirebase(dataSnapshot, fileNumberToDelete, rawFileData, isCorruptedFile)
                 } else {
                     android.util.Log.w("BleScanService", "[FileStream] Skipping Firebase upload due to unwanted characters in data")
                 }
@@ -1876,6 +1908,7 @@ class BleScanService : Service() {
                 streamFileResponseReceived = false
                 waitingForStreamFileResponse = false
                 stxProcessedForCurrentFile = false // Reset STX flag for next file
+                headerDataPacketDetectedForCurrentFile = false
                 
                 // Schedule next file command after delay
                 scheduleNextFileStreamCommand()
@@ -1928,7 +1961,12 @@ class BleScanService : Service() {
         }
     }
     
-    private fun storeDataToFirebase(dataSnapshot: List<ChargeData> = chargeDataList.toList(), fileNumber: Int = currentFile, rawData: String = rawFileData) {
+    private fun storeDataToFirebase(
+        dataSnapshot: List<ChargeData> = chargeDataList.toList(),
+        fileNumber: Int = currentFile,
+        rawData: String = rawFileData,
+        isCorruptedFile: Boolean = false
+    ) {
         handler.post {
             try {
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
@@ -2007,7 +2045,7 @@ class BleScanService : Service() {
                 val silent = if (binaryFlags.length > 5) binaryFlags[5] == '1' else false
                 
                 // Construct the complete object to store
-                val firebaseObject = mapOf(
+                val firebaseObject = mutableMapOf<String, Any>(
                     "model" to "Leo",
                     "serial_number" to serialNumber.split("\\").first().trim(),
                     "firmware" to binFileName.trim(),
@@ -2037,8 +2075,12 @@ class BleScanService : Service() {
                     "DateTime" to SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.US).apply {
                         timeZone = TimeZone.getTimeZone("UTC")
                     }.format(Date()),
+                    "corrupted_file" to isCorruptedFile,
                     "data" to firebaseData
                 )
+                if (isCorruptedFile) {
+                    firebaseObject["raw_data"] = rawData
+                }
                 
                 // Generate a file name for Firebase
                 val fileName = "${SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).apply {
