@@ -362,8 +362,7 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (134)"
-    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (134) CSV"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (135)"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -2117,10 +2116,10 @@ class BleScanService : Service() {
                 
                 if (!isOnline) {
                     android.util.Log.w("BleScanService", "[FileStream] No internet connection. Saving data locally for later sync.")
-                    saveToLocalStorage(serialNumber, currentSession.toString(), fileName, firebaseObject, fileNumber, rawData)
+                    saveToLocalStorage(serialNumber, currentSession.toString(), fileName, firebaseObject, fileNumber)
                 } else {
                     android.util.Log.i("BleScanService", "[FileStream] Internet connection available. Uploading to Firebase...")
-                    uploadToFirebase(fileName, firebaseObject, currentSession.toString(), serialNumber, sentSessions, fileNumber, rawData)
+                    uploadToFirebase(fileName, firebaseObject, currentSession.toString(), serialNumber, sentSessions, fileNumber)
                 }
                 
             } catch (e: Exception) {
@@ -2136,12 +2135,10 @@ class BleScanService : Service() {
         sessionId: String,
         serialNumber: String,
         sentSessions: MutableSet<String>,
-        fileNumber: Int,
-        rawData: String = ""
+        fileNumber: Int
     ) {
         try {
             val docId = fileName.split(".json").first()
-            android.util.Log.d("BleScanService", "[FileStream] uploadToFirebase called with rawData length: ${rawData.length}")
             
             // Upload to main collection
             firestore.collection(COLLECTION_NAME)
@@ -2157,48 +2154,14 @@ class BleScanService : Service() {
                     val pendingKey = "pending_upload_${serialNumber}_$sessionId"
                     val dataKeyToRemove = "${pendingKey}_data"
                     val rawDataKeyToRemove = "${pendingKey}_raw_data"
-                    
-                    val finalizeUpload = {
-                        // Add this session to the list of sent sessions
-                        sentSessions.add(sessionId)
-                        val addressKey = connectedDeviceAddress?.replace(":", "") ?: "unknown"
-                        prefs?.edit()?.putStringSet("sentSessions_$addressKey", sentSessions)?.apply()
-                        
-                        // Remove from pending uploads
-                        prefs?.edit()?.remove(pendingKey)?.remove(dataKeyToRemove)?.remove(rawDataKeyToRemove)?.apply()
-                    }
 
-                    // Upload raw CSV data to separate collection if available
-                    if (rawData.isNotEmpty()) {
-                        android.util.Log.d("BleScanService", "[FileStream] Uploading raw CSV data (${rawData.length} chars) to collection: $CSV_COLLECTION_NAME")
-                        // Extract session from firebaseObject or use sessionId
-                        val sessionValue = (firebaseObject["session"] as? Number)?.toInt() ?: sessionId.toIntOrNull() ?: 0
-                        val csvObject = mapOf(
-                            "raw_data" to rawData,
-                            "timestamp" to (System.currentTimeMillis() / 1000),
-                            "DateTime" to SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.US).apply {
-                                timeZone = TimeZone.getTimeZone("UTC")
-                            }.format(Date()),
-                            "session" to sessionValue,
-                            "serial_number" to serialNumber.split("\\").first().trim()
-                        )
-                        
-                        firestore.collection(CSV_COLLECTION_NAME)
-                            .document(docId)
-                            .set(csvObject, SetOptions.merge())
-                            .addOnSuccessListener {
-                                android.util.Log.i("BleScanService", "[FileStream] Raw CSV data successfully stored to Firebase!")
-                                finalizeUpload()
-                            }
-                            .addOnFailureListener { e ->
-                                android.util.Log.e("BleScanService", "[FileStream] Failed to upload raw CSV data: ${e.message}")
-                                e.printStackTrace()
-                                // Note: We don't call finalizeUpload here so it can retry both later
-                            }
-                    } else {
-                        android.util.Log.w("BleScanService", "[FileStream] Raw CSV data is empty, skipping upload to CSV collection")
-                        finalizeUpload()
-                    }
+                    // Add this session to the list of sent sessions
+                    sentSessions.add(sessionId)
+                    val addressKey = connectedDeviceAddress?.replace(":", "") ?: "unknown"
+                    prefs?.edit()?.putStringSet("sentSessions_$addressKey", sentSessions)?.apply()
+                    
+                    // Remove from pending uploads
+                    prefs?.edit()?.remove(pendingKey)?.remove(dataKeyToRemove)?.remove(rawDataKeyToRemove)?.apply()
                     
                     // // Delete file from device after successful upload
                     // if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
@@ -2212,12 +2175,12 @@ class BleScanService : Service() {
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
                     android.util.Log.e("BleScanService", "[FileStream] Saving data locally for later sync")
                     // If upload fails, save locally for retry
-                    saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber, rawData)
+                    saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber)
                 }
         } catch (e: Exception) {
             android.util.Log.e("BleScanService", "[FileStream] Error uploading to Firebase: ${e.message}")
             e.printStackTrace()
-            saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber, rawData)
+            saveToLocalStorage(serialNumber, sessionId, fileName, firebaseObject, fileNumber)
         }
     }
     
@@ -2226,8 +2189,7 @@ class BleScanService : Service() {
         sessionId: String,
         fileName: String,
         firebaseObject: Map<String, Any>,
-        fileNumber: Int,
-        rawData: String = ""
+        fileNumber: Int
     ) {
         try {
             // Store pending upload info
@@ -2250,16 +2212,6 @@ class BleScanService : Service() {
                 prefs?.edit()?.putString("${pendingKey}_data", firebaseJson)?.apply()
             } catch (e: Exception) {
                 android.util.Log.w("BleScanService", "[FileStream] Could not serialize firebase object, saving reference only: ${e.message}")
-            }
-            
-            // Save raw data if available
-            if (rawData.isNotEmpty()) {
-                try {
-                    prefs?.edit()?.putString("${pendingKey}_raw_data", rawData)?.apply()
-                    android.util.Log.d("BleScanService", "[FileStream] Raw data saved locally for session $sessionId")
-                } catch (e: Exception) {
-                    android.util.Log.w("BleScanService", "[FileStream] Could not save raw data: ${e.message}")
-                }
             }
             
             android.util.Log.i("BleScanService", "[FileStream] Data saved locally for session $sessionId. Will sync when online.")
@@ -2385,12 +2337,8 @@ class BleScanService : Service() {
                         val firebaseObject = JSONObject(firebaseJson)
                         val firebaseMap = jsonObjectToMap(firebaseObject)
                         
-                        // Get raw data if available
-                        val rawDataKey = dataKey.replace("_data", "_raw_data")
-                        val rawData = prefs?.getString(rawDataKey, "") ?: ""
-                        
                         // Try to upload (async, so we'll check success in callback)
-                        uploadToFirebase(fileName, firebaseMap, sessionId, serialNumber, sentSessions, fileNumber, rawData)
+                        uploadToFirebase(fileName, firebaseMap, sessionId, serialNumber, sentSessions, fileNumber)
                         // Note: Success will be logged in uploadToFirebase callback
                         // For sync, we'll count it as attempted
                         successCount++
