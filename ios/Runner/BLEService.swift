@@ -166,6 +166,7 @@ class BLEService: NSObject {
     private var previousChargeData: ChargeData?
     private var processedDataPoints: Set<String> = []
     private var hasUnwantedCharacters = false
+    private var hasFileHeaderRow = false
     private var currentSession = 0
     private var currentMode = 0
     private var currentChargeLimit = 0
@@ -1459,6 +1460,7 @@ class BLEService: NSObject {
             
             // Skip header rows
             if columns[0].trimmingCharacters(in: .whitespaces).lowercased() == "timestamp" {
+                hasFileHeaderRow = true
                 logger.logDebug("[FileStream] Skipped header row")
                 continue
             }
@@ -1593,6 +1595,7 @@ class BLEService: NSObject {
             chargeDataList.removeAll()
             processedDataPoints.removeAll()
             hasUnwantedCharacters = false
+            hasFileHeaderRow = false
             rawFileData = ""
             
             // Also trim raw data accumulator to remove everything before STX
@@ -1629,9 +1632,18 @@ class BLEService: NSObject {
             // Store data to Firebase/local storage using snapshot of current list
             let dataSnapshot = chargeDataList
             let fileNumberToDelete = currentFile
+            let isCorruptedFile = !hasFileHeaderRow
+            if isCorruptedFile {
+                logger.logWarning("[FileStream] Missing header row for file \(fileNumberToDelete). Marking as corrupted.")
+            }
             
             if !hasUnwantedCharacters {
-                storeDataToFirebase(dataSnapshot: dataSnapshot, fileNumber: fileNumberToDelete, rawData: rawFileData)
+                storeDataToFirebase(
+                    dataSnapshot: dataSnapshot,
+                    fileNumber: fileNumberToDelete,
+                    rawData: rawFileData,
+                    isCorruptedFile: isCorruptedFile
+                )
             } else {
                 logger.logWarning("[FileStream] Skipping Firebase upload due to unwanted characters in data")
             }
@@ -1644,6 +1656,7 @@ class BLEService: NSObject {
             previousChargeData = nil
             processedDataPoints.removeAll()
             hasUnwantedCharacters = false
+            hasFileHeaderRow = false
             streamFileResponseReceived = false
             waitingForStreamFileResponse = false
             
@@ -1761,7 +1774,12 @@ class BLEService: NSObject {
     }
     
     /// Store data to Firebase (matching Android storeDataToFirebase)
-    private func storeDataToFirebase(dataSnapshot: [ChargeData], fileNumber: Int, rawData: String = "") {
+    private func storeDataToFirebase(
+        dataSnapshot: [ChargeData],
+        fileNumber: Int,
+        rawData: String = "",
+        isCorruptedFile: Bool = false
+    ) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -1850,7 +1868,7 @@ class BLEService: NSObject {
                 fileNameFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
                 fileNameFormatter.timeZone = TimeZone(identifier: "UTC")
                 
-                let firebaseObject: [String: Any] = [
+                var firebaseObject: [String: Any] = [
                     "model": "Leo",
                     "serial_number": self.serialNumber.components(separatedBy: "\\").first?.trimmingCharacters(in: .whitespaces) ?? self.serialNumber,
                     "firmware": binFileName.trimmingCharacters(in: .whitespaces),
@@ -1878,8 +1896,12 @@ class BLEService: NSObject {
                     ],
                     "timestamp": Int(Date().timeIntervalSince1970),
                     "DateTime": dateFormatter.string(from: Date()),
+                    "corrupted_file": isCorruptedFile,
                     "data": firebaseData
                 ]
+                if isCorruptedFile {
+                    firebaseObject["raw_data"] = rawData
+                }
                 
                 // Generate a file name for Firebase
                 let fileName = "\(fileNameFormatter.string(from: Date()))_\(self.serialNumber.trimmingCharacters(in: .whitespaces))_\(self.currentSession).json"
@@ -1892,10 +1914,26 @@ class BLEService: NSObject {
                 // Check connectivity
                 if self.hasNetworkConnection() {
                     self.logger.logInfo("[FileStream] Internet connection available. Uploading to Firebase...")
-                    self.uploadToFirebase(fileName: fileName, firebaseObject: firebaseObject, sessionId: "\(self.currentSession)", serialNumber: self.serialNumber, fileNumber: fileNumber, rawData: rawData)
+                    self.uploadToFirebase(
+                        fileName: fileName,
+                        firebaseObject: firebaseObject,
+                        sessionId: "\(self.currentSession)",
+                        serialNumber: self.serialNumber,
+                        fileNumber: fileNumber,
+                        rawData: rawData,
+                        isCorruptedFile: isCorruptedFile
+                    )
                 } else {
                     self.logger.logWarning("[FileStream] No internet connection. Saving data locally for later sync.")
-                    self.saveToLocalStorage(serialNumber: self.serialNumber, sessionId: "\(self.currentSession)", fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber, rawData: rawData)
+                    self.saveToLocalStorage(
+                        serialNumber: self.serialNumber,
+                        sessionId: "\(self.currentSession)",
+                        fileName: fileName,
+                        firebaseObject: firebaseObject,
+                        fileNumber: fileNumber,
+                        rawData: rawData,
+                        isCorruptedFile: isCorruptedFile
+                    )
                 }
                 
             } catch {
@@ -1905,7 +1943,15 @@ class BLEService: NSObject {
     }
     
     /// Upload to Firebase (matching Android uploadToFirebase)
-    private func uploadToFirebase(fileName: String, firebaseObject: [String: Any], sessionId: String, serialNumber: String, fileNumber: Int, rawData: String = "") {
+    private func uploadToFirebase(
+        fileName: String,
+        firebaseObject: [String: Any],
+        sessionId: String,
+        serialNumber: String,
+        fileNumber: Int,
+        rawData: String = "",
+        isCorruptedFile: Bool = false
+    ) {
         let docId = fileName.replacingOccurrences(of: ".json", with: "")
         logger.logDebug("[FileStream] uploadToFirebase called with rawData length: \(rawData.count)")
         
@@ -1915,7 +1961,15 @@ class BLEService: NSObject {
             if let error = error {
                 self.logger.logError("[FileStream] Firebase upload failed: \(error.localizedDescription)")
                 self.logger.logError("[FileStream] Saving data locally for later sync")
-                self.saveToLocalStorage(serialNumber: serialNumber, sessionId: sessionId, fileName: fileName, firebaseObject: firebaseObject, fileNumber: fileNumber, rawData: rawData)
+                self.saveToLocalStorage(
+                    serialNumber: serialNumber,
+                    sessionId: sessionId,
+                    fileName: fileName,
+                    firebaseObject: firebaseObject,
+                    fileNumber: fileNumber,
+                    rawData: rawData,
+                    isCorruptedFile: isCorruptedFile
+                )
             } else {
                 self.logger.logInfo("[FileStream] ========================================")
                 self.logger.logInfo("[FileStream] Data successfully stored to Firebase!")
@@ -1939,8 +1993,10 @@ class BLEService: NSObject {
                     UserDefaults.standard.removeObject(forKey: rawDataKeyToRemove)
                 }
                 
-                // Upload raw CSV data to separate collection if available
-                if !rawData.isEmpty {
+                // For corrupted files, raw_data is already embedded in main document.
+                if isCorruptedFile {
+                    finalizeUpload()
+                } else if !rawData.isEmpty {
                     self.logger.logDebug("[FileStream] Uploading raw CSV data (\(rawData.count) chars) to collection: \(self.csvCollectionName)")
                     // Extract session from firebaseObject or use sessionId
                     let sessionValue = (firebaseObject["session"] as? Int) ?? (Int(sessionId) ?? 0)
@@ -1987,14 +2043,23 @@ class BLEService: NSObject {
     }
     
     /// Save to local storage for later sync (matching Android saveToLocalStorage)
-    private func saveToLocalStorage(serialNumber: String, sessionId: String, fileName: String, firebaseObject: [String: Any], fileNumber: Int, rawData: String = "") {
+    private func saveToLocalStorage(
+        serialNumber: String,
+        sessionId: String,
+        fileName: String,
+        firebaseObject: [String: Any],
+        fileNumber: Int,
+        rawData: String = "",
+        isCorruptedFile: Bool = false
+    ) {
         let pendingKey = "pending_upload_\(serialNumber)_\(sessionId)"
         let pendingData: [String: Any] = [
             "sessionId": sessionId,
             "fileName": fileName,
             "serialNumber": serialNumber,
             "fileNumber": fileNumber,
-            "timestamp": Date().timeIntervalSince1970
+            "timestamp": Date().timeIntervalSince1970,
+            "isCorruptedFile": isCorruptedFile
         ]
         
         if let jsonData = try? JSONSerialization.data(withJSONObject: pendingData),
