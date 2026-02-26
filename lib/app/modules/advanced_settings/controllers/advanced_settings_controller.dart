@@ -32,10 +32,10 @@ class AdvancedSettingsController extends GetxController {
   Future<void> requestAdvancedGhostMode(bool value) async {
     if (_leoHomeController.connectionState.value !=
         BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update Ghost Mode",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update Ghost Mode",
+      // );
       return;
     }
 
@@ -44,21 +44,21 @@ class AdvancedSettingsController extends GetxController {
         : await IOSBleScanService.setGhostMode(value);
     ghostModeEnabled.value = value;
 
-    AppSnackbars.showSuccess(
-      title: success ? "Ghost Mode Updated" : "Update Failed",
-      message: success
-          ? "Ghost Mode has been updated to ${value ? "Enabled" : "Disabled"}"
-          : "Could not update Ghost Mode. Please try again.",
-    );
+    // AppSnackbars.showSuccess(
+    //   title: success ? "Ghost Mode Updated" : "Update Failed",
+    //   message: success
+    //       ? "Ghost Mode has been updated to ${value ? "Enabled" : "Disabled"}"
+    //       : "Could not update Ghost Mode. Please try again.",
+    // );
   }
 
   Future<void> requestAdvancedSilentMode(bool value) async {
     if (_leoHomeController.connectionState.value !=
         BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update Silent Mode",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update Silent Mode",
+      // );
       return;
     }
 
@@ -67,21 +67,21 @@ class AdvancedSettingsController extends GetxController {
         : await IOSBleScanService.setSilentMode(value);
     silentModeEnabled.value = value;
 
-    AppSnackbars.showSuccess(
-      title: success ? "Silent Mode Updated" : "Update Failed",
-      message: success
-          ? "Silent Mode has been updated to ${value ? "Enabled" : "Disabled"}"
-          : "Could not update Silent Mode. Please try again.",
-    );
+    // AppSnackbars.showSuccess(
+    //   title: success ? "Silent Mode Updated" : "Update Failed",
+    //   message: success
+    //       ? "Silent Mode has been updated to ${value ? "Enabled" : "Disabled"}"
+    //       : "Could not update Silent Mode. Please try again.",
+    // );
   }
 
   Future<void> requestAdvancedHigherChargeLimit(bool value) async {
     if (_leoHomeController.connectionState.value !=
         BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update Higher Charge Limit",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update Higher Charge Limit",
+      // );
       return;
     }
 
@@ -90,11 +90,11 @@ class AdvancedSettingsController extends GetxController {
         : await IOSBleScanService.setHigherChargeLimit(value);
     higherChargeLimitEnabled.value = value;
 
-    AppSnackbars.showSuccess(
-      title: success ? "Higher Charge Limit Updated" : "Update Failed",
-      message: success
-          ? "Higher Charge Limit has been updated to ${value ? "Enabled" : "Disabled"}"
-          : "Could not update Higher Charge Limit. Please try again.",
-    );
+    // AppSnackbars.showSuccess(
+    //   title: success ? "Higher Charge Limit Updated" : "Update Failed",
+    //   message: success
+    //       ? "Higher Charge Limit has been updated to ${value ? "Enabled" : "Disabled"}"
+    //       : "Could not update Higher Charge Limit. Please try again.",
+    // );
   }
 }

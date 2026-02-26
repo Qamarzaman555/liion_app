@@ -1032,10 +1032,10 @@ class LeoHomeController extends GetxController {
   // Update charging mode
   Future<void> updateChargingMode(ChargingMode mode) async {
     if (connectionState.value == BleConnectionState.disconnected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update the charging mode",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update the charging mode",
+      // );
       return;
     }
 
@@ -1049,10 +1049,10 @@ class LeoHomeController extends GetxController {
     } catch (e) {
       // Revert the mode if the command fails
       currentMode.value = ChargingMode.smart;
-      AppSnackbars.showSuccess(
-        title: "Failed to update charging mode",
-        message: "Please try again",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "Failed to update charging mode",
+      //   message: "Please try again",
+      // );
     }
   }
 

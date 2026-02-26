@@ -94,11 +94,11 @@ Widget _buildTitle(ChargeLimitController controller) {
           value: controller.chargeLimitEnabled.value,
           onChanged: (value) {
             if (!controller.isConnected.value) {
-              AppSnackbars.showSuccess(
-                title: 'Not Connected',
-                message:
-                    'Please connect to Leo to enable or disable charge limit',
-              );
+              // AppSnackbars.showSuccess(
+              //   title: 'Not Connected',
+              //   message:
+              //       'Please connect to Leo to enable or disable charge limit',
+              // );
               return;
             }
             controller.toggleChargeLimit(value);
@@ -238,10 +238,10 @@ Widget _buildSaveButton(ChargeLimitController controller) {
     text: "Save Charge Limit",
     onPressed: () {
       if (!controller.isConnected.value) {
-        AppSnackbars.showSuccess(
-          title: 'Not Connected',
-          message: 'Please connect to Leo to save limit',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'Not Connected',
+        //   message: 'Please connect to Leo to save limit',
+        // );
         return;
       }
       controller.saveChargeLimit();

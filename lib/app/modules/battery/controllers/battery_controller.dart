@@ -124,10 +124,10 @@ class BatteryController extends GetxController {
 
     final success = await BleScanService.startBatteryHealthCalculation();
     if (!success) {
-      AppSnackbars.showSuccess(
-        title: 'Cannot Start',
-        message: 'Device must be charging and battery below 40%',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Cannot Start',
+      //   message: 'Device must be charging and battery below 40%',
+      // );
     }
   }
 
@@ -146,15 +146,15 @@ class BatteryController extends GetxController {
     if (success) {
       // Reload health info to reflect the reset
       await _loadInitialHealth();
-      AppSnackbars.showSuccess(
-        title: 'Success',
-        message: 'Battery health readings reset',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Success',
+      //   message: 'Battery health readings reset',
+      // );
     } else {
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'Failed to reset battery health readings',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Error',
+      //   message: 'Failed to reset battery health readings',
+      // );
     }
   }
 

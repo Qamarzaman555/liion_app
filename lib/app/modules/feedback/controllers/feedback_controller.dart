@@ -111,18 +111,18 @@ class FeedbackController extends GetxController {
       } catch (e) {
         loading.value = false;
         if (context.mounted) {
-          AppSnackbars.showSuccess(
-            title: 'Error',
-            message: 'Error sending feedback: $e',
-          );
+          // AppSnackbars.showSuccess(
+          //   title: 'Error',
+          //   message: 'Error sending feedback: $e',
+          // );
         }
       }
     } else {
       if (context.mounted) {
-        AppSnackbars.showSuccess(
-          title: 'Error',
-          message: 'Error sending feedback: Please fill in all required fields',
-        );
+        // AppSnackbars.showSuccess(
+        // title: 'Error',
+        // message: 'Error sending feedback: Please fill in all required fields',
+        // );
       }
     }
   }
@@ -219,10 +219,10 @@ OS: ${Platform.isAndroid ? 'Android' : 'iOS'}$deviceHistoryText
       print('Message sent: $sendReport');
 
       if (context.mounted) {
-        AppSnackbars.showSuccess(
-          title: 'Success',
-          message: 'Feedback sent successfully',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'Success',
+        //   message: 'Feedback sent successfully',
+        // );
       }
     } on MailerException catch (e) {
       print('Message not sent: ${e.message}');

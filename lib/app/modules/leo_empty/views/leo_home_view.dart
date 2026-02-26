@@ -177,17 +177,17 @@ class LeoHomeView extends GetView<LeoHomeController> {
         'google.com',
       ).timeout(const Duration(seconds: 3));
       if (result.isEmpty || result[0].rawAddress.isEmpty) {
-        AppSnackbars.showSuccess(
-          title: 'No Internet Connection',
-          message: 'Please check your internet connection and try again.',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'No Internet Connection',
+        //   message: 'Please check your internet connection and try again.',
+        // );
         return;
       }
     } catch (e) {
-      AppSnackbars.showSuccess(
-        title: 'No Internet Connection',
-        message: 'Please check your internet connection and try again.',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'No Internet Connection',
+      //   message: 'Please check your internet connection and try again.',
+      // );
       return;
     }
 

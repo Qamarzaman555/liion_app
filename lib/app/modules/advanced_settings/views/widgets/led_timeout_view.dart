@@ -41,10 +41,10 @@ class LedTimeoutView extends StatelessWidget {
             onSubmit: (value) => controller.setTimeout(value),
           );
         } else {
-          AppSnackbars.showSuccess(
-            title: 'No Device Connected',
-            message: 'Please connect to a device to update the LED timeout',
-          );
+          // AppSnackbars.showSuccess(
+          //   title: 'No Device Connected',
+          //   message: 'Please connect to a device to update the LED timeout',
+          // );
         }
       },
     );

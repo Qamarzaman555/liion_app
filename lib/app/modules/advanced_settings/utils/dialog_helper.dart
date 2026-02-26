@@ -125,16 +125,16 @@ class DialogHelper {
               final success =
                   await (onSubmit?.call(parsed) ?? Future.value(false));
               if (success) {
-                AppSnackbars.showSuccess(
-                  title: 'LED Timeout Updated',
-                  message: 'LED Timeout has been updated to $parsed seconds',
-                );
+                // AppSnackbars.showSuccess(
+                //   title: 'LED Timeout Updated',
+                //   message: 'LED Timeout has been updated to $parsed seconds',
+                // );
                 Navigator.pop(context);
               } else {
-                AppSnackbars.showSuccess(
-                  title: 'Update Failed',
-                  message: 'Could not send command. Please try again.',
-                );
+                // AppSnackbars.showSuccess(
+                //   title: 'Update Failed',
+                //   message: 'Could not send command. Please try again.',
+                // );
               }
             },
             child: const Text(

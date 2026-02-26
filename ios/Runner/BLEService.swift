@@ -175,8 +175,7 @@ class BLEService: NSObject {
     private lazy var firestore: Firestore = {
         return Firestore.firestore()
     }()
-    private let collectionName = "Beta Build 1.5.0 (131)"
-    private let csvCollectionName = "Beta Build 1.5.0 (131) CSV"
+    private let collectionName = "Beta Build 1.5.0 (135)"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1254,6 +1253,7 @@ class BLEService: NSObject {
         
         logger.logInfo("[FileStream] Requesting file \(currentFile)")
         enqueueCommand("app_msg stream_file \(currentFile)")
+        logger.logInfo("[FileStream] Sent stream_file command for file \(currentFile)")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self = self else { return }
             if self.isUartReady && self.connectionState == .connected {
@@ -1808,8 +1808,14 @@ class BLEService: NSObject {
                     self.serialNumber = UserDefaults.standard.string(forKey: self.serialNumberKey) ?? ""
                 }
                 let binFileName = self.firmwareVersion
-                let appVersion = UserDefaults.standard.string(forKey: "appVersion") ?? "1.5.0"
-                let appBuildNumber = UserDefaults.standard.string(forKey: "appBuildNumber") ?? "51"
+                // Use iOS bundle metadata as the source of truth for app version/build.
+                // Flutter build-name/build-number map to these keys on iOS.
+                let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+                    ?? UserDefaults.standard.string(forKey: "appVersion")
+                    ?? "1.0.0"
+                let appBuildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+                    ?? UserDefaults.standard.string(forKey: "appBuildNumber")
+                    ?? "1"
                 
                 // Get device information
                 let osVersion = UIDevice.current.systemVersion
@@ -1920,7 +1926,6 @@ class BLEService: NSObject {
                         sessionId: "\(self.currentSession)",
                         serialNumber: self.serialNumber,
                         fileNumber: fileNumber,
-                        rawData: rawData,
                         isCorruptedFile: isCorruptedFile
                     )
                 } else {
@@ -1931,7 +1936,6 @@ class BLEService: NSObject {
                         fileName: fileName,
                         firebaseObject: firebaseObject,
                         fileNumber: fileNumber,
-                        rawData: rawData,
                         isCorruptedFile: isCorruptedFile
                     )
                 }
@@ -1949,11 +1953,9 @@ class BLEService: NSObject {
         sessionId: String,
         serialNumber: String,
         fileNumber: Int,
-        rawData: String = "",
         isCorruptedFile: Bool = false
     ) {
         let docId = fileName.replacingOccurrences(of: ".json", with: "")
-        logger.logDebug("[FileStream] uploadToFirebase called with rawData length: \(rawData.count)")
         
         firestore.collection(collectionName).document(docId).setData(firebaseObject, merge: true) { [weak self] error in
             guard let self = self else { return }
@@ -1967,7 +1969,6 @@ class BLEService: NSObject {
                     fileName: fileName,
                     firebaseObject: firebaseObject,
                     fileNumber: fileNumber,
-                    rawData: rawData,
                     isCorruptedFile: isCorruptedFile
                 )
             } else {
@@ -1978,7 +1979,6 @@ class BLEService: NSObject {
                 self.logger.logInfo("[FileStream] ========================================")
                 
                 let pendingKey = "pending_upload_\(serialNumber)_\(sessionId)"
-                let rawDataKeyToRemove = "\(pendingKey)_raw_data"
                 
                 let finalizeUpload = {
                     // Add this session to the list of sent sessions
@@ -1990,54 +1990,22 @@ class BLEService: NSObject {
                     // Remove from pending uploads
                     UserDefaults.standard.removeObject(forKey: pendingKey)
                     UserDefaults.standard.removeObject(forKey: "\(pendingKey)_data")
-                    UserDefaults.standard.removeObject(forKey: rawDataKeyToRemove)
                 }
                 
-                // For corrupted files, raw_data is already embedded in main document.
-                if isCorruptedFile {
-                    finalizeUpload()
-                } else if !rawData.isEmpty {
-                    self.logger.logDebug("[FileStream] Uploading raw CSV data (\(rawData.count) chars) to collection: \(self.csvCollectionName)")
-                    // Extract session from firebaseObject or use sessionId
-                    let sessionValue = (firebaseObject["session"] as? Int) ?? (Int(sessionId) ?? 0)
-                    
-                    let dateFormatter = DateFormatter()
-                    dateFormatter.dateFormat = "dd-MM-yyyy HH:mm:ss"
-                    dateFormatter.timeZone = TimeZone(identifier: "UTC")
-                    
-                    let csvObject: [String: Any] = [
-                        "raw_data": rawData,
-                        "timestamp": Int(Date().timeIntervalSince1970),
-                        "DateTime": dateFormatter.string(from: Date()),
-                        "session": sessionValue,
-                        "serial_number": serialNumber.components(separatedBy: "\\").first?.trimmingCharacters(in: .whitespaces) ?? serialNumber
-                    ]
-                    
-                    self.firestore.collection(self.csvCollectionName).document(docId).setData(csvObject, merge: true) { error in
-                        if let error = error {
-                            self.logger.logError("[FileStream] Failed to upload raw CSV data: \(error.localizedDescription)")
-                            // Note: We don't call finalizeUpload here so it can retry both later
-                        } else {
-                            self.logger.logInfo("[FileStream] Raw CSV data successfully stored to Firebase!")
-                            finalizeUpload()
-                        }
-                    }
-                } else {
-                    self.logger.logWarning("[FileStream] Raw CSV data is empty, skipping upload to CSV collection")
-                    finalizeUpload()
-                }
+                // Raw data for corrupted files is already embedded in firebaseObject["raw_data"].
+                finalizeUpload()
                 
-                // Delete file from device after successful upload
-                if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.enqueueCommand("app_msg rm_file \(fileNumber)")
-                        self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
-                    }
-                } else if fileNumber < 0 {
-                    self.logger.logWarning("[FileStream] Cannot delete file - invalid file number: \(fileNumber)")
-                } else {
-                    self.logger.logWarning("[FileStream] Cannot delete file \(fileNumber) - not connected or UART not ready")
-                }
+                // // Delete file from device after successful upload
+                // if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
+                //     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                //         self.enqueueCommand("app_msg rm_file \(fileNumber)")
+                //         self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
+                //     }
+                // } else if fileNumber < 0 {
+                //     self.logger.logWarning("[FileStream] Cannot delete file - invalid file number: \(fileNumber)")
+                // } else {
+                //     self.logger.logWarning("[FileStream] Cannot delete file \(fileNumber) - not connected or UART not ready")
+                // }
             }
         }
     }
@@ -2049,7 +2017,6 @@ class BLEService: NSObject {
         fileName: String,
         firebaseObject: [String: Any],
         fileNumber: Int,
-        rawData: String = "",
         isCorruptedFile: Bool = false
     ) {
         let pendingKey = "pending_upload_\(serialNumber)_\(sessionId)"
@@ -2071,12 +2038,6 @@ class BLEService: NSObject {
         if let firebaseJsonData = try? JSONSerialization.data(withJSONObject: firebaseObject),
            let firebaseJsonString = String(data: firebaseJsonData, encoding: .utf8) {
             UserDefaults.standard.set(firebaseJsonString, forKey: "\(pendingKey)_data")
-        }
-        
-        // Save raw data if available
-        if !rawData.isEmpty {
-            UserDefaults.standard.set(rawData, forKey: "\(pendingKey)_raw_data")
-            logger.logDebug("[FileStream] Raw data saved locally for session \(sessionId)")
         }
         
         logger.logInfo("[FileStream] Data saved locally for session \(sessionId). Will sync when online.")
@@ -2410,7 +2371,11 @@ class BLEService: NSObject {
         if parts.count >= 4 && parts[2] == "charge_limit" {
             if let numeric = Int(parts[3].filter { $0.isNumber }) {
                 chargeLimitConfirmed = (numeric == 1)
+                higherChargeLimitEnabled = (numeric == 1)
+                UserDefaults.standard.set(higherChargeLimitEnabled, forKey: higherChargeLimitKey)
                 logger.logInfo("Charge limit confirmed: \(chargeLimitConfirmed)")
+                logger.logInfo("Higher charge limit: \(higherChargeLimitEnabled)")
+                onAdvancedModesUpdate?(ghostModeEnabled, silentModeEnabled, higherChargeLimitEnabled)
             }
         }
         
@@ -2547,6 +2512,8 @@ class BLEService: NSObject {
                 logger.logInfo("[FileStream] File range: \(startFile) to \(endFile)")
                 logger.logInfo("[FileStream] Starting file streaming from file \(currentFile)")
                 logger.logInfo("[FileStream] ========================================")
+
+                print("[FileStream] get_files response received: \(startFile) to \(endFile)")
                 
                 // Start streaming from first file
                 startFileStreamingForFile()
@@ -2620,6 +2587,7 @@ class BLEService: NSObject {
                 waitingForStreamFileResponse = false
                 cancelStreamFileTimeout()
                 logger.logInfo("[FileStream] stream_file response: fileCheck=\(fileCheck) for file \(currentFile)")
+                print("[FileStream] stream_file response: fileCheck=\(fileCheck) for file \(currentFile)")
                 
                 switch fileCheck {
                 case 1:

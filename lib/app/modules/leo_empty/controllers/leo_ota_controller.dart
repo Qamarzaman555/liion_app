@@ -351,10 +351,10 @@ class LeoOtaController extends GetxController {
       print("Results length is ${result.items.length}");
 
       if (result.items.isEmpty) {
-        AppSnackbars.showSuccess(
-          title: 'No Firmware Found',
-          message: 'No firmware files found in the specified folder.',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'No Firmware Found',
+        //   message: 'No firmware files found in the specified folder.',
+        // );
         isDownloadingFirmware.value = false;
         return;
       }
@@ -392,16 +392,16 @@ class LeoOtaController extends GetxController {
       checkDownloadedFiles();
       print("End of download folder");
 
-      AppSnackbars.showSuccess(
-        title: 'Download Complete',
-        message: 'Firmware downloaded successfully.',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Download Complete',
+      //   message: 'Firmware downloaded successfully.',
+      // );
     } catch (e) {
       print("Error in downloadFolder: $e");
-      AppSnackbars.showSuccess(
-        title: 'Download Failed',
-        message: 'Failed to download firmware: $e',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Download Failed',
+      //   message: 'Failed to download firmware: $e',
+      // );
     } finally {
       isDownloadingFirmware.value = false;
     }
@@ -440,20 +440,20 @@ class LeoOtaController extends GetxController {
       print(
         '🟡 [OTA Controller] OTA already in progress - showing existing progress dialog',
       );
-      AppSnackbars.showSuccess(
-        title: 'Update In Progress',
-        message: 'OTA update is already in progress.',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Update In Progress',
+      //   message: 'OTA update is already in progress.',
+      // );
       return;
     }
 
     // Check if device is connected
     final connectionState = await BleScanService.getConnectionState();
     if (connectionState != BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: 'Not Connected',
-        message: 'Please connect to Leo device first.',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Not Connected',
+      //   message: 'Please connect to Leo device first.',
+      // );
       return;
     }
 
@@ -534,10 +534,10 @@ class LeoOtaController extends GetxController {
     } catch (e) {
       print("Error in startOtaUpdate: $e");
       await WakelockPlus.disable();
-      AppSnackbars.showSuccess(
-        title: 'Update Failed',
-        message: 'Failed to start firmware update: $e',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Update Failed',
+      //   message: 'Failed to start firmware update: $e',
+      // );
     }
   }
 
@@ -567,10 +567,10 @@ class LeoOtaController extends GetxController {
   /// Handle OTA failure - close dialogs and reset state
   void _handleOtaFailure(String message) {
     print('Handling OTA failure: $message');
-    AppSnackbars.showSuccess(
-      title: 'Update Failed',
-      message: 'Failed to update firmware: $message',
-    );
+    // AppSnackbars.showSuccess(
+    //   title: 'Update Failed',
+    //   message: 'Failed to update firmware: $message',
+    // );
 
     // Stop progress polling
     _progressPollingTimer?.cancel();
