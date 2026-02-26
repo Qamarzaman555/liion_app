@@ -45,6 +45,8 @@ class BleScanService : Service() {
         const val KEY_SILENT_MODE = "silent_mode_enabled"
         const val KEY_HIGHER_CHARGE_LIMIT = "higher_charge_limit_enabled"
         const val KEY_SERIAL_NUMBER = "deviceSerialNumber"
+        const val KEY_FIRMWARE_VERSION = "firmwareVersion"
+        const val DEFAULT_FIRMWARE_VERSION = ""
         
         // Nordic UART Service UUIDs
         val SERVICE_UUID: UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
@@ -360,8 +362,8 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (133)"
-    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (133) CSV"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (134)"
+    private val CSV_COLLECTION_NAME = "Beta Build 1.5.0 (134) CSV"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -1026,6 +1028,7 @@ class BleScanService : Service() {
             val versionValue = parts[2].trim()
             if (versionValue.isNotEmpty()) {
                 firmwareVersion = versionValue
+                prefs?.edit()?.putString(KEY_FIRMWARE_VERSION, firmwareVersion)?.apply()
             }
         }
 
@@ -1177,6 +1180,9 @@ class BleScanService : Service() {
         android.util.Log.i("BleScanService", "[FileStream] Starting file streaming process")
         android.util.Log.i("BleScanService", "[FileStream] Sending get_files command")
         android.util.Log.i("BleScanService", "[FileStream] ========================================")
+
+        // Request firmware version first so streaming uploads can use the latest swversion from Leo.
+        enqueueCommand("swversion")
         
         getFilesRangePending = true
         getFilesRetryDone = false
@@ -1992,8 +1998,11 @@ class BleScanService : Service() {
                     serialNumber = prefs?.getString(KEY_SERIAL_NUMBER, "") ?: ""
                 }
                 val binFileName = firmwareVersion
-                val appVersion = prefs?.getString("appVersion", "1.5.0") ?: "1.5.0"
-                val appBuildNumber = prefs?.getString("appBuildNumber", "124") ?: "124"
+                val resolvedFirmware = binFileName
+                    .trim()
+                    .ifEmpty { prefs?.getString(KEY_FIRMWARE_VERSION, "")?.trim().orEmpty() }
+                    .ifEmpty { DEFAULT_FIRMWARE_VERSION }
+                val (appVersion, appBuildNumber) = getAndroidAppVersionInfo()
                 
                 // Get device information directly from Android Build class
                 val osVersion = Build.VERSION.RELEASE // e.g., "13", "14"
@@ -2003,6 +2012,9 @@ class BleScanService : Service() {
                 if (serialNumber.isEmpty()) {
                     android.util.Log.w("BleScanService", "[FileStream] Serial number not available, skipping upload")
                     return@post
+                }
+                if (resolvedFirmware == DEFAULT_FIRMWARE_VERSION) {
+                    android.util.Log.w("BleScanService", "[FileStream] Firmware version unavailable at upload time, using hardcoded fallback")
                 }
                 
                 // Prepare the data for Firebase
@@ -2035,7 +2047,7 @@ class BleScanService : Service() {
                 val major = if (versionParts.isNotEmpty()) versionParts[0].toIntOrNull() ?: 0 else 1
                 val minor = if (versionParts.size > 1) versionParts[1].toIntOrNull() ?: 0 else 5
                 val patch = if (versionParts.size > 2) versionParts[2].toIntOrNull() ?: 0 else 0
-                val build = appBuildNumber.toIntOrNull() ?: 124
+                val build = appBuildNumber.toIntOrNull() ?: 0
                 
                 // Get flags from first entry (they should be consistent across entries)
                 val firstFlags = dataSnapshot.firstOrNull()?.flags ?: 0
@@ -2048,7 +2060,7 @@ class BleScanService : Service() {
                 val firebaseObject = mutableMapOf<String, Any>(
                     "model" to "Leo",
                     "serial_number" to serialNumber.split("\\").first().trim(),
-                    "firmware" to binFileName.trim(),
+                    "firmware" to resolvedFirmware,
                     "sw" to mapOf(
                         "type" to "Release",
                         "major" to major,
@@ -3650,6 +3662,23 @@ class BleScanService : Service() {
             android.util.Log.d("BleScanService", "Backend logging initialization requested: v$versionName ($versionCode)")
         } catch (e: Exception) {
             android.util.Log.e("BleScanService", "Failed to initialize backend logging", e)
+        }
+    }
+
+    private fun getAndroidAppVersionInfo(): Pair<String, String> {
+        return try {
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            val versionName = packageInfo.versionName ?: "1.0.0"
+            val buildNumber = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode.toString()
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toString()
+            }
+            Pair(versionName, buildNumber)
+        } catch (e: Exception) {
+            android.util.Log.w("BleScanService", "Unable to read app version/build from PackageInfo", e)
+            Pair("1.0.0", "0")
         }
     }
     
