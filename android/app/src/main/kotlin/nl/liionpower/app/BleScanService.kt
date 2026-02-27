@@ -362,7 +362,7 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (135)"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (136)"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -2163,13 +2163,13 @@ class BleScanService : Service() {
                     // Remove from pending uploads
                     prefs?.edit()?.remove(pendingKey)?.remove(dataKeyToRemove)?.remove(rawDataKeyToRemove)?.apply()
                     
-                    // // Delete file from device after successful upload
-                    // if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                    //     handler.postDelayed({
-                    //         enqueueCommand("app_msg rm_file $fileNumber")
-                    //         android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
-                    //     }, 500) // Small delay to ensure Firebase operation completes
-                    // }
+                    // Delete file from device after successful upload
+                    if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                        handler.postDelayed({
+                            enqueueCommand("app_msg rm_file $fileNumber")
+                            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
+                        }, 500) // Small delay to ensure Firebase operation completes
+                    }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
