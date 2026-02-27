@@ -175,7 +175,7 @@ class BLEService: NSObject {
     private lazy var firestore: Firestore = {
         return Firestore.firestore()
     }()
-    private let collectionName = "Beta Build 1.5.0 (135)"
+    private let collectionName = "Beta Build 1.5.0 (136)"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1995,17 +1995,17 @@ class BLEService: NSObject {
                 // Raw data for corrupted files is already embedded in firebaseObject["raw_data"].
                 finalizeUpload()
                 
-                // // Delete file from device after successful upload
-                // if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
-                //     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                //         self.enqueueCommand("app_msg rm_file \(fileNumber)")
-                //         self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
-                //     }
-                // } else if fileNumber < 0 {
-                //     self.logger.logWarning("[FileStream] Cannot delete file - invalid file number: \(fileNumber)")
-                // } else {
-                //     self.logger.logWarning("[FileStream] Cannot delete file \(fileNumber) - not connected or UART not ready")
-                // }
+                // Delete file from device after successful upload
+                if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.enqueueCommand("app_msg rm_file \(fileNumber)")
+                        self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
+                    }
+                } else if fileNumber < 0 {
+                    self.logger.logWarning("[FileStream] Cannot delete file - invalid file number: \(fileNumber)")
+                } else {
+                    self.logger.logWarning("[FileStream] Cannot delete file \(fileNumber) - not connected or UART not ready")
+                }
             }
         }
     }
