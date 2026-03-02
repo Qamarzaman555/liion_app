@@ -3582,6 +3582,17 @@ class BleScanService : Service() {
                     startNewSession(phoneBatteryLevel, isPhoneCharging)
                 }
             }
+
+            // Auto-start health calculation on service startup when already charging.
+            // This mirrors the charger-connected behavior and avoids waiting for a state toggle.
+            if (isPhoneCharging && !healthCalculationInProgress &&
+                phoneBatteryLevel <= (100 - HEALTH_CALCULATION_RANGE)
+            ) {
+                resetHealthCalculation()
+                if (startHealthCalculation()) {
+                    logger.logInfo("Battery health calculation auto-started - service startup while charging")
+                }
+            }
         }
         
         // Start keep-alive mechanism
