@@ -362,7 +362,7 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "Beta Build 1.5.0 (136)"
+    private val COLLECTION_NAME = "Beta Build 1.5.0 (137)"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
