@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:path_provider/path_provider.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -351,10 +350,10 @@ class LeoOtaController extends GetxController {
       debugPrint("Results length is ${result.items.length}");
 
       if (result.items.isEmpty) {
-        AppSnackbars.showSuccess(
-          title: 'No Firmware Found',
-          message: 'No firmware files found in the specified folder.',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'No Firmware Found',
+        //   message: 'No firmware files found in the specified folder.',
+        // );
         isDownloadingFirmware.value = false;
         return;
       }
@@ -440,10 +439,10 @@ class LeoOtaController extends GetxController {
     // Check if device is connected
     final connectionState = await BleScanService.getConnectionState();
     if (connectionState != BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: 'Not Connected',
-        message: 'Please connect to Leo device first.',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Not Connected',
+      //   message: 'Please connect to Leo device first.',
+      // );
       return;
     }
 
@@ -498,10 +497,10 @@ class LeoOtaController extends GetxController {
     } catch (e) {
       debugPrint("Error in startOtaUpdate: $e");
       await WakelockPlus.disable();
-      AppSnackbars.showSuccess(
-        title: 'Update Failed',
-        message: 'Failed to start firmware update: $e',
-      );
+      // AppSnackbars.showSuccess(
+      //    title: 'Update Failed',
+      //   message: 'Failed to start firmware update: $e',
+      // );
     }
   }
 
@@ -531,10 +530,10 @@ class LeoOtaController extends GetxController {
   /// Handle OTA failure - close dialogs and reset state
   void _handleOtaFailure(String message) {
     debugPrint('Handling OTA failure: $message');
-    AppSnackbars.showSuccess(
-      title: 'Update Failed',
-      message: 'Failed to update firmware: $message',
-    );
+    // AppSnackbars.showSuccess(
+    //   title: 'Update Failed',
+    //   message: 'Failed to update firmware: $message',
+    // );
 
     // Stop progress polling
     _progressPollingTimer?.cancel();

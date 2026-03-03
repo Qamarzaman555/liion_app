@@ -3,7 +3,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/core/widgets/custom_button.dart';
 import 'package:liion_app/app/modules/advanced_settings/utils/dialog_helper.dart';
 import 'package:liion_app/app/modules/led_timeout/controllers/led_timeout_controller.dart';
@@ -41,10 +40,10 @@ class LedTimeoutView extends StatelessWidget {
             onSubmit: (value) => controller.setTimeout(value),
           );
         } else {
-          AppSnackbars.showSuccess(
-            title: 'No Device Connected',
-            message: 'Please connect to a device to update the LED timeout',
-          );
+          // AppSnackbars.showSuccess(
+          //   title: 'No Device Connected',
+          //   message: 'Please connect to a device to update the LED timeout',
+          // );
         }
       },
     );

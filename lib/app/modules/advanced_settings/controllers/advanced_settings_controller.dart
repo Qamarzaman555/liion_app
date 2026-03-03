@@ -1,5 +1,4 @@
 import 'package:get/get.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/controllers/leo_home_controller.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
@@ -26,10 +25,10 @@ class AdvancedSettingsController extends GetxController {
   Future<void> requestAdvancedGhostMode(bool value) async {
     if (_leoHomeController.connectionState.value !=
         BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update Ghost Mode",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update Ghost Mode",
+      // );
       return;
     }
 
@@ -40,10 +39,10 @@ class AdvancedSettingsController extends GetxController {
   Future<void> requestAdvancedSilentMode(bool value) async {
     if (_leoHomeController.connectionState.value !=
         BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update Silent Mode",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update Silent Mode",
+      // );
       return;
     }
 
@@ -54,10 +53,10 @@ class AdvancedSettingsController extends GetxController {
   Future<void> requestAdvancedHigherChargeLimit(bool value) async {
     if (_leoHomeController.connectionState.value !=
         BleConnectionState.connected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update Higher Charge Limit",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update Higher Charge Limit",
+      // );
       return;
     }
 

@@ -133,9 +133,15 @@ class BatteryMetricsCard extends GetView<BatteryController> {
         Obx(
           () => BatteryCapacityRow(
             label: "Estimated Capacity",
-            value: BatteryFormatters.formatEstimatedCapacity(
-              controller.estimatedCapacityMah.value,
-            ),
+            value:
+                controller.estimatedCapacityMah.value >
+                    controller.designedCapacityMah.value
+                ? BatteryFormatters.formatCapacity(
+                    controller.designedCapacityMah.value,
+                  )
+                : BatteryFormatters.formatEstimatedCapacity(
+                    controller.estimatedCapacityMah.value,
+                  ),
           ),
         ),
         SizedBox(height: 10),

@@ -18,8 +18,6 @@ import '../modules/manual/views/manual_view.dart';
 import '../modules/manual/bindings/manual_binding.dart';
 import '../modules/battery/history/views/battery_history_view.dart';
 import '../modules/battery/history/battery_history_binding.dart';
-import '../modules/led_timeout/views/led_timeout_view.dart';
-import '../modules/led_timeout/bindings/led_timeout_binding.dart';
 
 class AppPages {
   static const initial = AppRoutes.splash;

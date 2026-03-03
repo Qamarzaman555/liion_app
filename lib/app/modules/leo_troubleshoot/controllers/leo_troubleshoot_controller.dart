@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/controllers/leo_ota_controller.dart';
 import 'package:liion_app/app/modules/leo_empty/views/widgets/leo_firmware_update_dialog.dart';
 import 'package:liion_app/app/modules/leo_empty/views/widgets/wait_for_install_dialog.dart';
@@ -17,22 +16,22 @@ class LeoTroubleshootController extends GetxController {
       isResetting.value = true;
       final success = await BleScanService.sendCommand("reboot");
       if (success) {
-        AppSnackbars.showSuccess(
-          title: 'Success',
-          message: 'Leo device reset command sent',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'Success',
+        //   message: 'Leo device reset command sent',
+        // );
       } else {
-        AppSnackbars.showSuccess(
-          title: 'Error',
-          message:
-              'Failed to send reset command. Please ensure device is connected.',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'Error',
+        //   message:
+        //       'Failed to send reset command. Please ensure device is connected.',
+        // );
       }
     } catch (e) {
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'An error occurred: $e',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Error',
+      //   message: 'An error occurred: $e',
+      // );
     } finally {
       isResetting.value = false;
     }
@@ -45,16 +44,16 @@ class LeoTroubleshootController extends GetxController {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        AppSnackbars.showSuccess(
-          title: 'Error',
-          message: 'Could not open FAQ page',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'Error',
+        //   message: 'Could not open FAQ page',
+        // );
       }
     } catch (e) {
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'An error occurred: $e',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Error',
+      //   message: 'An error occurred: $e',
+      // );
     }
   }
 
@@ -158,10 +157,10 @@ class LeoTroubleshootController extends GetxController {
       }
     } catch (e) {
       print('🔴 [Troubleshoot] Error: $e');
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'Failed to start OTA update: $e',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Error',
+      //   message: 'Failed to start OTA update: $e',
+      // );
     } finally {
       isUpdating.value = false;
     }

@@ -5,7 +5,6 @@ import 'package:get/get.dart';
 import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/models/graph_point.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/charge_models.dart';
 import 'package:liion_app/app/modules/leo_empty/utils/graph_hive_storage_service.dart';
@@ -706,10 +705,10 @@ class LeoHomeController extends GetxController {
   // Update charging mode
   Future<void> updateChargingMode(ChargingMode mode) async {
     if (connectionState.value == BleConnectionState.disconnected) {
-      AppSnackbars.showSuccess(
-        title: "No Device Connected",
-        message: "Please connect to a device to update the charging mode",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "No Device Connected",
+      //   message: "Please connect to a device to update the charging mode",
+      // );
       return;
     }
 
@@ -719,10 +718,10 @@ class LeoHomeController extends GetxController {
     } catch (e) {
       // Revert the mode if the command fails
       currentMode.value = ChargingMode.smart;
-      AppSnackbars.showSuccess(
-        title: "Failed to update charging mode",
-        message: "Please try again",
-      );
+      // AppSnackbars.showSuccess(
+      //   title: "Failed to update charging mode",
+      //   message: "Please try again",
+      // );
     }
   }
 

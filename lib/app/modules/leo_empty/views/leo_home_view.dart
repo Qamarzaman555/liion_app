@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liion_app/app/core/constants/app_assets.dart';
 import 'package:liion_app/app/core/constants/app_colors.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/modules/leo_empty/views/widgets/leo_firmware_update_dialog.dart';
 import 'package:liion_app/app/modules/leo_empty/controllers/leo_ota_controller.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
@@ -67,7 +66,11 @@ class LeoHomeView extends GetView<LeoHomeController> {
                     ),
                     ThankYouNote(controller: controller),
                     const SizedBox(height: 20),
-                    Obx(()=> controller.hasConnectedOnce.value ? LeoMetricsSummary(controller: controller) : const SizedBox.shrink()),
+                    Obx(
+                      () => controller.hasConnectedOnce.value
+                          ? LeoMetricsSummary(controller: controller)
+                          : const SizedBox.shrink(),
+                    ),
                   ],
                 ),
               ),
@@ -167,17 +170,17 @@ class LeoHomeView extends GetView<LeoHomeController> {
         'google.com',
       ).timeout(const Duration(seconds: 3));
       if (result.isEmpty || result[0].rawAddress.isEmpty) {
-        AppSnackbars.showSuccess(
-          title: 'No Internet Connection',
-          message: 'Please check your internet connection and try again.',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'No Internet Connection',
+        //   message: 'Please check your internet connection and try again.',
+        // );
         return;
       }
     } catch (e) {
-      AppSnackbars.showSuccess(
-        title: 'No Internet Connection',
-        message: 'Please check your internet connection and try again.',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'No Internet Connection',
+      //   message: 'Please check your internet connection and try again.',
+      // );
       return;
     }
 

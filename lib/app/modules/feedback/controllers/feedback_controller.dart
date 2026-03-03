@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server/gmail.dart';
@@ -111,18 +110,18 @@ class FeedbackController extends GetxController {
       } catch (e) {
         loading.value = false;
         if (context.mounted) {
-          AppSnackbars.showSuccess(
-            title: 'Error',
-            message: 'Error sending feedback: $e',
-          );
+          // AppSnackbars.showSuccess(
+          //   title: 'Error',
+          //   message: 'Error sending feedback: $e',
+          // );
         }
       }
     } else {
       if (context.mounted) {
-        AppSnackbars.showSuccess(
-          title: 'Error',
-          message: 'Error sending feedback: Please fill in all required fields',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'Error',
+        //   message: 'Error sending feedback: Please fill in all required fields',
+        // );
       }
     }
   }
@@ -219,10 +218,10 @@ OS: ${Platform.isAndroid ? 'Android' : 'iOS'}$deviceHistoryText
       print('Message sent: $sendReport');
 
       if (context.mounted) {
-        AppSnackbars.showSuccess(
-          title: 'Success',
-          message: 'Feedback sent successfully',
-        );
+        // AppSnackbars.showSuccess(
+        //   title: 'Success',
+        //   message: 'Feedback sent successfully',
+        // );
       }
     } on MailerException catch (e) {
       print('Message not sent: ${e.message}');

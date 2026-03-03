@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:liion_app/app/core/utils/snackbar_utils.dart';
 import 'package:liion_app/app/services/ble_scan_service.dart';
 
 class ChargeLimitController extends GetxController {
@@ -90,10 +89,10 @@ class ChargeLimitController extends GetxController {
       chargeLimit.value = limit;
       chargeLimitEnabled.value = true;
     } else {
-      AppSnackbars.showSuccess(
-        title: 'Error',
-        message: 'Failed to set charge limit',
-      );
+      // AppSnackbars.showSuccess(
+      //   title: 'Error',
+      //   message: 'Failed to set charge limit',
+      // );
     }
 
     return success;
