@@ -175,7 +175,7 @@ class BLEService: NSObject {
     private lazy var firestore: Firestore = {
         return Firestore.firestore()
     }()
-    private let collectionName = "Beta Build 1.5.0 (136)"
+    private let collectionName = "Beta Build 1.5.0 (137)"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {

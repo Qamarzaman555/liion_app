@@ -8,7 +8,7 @@ class IOSBackgroundService {
       MethodChannel('nl.liionpower.app/background_service');
 
   /// Start the native iOS background service
-  /// This will keep the app alive in background using location services
+  /// This keeps background helpers active for BLE-centric workflows
   static Future<Map<String, dynamic>> startBackgroundService() async {
     if (!Platform.isIOS) {
       return {'success': false, 'message': 'Not running on iOS'};
@@ -57,7 +57,7 @@ class IOSBackgroundService {
   }
 
   /// Get detailed status of the background service
-  /// Returns information about location services, authorization, etc.
+  /// Returns background service runtime information.
   static Future<Map<String, dynamic>> getServiceStatus() async {
     if (!Platform.isIOS) {
       return {'error': 'Not running on iOS'};

@@ -28,7 +28,7 @@
 	<key>CFBundleSignature</key>
 	<string>APPL</string>
 	<key>CFBundleVersion</key>
-	<string>56</string>
+	<string>57</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -54,12 +54,6 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app needs local network access to communicate with the backend server and provide device logging functionality.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs location access to keep the service running in the background and provide continuous functionality.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>This app needs location access to keep the service running in the background.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs location access to provide continuous functionality.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app needs access to select firmware update files from your photo library to perform over-the-air (OTA) updates on your Liion battery device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -68,7 +62,6 @@
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>location</string>
 		<string>fetch</string>
 		<string>processing</string>
 		<string>audio</string>

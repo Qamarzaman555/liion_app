@@ -1,19 +1,16 @@
 import Foundation
 import UIKit
-import CoreLocation
 import AVFoundation
 
 /// BackgroundService - Keeps the app alive in background
 /// This service uses multiple strategies to keep the app running:
-/// 1. Location services (most reliable for long-term background execution)
-/// 2. Background tasks
-/// 3. Silent audio (optional, can be enabled if needed)
+/// 1. Background tasks
+/// 2. Silent audio (optional, can be enabled if needed)
 class BackgroundService: NSObject {
     
     static let shared = BackgroundService()
     
     private var isRunning = false
-    private var locationManager: CLLocationManager?
     private var audioPlayer: AVAudioPlayer?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     
@@ -21,7 +18,6 @@ class BackgroundService: NSObject {
     
     private override init() {
         super.init()
-        setupLocationManager()
     }
     
     /// Start the background service
@@ -33,9 +29,6 @@ class BackgroundService: NSObject {
         
         isRunning = true
         logger.logInfo("Starting BackgroundService")
-        
-        // Start location updates (most reliable for keeping app alive)
-        startLocationUpdates()
         
         // Setup background task handling
         setupBackgroundTaskHandling()
@@ -53,48 +46,10 @@ class BackgroundService: NSObject {
         isRunning = false
         logger.logInfo("Stopping BackgroundService")
         
-        stopLocationUpdates()
         stopSilentAudio()
+        endBackgroundTask()
         
         logger.logInfo("BackgroundService stopped")
-    }
-    
-    // MARK: - Location Services Setup
-    
-    private func setupLocationManager() {
-        locationManager = CLLocationManager()
-        locationManager?.delegate = self
-        locationManager?.desiredAccuracy = kCLLocationAccuracyKilometer // Low accuracy to save battery
-        locationManager?.distanceFilter = 500 // Update every 500 meters
-        locationManager?.allowsBackgroundLocationUpdates = true
-        locationManager?.pausesLocationUpdatesAutomatically = false
-        locationManager?.showsBackgroundLocationIndicator = true
-    }
-    
-    private func startLocationUpdates() {
-        guard let locationManager = locationManager else { return }
-        
-        let authStatus = CLLocationManager.authorizationStatus()
-        
-        switch authStatus {
-        case .notDetermined:
-            locationManager.requestAlwaysAuthorization()
-            logger.logInfo("Requesting location authorization")
-        case .authorizedAlways, .authorizedWhenInUse:
-            locationManager.startUpdatingLocation()
-            locationManager.startMonitoringSignificantLocationChanges()
-            logger.logInfo("Location updates started")
-        case .denied, .restricted:
-            logger.logError("Location access denied or restricted")
-        @unknown default:
-            logger.logWarning("Unknown location authorization status")
-        }
-    }
-    
-    private func stopLocationUpdates() {
-        locationManager?.stopUpdatingLocation()
-        locationManager?.stopMonitoringSignificantLocationChanges()
-        logger.logInfo("Location updates stopped")
     }
     
     // MARK: - Background Task Handling
@@ -187,46 +142,8 @@ class BackgroundService: NSObject {
     func getServiceStatus() -> [String: Any] {
         return [
             "isRunning": isRunning,
-            "locationServicesEnabled": CLLocationManager.locationServicesEnabled(),
-            "authorizationStatus": CLLocationManager.authorizationStatus().rawValue,
             "backgroundTimeRemaining": UIApplication.shared.backgroundTimeRemaining
         ]
-    }
-}
-
-// MARK: - CLLocationManagerDelegate
-
-extension BackgroundService: CLLocationManagerDelegate {
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        
-        let latitude = location.coordinate.latitude
-        let longitude = location.coordinate.longitude
-        
-        logger.logDebug("Location updated: (\(latitude), \(longitude))")
-        
-        // Restart background task to extend background time
-        if UIApplication.shared.applicationState == .background {
-            startBackgroundTask()
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        logger.logError("Location manager failed: \(error.localizedDescription)")
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        logger.logInfo("Location authorization changed: \(status.rawValue)")
-        
-        switch status {
-        case .authorizedAlways, .authorizedWhenInUse:
-            startLocationUpdates()
-        case .denied, .restricted:
-            logger.logError("Location access denied - background service may not work properly")
-        default:
-            break
-        }
     }
 }
 

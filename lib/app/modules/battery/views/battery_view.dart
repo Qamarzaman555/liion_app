@@ -56,7 +56,9 @@ class BatteryView extends GetView<BatteryController> {
             ),
             Obx(
               () => Text(
-                "${chargeLimitController.chargeLimit.value}%",
+                chargeLimitController.chargeLimitEnabled.value
+                    ? "${chargeLimitController.chargeLimit.value}%"
+                    : "OFF",
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,

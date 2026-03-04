@@ -212,7 +212,7 @@ class _BackgroundServiceExampleState extends State<BackgroundServiceExample> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Location permission must be set to "Always Allow" for background service to work properly.',
+                      'Background behavior is optimized for BLE central workflows (scan/connect).',
                       style: TextStyle(color: Colors.white),
                     ),
                   ],

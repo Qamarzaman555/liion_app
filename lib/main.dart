@@ -63,12 +63,10 @@ Future<void> _checkBatteryOptimization() async {
 }
 
 Future<void> _startIOSService() async {
-  // Request BLE and location permissions for iOS
+  // Request BLE permissions for iOS
   await [
     Permission.bluetoothScan,
     Permission.bluetoothConnect,
-    Permission.locationWhenInUse,
-    Permission.locationAlways,
   ].request();
 
   // Start iOS BLE service (always starts, no foreground notification needed)
