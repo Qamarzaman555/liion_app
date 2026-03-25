@@ -1776,6 +1776,44 @@ class BLEService: NSObject {
     }
     
     /// Store data to Firebase (matching Android storeDataToFirebase)
+    private func parseFirmwareMetadata(from resolvedFirmware: String) -> [String: Any] {
+        let trimmed = resolvedFirmware.trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultMetadata: [String: Any] = [
+            "patch": 0,
+            "major": 0,
+            "minor": 0,
+            "type": "Release"
+        ]
+        
+        guard !trimmed.isEmpty else {
+            return defaultMetadata
+        }
+        
+        let pattern = #"^([A-Za-z]+)_v(\d+)\.(\d+)\.(\d+)(?:[-_].*)?$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return defaultMetadata
+        }
+        
+        let range = NSRange(location: 0, length: (trimmed as NSString).length)
+        guard let match = regex.firstMatch(in: trimmed, options: [], range: range),
+              match.numberOfRanges == 5 else {
+            return defaultMetadata
+        }
+        
+        let nsString = trimmed as NSString
+        let type = nsString.substring(with: match.range(at: 1))
+        let major = Int(nsString.substring(with: match.range(at: 2))) ?? 0
+        let minor = Int(nsString.substring(with: match.range(at: 3))) ?? 0
+        let patch = Int(nsString.substring(with: match.range(at: 4))) ?? 0
+        
+        return [
+            "patch": patch,
+            "major": major,
+            "minor": minor,
+            "type": type
+        ]
+    }
+
     private func storeDataToFirebase(
         dataSnapshot: [ChargeData],
         fileNumber: Int,
@@ -1810,6 +1848,8 @@ class BLEService: NSObject {
                     self.serialNumber = UserDefaults.standard.string(forKey: self.serialNumberKey) ?? ""
                 }
                 let binFileName = self.firmwareVersion
+                let resolvedFirmware = binFileName.trimmingCharacters(in: .whitespaces)
+                let firmwareMetadata = self.parseFirmwareMetadata(from: resolvedFirmware)
                 // Use iOS bundle metadata as the source of truth for app version/build.
                 // Flutter build-name/build-number map to these keys on iOS.
                 let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
@@ -1879,7 +1919,8 @@ class BLEService: NSObject {
                 var firebaseObject: [String: Any] = [
                     "model": "Leo",
                     "serial_number": self.serialNumber.components(separatedBy: "\\").first?.trimmingCharacters(in: .whitespaces) ?? self.serialNumber,
-                    "firmware": binFileName.trimmingCharacters(in: .whitespaces),
+                    "firmware": resolvedFirmware,
+                    "fw": firmwareMetadata,
                     "sw": [
                         "type": "Release",
                         "major": major,
