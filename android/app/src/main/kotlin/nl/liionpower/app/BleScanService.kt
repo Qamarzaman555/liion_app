@@ -1967,6 +1967,19 @@ class BleScanService : Service() {
             }
         }
     }
+
+    /**
+     * Parses Leo firmware strings like "Release_v1.5.23-rc10" or "Release_v1.6.5".
+     * Major/minor/patch come from the numeric part after `_v`; trailing semver labels (e.g. `-rc10`) are ignored.
+     */
+    private fun parseFirmwareVersionComponents(resolvedFirmware: String): Triple<Int, Int, Int> {
+        val m = Regex("""_v(\d+)\.(\d+)(?:\.(\d+))?""").find(resolvedFirmware.trim())
+            ?: return Triple(0, 0, 0)
+        val major = m.groupValues[1].toIntOrNull() ?: 0
+        val minor = m.groupValues[2].toIntOrNull() ?: 0
+        val patch = m.groupValues.getOrNull(3)?.takeIf { it.isNotEmpty() }?.toIntOrNull() ?: 0
+        return Triple(major, minor, patch)
+    }
     
     private fun storeDataToFirebase(
         dataSnapshot: List<ChargeData> = chargeDataList.toList(),
@@ -2049,6 +2062,7 @@ class BleScanService : Service() {
                 val minor = if (versionParts.size > 1) versionParts[1].toIntOrNull() ?: 0 else 5
                 val patch = if (versionParts.size > 2) versionParts[2].toIntOrNull() ?: 0 else 0
                 val build = appBuildNumber.toIntOrNull() ?: 0
+                val (fwMajor, fwMinor, fwPatch) = parseFirmwareVersionComponents(resolvedFirmware)
                 
                 // Get flags from first entry (they should be consistent across entries)
                 val firstFlags = dataSnapshot.firstOrNull()?.flags ?: 0
@@ -2068,6 +2082,12 @@ class BleScanService : Service() {
                         "minor" to minor,
                         "patch" to patch,
                         "build" to build
+                    ),
+                    "fw" to mapOf(
+                        "type" to "Release",
+                        "major" to fwMajor,
+                        "minor" to fwMinor,
+                        "patch" to fwPatch,
                     ),
                     "device" to mapOf(
                         "type" to "mobile",
