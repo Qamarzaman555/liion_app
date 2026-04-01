@@ -222,8 +222,8 @@ class LeoHomeController extends GetxController {
 
         final storage = firebase_storage.FirebaseStorage.instance;
         // TODO: Change the file path for different releases.
-        final result = await storage.ref('Beta fw').listAll();
-        // final result = await storage.ref('Internal fw').listAll();
+        // final result = await storage.ref('Beta fw').listAll();
+        final result = await storage.ref('Internal fw').listAll();
 
         if (result.items.isEmpty) {
           print('No firmware files found in Firebase. Exiting download retry.');
