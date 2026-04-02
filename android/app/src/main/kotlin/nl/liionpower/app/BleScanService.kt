@@ -362,8 +362,8 @@ class BleScanService : Service() {
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    // private val COLLECTION_NAME = "leoFilesProduction"
-    private val COLLECTION_NAME = "leoFilesOpen"
+    private val COLLECTION_NAME = "leoFilesProduction"
+    // private val COLLECTION_NAME = "leoFilesOpen"
     // private val COLLECTION_NAME = "leoFilesInternal"
     
     private var otaCancelRequested = false
