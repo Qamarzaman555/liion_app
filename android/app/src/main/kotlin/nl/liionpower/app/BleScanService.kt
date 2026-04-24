@@ -1942,11 +1942,25 @@ class BleScanService : Service() {
                     android.util.Log.w("BleScanService", "[FileStream] Corrupted file $currentFile detected (${corruptionReasons.joinToString(", ")}).")
                 }
                 
+                // Capture completed file number at ETX time to avoid races with currentFile updates.
+                val completedFileNumber = currentFile
+                if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                    enqueueCommand("app_msg rm_file $completedFileNumber")
+                    android.util.Log.i(
+                        "BleScanService",
+                        "[FileStream] Sent rm_file for completed file $completedFileNumber at ETX"
+                    )
+                } else {
+                    android.util.Log.w(
+                        "BleScanService",
+                        "[FileStream] Skipped rm_file at ETX (file=$completedFileNumber, state=$connectionState, uart=$isUartReady)"
+                    )
+                }
+
                 // Store data to Firebase/local storage using snapshot of current list
                 val dataSnapshot = chargeDataList.toList()
-                val fileNumberToDelete = currentFile // Capture current file number for deletion after upload
                 if (!hasUnwantedCharacters) {
-                    storeDataToFirebase(dataSnapshot, fileNumberToDelete, rawFileData, isCorruptedFile)
+                    storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, isCorruptedFile)
                 } else {
                     android.util.Log.w("BleScanService", "[FileStream] Skipping Firebase upload due to unwanted characters in data")
                 }
@@ -2234,13 +2248,6 @@ class BleScanService : Service() {
                     // Remove from pending uploads
                     prefs?.edit()?.remove(pendingKey)?.remove(dataKeyToRemove)?.remove(rawDataKeyToRemove)?.apply()
                     
-                    // // Delete file from device after successful upload
-                    // if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                    //     handler.postDelayed({
-                    //         enqueueCommand("app_msg rm_file $fileNumber")
-                    //         android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
-                    //     }, 500) // Small delay to ensure Firebase operation completes
-                    // }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
