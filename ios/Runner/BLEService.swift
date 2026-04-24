@@ -120,6 +120,8 @@ class BLEService: NSObject {
     private var leoFirstFile = 0
     private var leoLastFile = 0
     private var currentFile = 0
+    /// Highest file index we request; `leoLastFile` is skipped (device may still be writing it).
+    private var leoHighestStreamableFile: Int { leoLastFile - 1 }
     private var fileCheck = 0
 
     // OTA state variables (matching Android)
@@ -167,6 +169,8 @@ class BLEService: NSObject {
     private var processedDataPoints: Set<String> = []
     private var hasUnwantedCharacters = false
     private var hasFileHeaderRow = false
+    private var hasEvaluatedFirstDataPacketSession = false
+    private var isFirstDataPacketSessionMissing = false
     private var currentSession = 0
     private var currentMode = 0
     private var currentChargeLimit = 0
@@ -177,7 +181,8 @@ class BLEService: NSObject {
     }()
     // private let collectionName = "leoFilesProduction"
     // private let collectionName = "leoFilesOpen"
-    private let collectionName = "leoFilesInternal"
+    // private let collectionName = "leoFilesInternal"
+    private let collectionName = "sparkleoTest"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1240,15 +1245,21 @@ class BLEService: NSObject {
         return ["success": true, "message": "get_files command sent"]
     }
     
-    /// Start streaming a specific file (matching Android startFileStreaming)
-    private func startFileStreamingForFile() {
+    /// Start streaming a specific file (matching Android startFileStreaming). Returns false if nothing was started.
+    @discardableResult
+    private func startFileStreamingForFile() -> Bool {
         guard connectionState == .connected && isUartReady else {
             logger.logWarning("[FileStream] Cannot start file streaming - not connected or UART not ready")
-            return
+            return false
         }
         
         isFileStreamingActive = true
-        currentFile = leoFirstFile
+        guard leoHighestStreamableFile >= leoFirstFile else {
+            logger.logInfo("[FileStream] No streamable files (skipping active last file \(leoLastFile) in range \(leoFirstFile)-\(leoLastFile))")
+            isFileStreamingActive = false
+            return false
+        }
+        currentFile = leoHighestStreamableFile
         streamFileResponseReceived = false
         waitingForStreamFileResponse = true
         lastStreamFileCommandTime = Date().timeIntervalSince1970
@@ -1262,6 +1273,7 @@ class BLEService: NSObject {
                 self.enqueueCommand("py_msg")
             }
         }
+        return true
     }
     
     /// Request next file (matching Android requestNextFile)
@@ -1303,7 +1315,7 @@ class BLEService: NSObject {
                 // Start timeout after py_msg is sent
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     guard let self = self else { return }
-                    if !self.streamFileResponseReceived && self.currentFile >= self.leoFirstFile && self.currentFile <= self.leoLastFile {
+                    if !self.streamFileResponseReceived && self.currentFile >= self.leoFirstFile && self.currentFile < self.leoLastFile {
                         self.startStreamFileTimeout()
                     }
                 }
@@ -1325,17 +1337,16 @@ class BLEService: NSObject {
             self.waitingForStreamFileResponse = false
             self.isFileStreamingActive = false
             
-            // Move to next file if available
-            if self.currentFile < self.leoLastFile && self.connectionState == .connected {
-                self.currentFile += 1
-                self.logger.logInfo("[FileStream] Moving to next file due to timeout: \(self.currentFile)")
+            // Move to previous file if available (reverse order; last index in range is skipped)
+            if self.currentFile > self.leoFirstFile && self.connectionState == .connected {
+                self.currentFile -= 1
+                self.logger.logInfo("[FileStream] Moving to previous file due to timeout: \(self.currentFile)")
                 self.requestNextFile()
-            } else if self.currentFile == self.leoLastFile {
-                // Retry last file once more
-                self.logger.logInfo("[FileStream] Retrying last file due to timeout: \(self.currentFile)")
+            } else if self.currentFile == self.leoFirstFile {
+                self.logger.logInfo("[FileStream] Retrying oldest file due to timeout: \(self.currentFile)")
                 self.requestNextFile()
             } else {
-                self.logger.logInfo("[FileStream] Timeout on file beyond last file. Stopping file streaming.")
+                self.logger.logInfo("[FileStream] Timeout outside streamable range. Stopping file streaming.")
                 self.stopFileStreaming()
             }
         }
@@ -1372,7 +1383,7 @@ class BLEService: NSObject {
                 self.leoFirstFile > 0 &&
                 self.leoLastFile > 0 &&
                 self.currentFile >= self.leoFirstFile &&
-                self.currentFile <= self.leoLastFile &&
+                self.currentFile < self.leoLastFile &&
                 !self.isFileStreamingActive {
                 
                 self.logger.logInfo("[FileStream] ========================================")
@@ -1386,7 +1397,7 @@ class BLEService: NSObject {
             }
             
             // Schedule next check (only if we still have files to process)
-            if self.leoFirstFile > 0 && self.leoLastFile > 0 && self.currentFile <= self.leoLastFile {
+            if self.leoFirstFile > 0 && self.leoLastFile > 0 && self.currentFile < self.leoLastFile {
                 DispatchQueue.main.asyncAfter(deadline: .now() + self.fileStreamingRecoveryIntervalSeconds, execute: self.fileStreamingRecoveryWorkItem!)
             } else {
                 self.logger.logDebug("[FileStream] Recovery timer stopping - all files processed or no valid range")
@@ -1465,6 +1476,16 @@ class BLEService: NSObject {
                 hasFileHeaderRow = true
                 logger.logDebug("[FileStream] Skipped header row")
                 continue
+            }
+
+            // First actual data row must contain a valid session value.
+            if !hasEvaluatedFirstDataPacketSession {
+                hasEvaluatedFirstDataPacketSession = true
+                let firstRowSession = columns.count > 1 ? parseInt(columns[1]) : nil
+                if firstRowSession == nil {
+                    isFirstDataPacketSessionMissing = true
+                    logger.logWarning("[FileStream] First data packet is missing session for file \(currentFile). Marking file as corrupted.")
+                }
             }
             
             // Check for unwanted characters
@@ -1598,6 +1619,8 @@ class BLEService: NSObject {
             processedDataPoints.removeAll()
             hasUnwantedCharacters = false
             hasFileHeaderRow = false
+            hasEvaluatedFirstDataPacketSession = false
+            isFirstDataPacketSessionMissing = false
             rawFileData = ""
             
             // Also trim raw data accumulator to remove everything before STX
@@ -1634,9 +1657,12 @@ class BLEService: NSObject {
             // Store data to Firebase/local storage using snapshot of current list
             let dataSnapshot = chargeDataList
             let fileNumberToDelete = currentFile
-            let isCorruptedFile = !hasFileHeaderRow
-            if isCorruptedFile {
+            let isCorruptedFile = !hasFileHeaderRow || isFirstDataPacketSessionMissing
+            if !hasFileHeaderRow {
                 logger.logWarning("[FileStream] Missing header row for file \(fileNumberToDelete). Marking as corrupted.")
+            }
+            if isFirstDataPacketSessionMissing {
+                logger.logWarning("[FileStream] Missing session in first data packet for file \(fileNumberToDelete). Marking as corrupted.")
             }
             
             if !hasUnwantedCharacters {
@@ -1659,6 +1685,8 @@ class BLEService: NSObject {
             processedDataPoints.removeAll()
             hasUnwantedCharacters = false
             hasFileHeaderRow = false
+            hasEvaluatedFirstDataPacketSession = false
+            isFirstDataPacketSessionMissing = false
             streamFileResponseReceived = false
             waitingForStreamFileResponse = false
             
@@ -1722,16 +1750,16 @@ class BLEService: NSObject {
             self.logger.logInfo("[FileStream] Cooldown delay completed (\(Int(delaySeconds))s)")
             self.logger.logInfo("[FileStream] BLE stack is ready for next file stream")
             
-            // Move to next file if available
-            if self.currentFile < self.leoLastFile && self.connectionState == .connected && self.isUartReady {
-                self.currentFile += 1
-                self.logger.logInfo("[FileStream] Streaming next file: \(self.currentFile)")
+            // Move to previous file if available (reverse order; device last file is skipped)
+            if self.currentFile > self.leoFirstFile && self.connectionState == .connected && self.isUartReady {
+                self.currentFile -= 1
+                self.logger.logInfo("[FileStream] Streaming previous file: \(self.currentFile)")
                 self.requestNextFile()
-            } else if self.currentFile == self.leoLastFile {
-                self.logger.logInfo("[FileStream] Completed last file (\(self.currentFile)). All files processed.")
+            } else if self.currentFile == self.leoFirstFile {
+                self.logger.logInfo("[FileStream] Completed oldest file (\(self.currentFile)). All streamable files processed.")
                 self.stopFileStreaming()
             } else {
-                self.logger.logInfo("[FileStream] All files processed. Current: \(self.currentFile), Last: \(self.leoLastFile)")
+                self.logger.logInfo("[FileStream] All files processed. Current: \(self.currentFile), range: \(self.leoFirstFile)-\(self.leoLastFile)")
                 self.stopFileStreaming()
             }
             
@@ -1741,12 +1769,12 @@ class BLEService: NSObject {
     
     /// Schedule next file after delay when file doesn't exist (matching Android scheduleNextFileAfterDelay)
     private func scheduleNextFileAfterDelay() {
-        // Increment file number before scheduling delay
-        if currentFile < leoLastFile {
-            currentFile += 1
-            logger.logInfo("[FileStream] File doesn't exist, will request next file: \(currentFile) after delay")
+        // Decrement file number before scheduling delay (reverse traversal)
+        if currentFile > leoFirstFile {
+            currentFile -= 1
+            logger.logInfo("[FileStream] File doesn't exist, will request previous file: \(currentFile) after delay")
         } else {
-            logger.logInfo("[FileStream] Reached last file (\(leoLastFile)), no more files to stream")
+            logger.logInfo("[FileStream] Reached oldest streamable file (\(leoFirstFile)), no more files to stream")
             stopFileStreaming()
             return
         }
@@ -2040,10 +2068,10 @@ class BLEService: NSObject {
                 
                 // Delete file from device after successful upload
                 if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.enqueueCommand("app_msg rm_file \(fileNumber)")
-                        self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
-                    }
+                    // DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    //     self.enqueueCommand("app_msg rm_file \(fileNumber)")
+                    //     self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
+                    // }
                 } else if fileNumber < 0 {
                     self.logger.logWarning("[FileStream] Cannot delete file - invalid file number: \(fileNumber)")
                 } else {
@@ -2548,20 +2576,18 @@ class BLEService: NSObject {
                 getFilesRangePending = false
                 leoFirstFile = startFile
                 leoLastFile = endFile
-                currentFile = leoFirstFile
                 
                 logger.logInfo("[FileStream] ========================================")
                 logger.logInfo("[FileStream] get_files response received")
-                logger.logInfo("[FileStream] File range: \(startFile) to \(endFile)")
-                logger.logInfo("[FileStream] Starting file streaming from file \(currentFile)")
+                logger.logInfo("[FileStream] File range: \(startFile) to \(endFile) (streaming reverse, skipping active last file \(endFile))")
                 logger.logInfo("[FileStream] ========================================")
 
                 print("[FileStream] get_files response received: \(startFile) to \(endFile)")
                 
-                // Start streaming from first file
-                startFileStreamingForFile()
-                // Start recovery timer to check if file streaming stops unexpectedly
-                startFileStreamingRecovery()
+                // Start streaming from second-highest file down to first (skip `endFile`)
+                if startFileStreamingForFile() {
+                    startFileStreamingRecovery()
+                }
                 getFilesRangePending = false
                 streamFileTimeoutWorkItem?.cancel()
             } else if getFilesRangePending {
@@ -2600,7 +2626,7 @@ class BLEService: NSObject {
             // 3. ERROR came within 3 seconds of sending stream_file command
             if waitingForStreamFileResponse &&
                 currentFile >= leoFirstFile &&
-                currentFile <= leoLastFile &&
+                currentFile < leoLastFile &&
                 timeSinceStreamFileCommand > 0 &&
                 timeSinceStreamFileCommand < 3.0 {
                 
