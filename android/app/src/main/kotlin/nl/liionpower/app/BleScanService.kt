@@ -359,12 +359,15 @@ class BleScanService : Service() {
     private val STREAM_FILE_TIMEOUT_MS = 10000L // 10 seconds timeout
     private var stxProcessedForCurrentFile = false // Flag to track if STX has been processed for current file
     private var headerDataPacketDetectedForCurrentFile = false // Set true when Leo sends timestamp header row for current file
+    private var firstDataPacketCheckedForCurrentFile = false // Tracks whether first parsed data packet has been validated
+    private var firstDataPacketSessionMissingForCurrentFile = false // True if first parsed packet has no session
     
     // Firebase storage
     private val firestore = FirebaseFirestore.getInstance()
-    private val COLLECTION_NAME = "leoFilesProduction"
+    // private val COLLECTION_NAME = "leoFilesProduction"
     // private val COLLECTION_NAME = "leoFilesOpen"
     // private val COLLECTION_NAME = "leoFilesInternal"
+    private val COLLECTION_NAME = "sparkleoTest"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -685,6 +688,8 @@ class BleScanService : Service() {
                                         isFileStreamingActive = true
                                         stxProcessedForCurrentFile = false // Reset STX flag for new stream
                                         headerDataPacketDetectedForCurrentFile = false
+                                        firstDataPacketCheckedForCurrentFile = false
+                                        firstDataPacketSessionMissingForCurrentFile = false
                                         // Start timeout timer
                                         startStreamFileTimeout()
                                     }
@@ -784,6 +789,8 @@ class BleScanService : Service() {
                                         isFileStreamingActive = true
                                         stxProcessedForCurrentFile = false // Reset STX flag for new stream
                                         headerDataPacketDetectedForCurrentFile = false
+                                        firstDataPacketCheckedForCurrentFile = false
+                                        firstDataPacketSessionMissingForCurrentFile = false
                                         // Start timeout timer
                                         startStreamFileTimeout()
                                     }
@@ -1058,13 +1065,16 @@ class BleScanService : Service() {
                     leoLastFile = endFile
         
                     
-                    if (!isFileStreamingActive && !waitingForStreamFileResponse && currentFile < leoFirstFile) {
-                        currentFile = leoFirstFile
+                    val latestStableFile = endFile - 1
+                    if (!isFileStreamingActive && !waitingForStreamFileResponse &&
+                        latestStableFile >= leoFirstFile &&
+                        (currentFile < leoFirstFile || currentFile > latestStableFile)) {
+                        currentFile = latestStableFile
                         
                         android.util.Log.i("BleScanService", "[FileStream] ========================================")
                         android.util.Log.i("BleScanService", "[FileStream] get_files response received")
                         android.util.Log.i("BleScanService", "[FileStream] File range: $startFile to $endFile")
-                        android.util.Log.i("BleScanService", "[FileStream] Starting file streaming from file $currentFile")
+                        android.util.Log.i("BleScanService", "[FileStream] Starting file streaming from file $currentFile (reverse order, skipping file $endFile)")
                         android.util.Log.i("BleScanService", "[FileStream] ========================================")
                         
                         startFileStreaming()
@@ -1228,9 +1238,16 @@ class BleScanService : Service() {
         hasUnwantedCharacters = false
         stxProcessedForCurrentFile = false
         headerDataPacketDetectedForCurrentFile = false
+        firstDataPacketCheckedForCurrentFile = false
+        firstDataPacketSessionMissingForCurrentFile = false
         rawFileData = ""
         
-        currentFile = leoFirstFile
+        currentFile = leoLastFile - 1
+        if (currentFile < leoFirstFile) {
+            android.util.Log.i("BleScanService", "[FileStream] No stable files to stream (range: $leoFirstFile-$leoLastFile). Skipping.")
+            stopFileStreaming()
+            return
+        }
         isFileStreamingActive = false // Will be set to true when STX is detected
         streamFileResponseReceived = false
         waitingForStreamFileResponse = true // Mark that we're waiting for stream_file response
@@ -1273,6 +1290,8 @@ class BleScanService : Service() {
         isFileStreamingActive = false
         stxProcessedForCurrentFile = false
         headerDataPacketDetectedForCurrentFile = false
+        firstDataPacketCheckedForCurrentFile = false
+        firstDataPacketSessionMissingForCurrentFile = false
         rawFileData = ""
         
         // Restart recovery timer when requesting a new file so it can detect if streaming doesn't start
@@ -1311,17 +1330,17 @@ class BleScanService : Service() {
             waitingForStreamFileResponse = false
             isFileStreamingActive = false
             
-            // Move to next file if available
-            if (currentFile < leoLastFile && connectionState == STATE_CONNECTED) {
-                currentFile++
-                android.util.Log.i("BleScanService", "[FileStream] Moving to next file due to timeout: $currentFile")
+            // Move to previous file if available
+            if (currentFile > leoFirstFile && connectionState == STATE_CONNECTED) {
+                currentFile--
+                android.util.Log.i("BleScanService", "[FileStream] Moving to previous file due to timeout: $currentFile")
                 requestNextFile()
-            } else if (currentFile == leoLastFile) {
-                // Retry last file once more
-                android.util.Log.i("BleScanService", "[FileStream] Retrying last file due to timeout: $currentFile")
+            } else if (currentFile == leoFirstFile) {
+                // Retry first file once more
+                android.util.Log.i("BleScanService", "[FileStream] Retrying first file due to timeout: $currentFile")
                 requestNextFile()
             } else {
-                android.util.Log.i("BleScanService", "[FileStream] Timeout on file beyond last file. Stopping file streaming.")
+                android.util.Log.i("BleScanService", "[FileStream] Timeout on file below first file. Stopping file streaming.")
                 stopFileStreaming()
             }
         }
@@ -1352,6 +1371,8 @@ class BleScanService : Service() {
         hasUnwantedCharacters = false
         stxProcessedForCurrentFile = false
         headerDataPacketDetectedForCurrentFile = false
+        firstDataPacketCheckedForCurrentFile = false
+        firstDataPacketSessionMissingForCurrentFile = false
         rawFileData = ""
         serialRequested = false
         cancelStreamFileTimeout()
@@ -1388,7 +1409,7 @@ class BleScanService : Service() {
             }
             
             // Schedule next check (only if we still have files to process)
-            if (leoFirstFile > 0 && leoLastFile > 0 && currentFile <= leoLastFile) {
+            if (leoFirstFile > 0 && leoLastFile > 0 && currentFile >= leoFirstFile) {
                 handler.postDelayed(fileStreamingRecoveryRunnable!!, FILE_STREAMING_RECOVERY_INTERVAL_MS)
             } else {
                 // All files processed or no valid range, stop recovery timer
@@ -1703,6 +1724,13 @@ class BleScanService : Service() {
                         if (dataEntry.chargeLimit != null) {
                             currentChargeLimit = dataEntry.chargeLimit!!
                         }
+                        if (!firstDataPacketCheckedForCurrentFile) {
+                            firstDataPacketCheckedForCurrentFile = true
+                            if (dataEntry.session == null) {
+                                firstDataPacketSessionMissingForCurrentFile = true
+                                android.util.Log.w("BleScanService", "[FileStream] First data packet missing session for file $currentFile. Marking file as corrupted.")
+                            }
+                        }
                         
                         // Update previous entry for next iteration
                         previousChargeData = dataEntry
@@ -1733,6 +1761,13 @@ class BleScanService : Service() {
                                     startupCount = previousChargeData?.startupCount,
                                     chargeProfile = previousChargeData?.chargeProfile
                                 )
+                                if (!firstDataPacketCheckedForCurrentFile) {
+                                    firstDataPacketCheckedForCurrentFile = true
+                                    if (minimalEntry.session == null) {
+                                        firstDataPacketSessionMissingForCurrentFile = true
+                                        android.util.Log.w("BleScanService", "[FileStream] First data packet missing session for file $currentFile. Marking file as corrupted.")
+                                    }
+                                }
                                 previousChargeData = minimalEntry
                                 chargeDataList.add(minimalEntry)
                                 android.util.Log.d("BleScanService", "[FileStream] Created minimal entry from malformed data")
@@ -1796,6 +1831,8 @@ class BleScanService : Service() {
                 processedDataPoints.clear()
                 hasUnwantedCharacters = false
                 headerDataPacketDetectedForCurrentFile = false
+                firstDataPacketCheckedForCurrentFile = false
+                firstDataPacketSessionMissingForCurrentFile = false
                 rawFileData = ""
                 
                 // Cancel timeout since we received STX
@@ -1868,6 +1905,13 @@ class BleScanService : Service() {
                                     if (dataEntry.session != null) currentSession = dataEntry.session!!
                                     if (dataEntry.mode != null) currentMode = dataEntry.mode!!
                                     if (dataEntry.chargeLimit != null) currentChargeLimit = dataEntry.chargeLimit!!
+                                    if (!firstDataPacketCheckedForCurrentFile) {
+                                        firstDataPacketCheckedForCurrentFile = true
+                                        if (dataEntry.session == null) {
+                                            firstDataPacketSessionMissingForCurrentFile = true
+                                            android.util.Log.w("BleScanService", "[FileStream] First data packet missing session for file $currentFile. Marking file as corrupted.")
+                                        }
+                                    }
                                     
                                     previousChargeData = dataEntry
                                     chargeDataList.add(dataEntry)
@@ -1890,9 +1934,12 @@ class BleScanService : Service() {
                     rawDataStr
                 }
                 android.util.Log.d("BleScanService", "[FileStream] Captured raw file data: ${rawFileData.length} characters")
-                val isCorruptedFile = !headerDataPacketDetectedForCurrentFile
+                val isCorruptedFile = !headerDataPacketDetectedForCurrentFile || firstDataPacketSessionMissingForCurrentFile
                 if (isCorruptedFile) {
-                    android.util.Log.w("BleScanService", "[FileStream] Missing header data packet for file $currentFile. Marking file as corrupted.")
+                    val corruptionReasons = mutableListOf<String>()
+                    if (!headerDataPacketDetectedForCurrentFile) corruptionReasons.add("missing header")
+                    if (firstDataPacketSessionMissingForCurrentFile) corruptionReasons.add("missing session in first data packet")
+                    android.util.Log.w("BleScanService", "[FileStream] Corrupted file $currentFile detected (${corruptionReasons.joinToString(", ")}).")
                 }
                 
                 // Store data to Firebase/local storage using snapshot of current list
@@ -1916,6 +1963,8 @@ class BleScanService : Service() {
                 waitingForStreamFileResponse = false
                 stxProcessedForCurrentFile = false // Reset STX flag for next file
                 headerDataPacketDetectedForCurrentFile = false
+                firstDataPacketCheckedForCurrentFile = false
+                firstDataPacketSessionMissingForCurrentFile = false
                 
                 // Schedule next file command after delay
                 scheduleNextFileStreamCommand()
@@ -2185,13 +2234,13 @@ class BleScanService : Service() {
                     // Remove from pending uploads
                     prefs?.edit()?.remove(pendingKey)?.remove(dataKeyToRemove)?.remove(rawDataKeyToRemove)?.apply()
                     
-                    // Delete file from device after successful upload
-                    if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                        handler.postDelayed({
-                            enqueueCommand("app_msg rm_file $fileNumber")
-                            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
-                        }, 500) // Small delay to ensure Firebase operation completes
-                    }
+                    // // Delete file from device after successful upload
+                    // if (fileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                    //     handler.postDelayed({
+                    //         enqueueCommand("app_msg rm_file $fileNumber")
+                    //         android.util.Log.i("BleScanService", "[FileStream] Sent rm_file command for file $fileNumber after successful upload")
+                    //     }, 500) // Small delay to ensure Firebase operation completes
+                    // }
                 }
                 .addOnFailureListener { e ->
                     android.util.Log.e("BleScanService", "[FileStream] Firebase upload failed: ${e.message}")
@@ -2425,16 +2474,16 @@ class BleScanService : Service() {
             android.util.Log.i("BleScanService", "[FileStream] Cooldown delay completed (${delaySeconds}s)")
             android.util.Log.i("BleScanService", "[FileStream] BLE stack is ready for next file stream")
             
-            // Move to next file if available
-            if (currentFile < leoLastFile && connectionState == STATE_CONNECTED && isUartReady) {
-                currentFile++
-                android.util.Log.i("BleScanService", "[FileStream] Streaming next file: $currentFile")
+            // Move to previous file if available
+            if (currentFile > leoFirstFile && connectionState == STATE_CONNECTED && isUartReady) {
+                currentFile--
+                android.util.Log.i("BleScanService", "[FileStream] Streaming previous file: $currentFile")
                 requestNextFile()
-            } else if (currentFile == leoLastFile) {
-                android.util.Log.i("BleScanService", "[FileStream] Completed last file ($currentFile). All files processed.")
+            } else if (currentFile == leoFirstFile) {
+                android.util.Log.i("BleScanService", "[FileStream] Completed first file ($currentFile). All files processed.")
                 stopFileStreaming()
             } else {
-                android.util.Log.i("BleScanService", "[FileStream] All files processed. Current: $currentFile, Last: $leoLastFile")
+                android.util.Log.i("BleScanService", "[FileStream] All files processed. Current: $currentFile, First: $leoFirstFile")
                 stopFileStreaming()
             }
             
@@ -2451,12 +2500,12 @@ class BleScanService : Service() {
             android.util.Log.d("BleScanService", "[FileStream] Cancelled previous delay schedule")
         }
         
-        // Increment file number before scheduling delay
-        if (currentFile < leoLastFile) {
-            currentFile++
-            android.util.Log.i("BleScanService", "[FileStream] File doesn't exist, will request next file: $currentFile after delay")
+        // Decrement file number before scheduling delay
+        if (currentFile > leoFirstFile) {
+            currentFile--
+            android.util.Log.i("BleScanService", "[FileStream] File doesn't exist, will request previous file: $currentFile after delay")
         } else {
-            android.util.Log.i("BleScanService", "[FileStream] Reached last file ($leoLastFile), no more files to stream")
+            android.util.Log.i("BleScanService", "[FileStream] Reached first file ($leoFirstFile), no more files to stream")
             stopFileStreaming()
             return
         }
