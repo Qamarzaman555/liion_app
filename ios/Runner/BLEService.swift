@@ -139,6 +139,7 @@ class BLEService: NSObject {
     private var lastStreamFileCommandTime: TimeInterval = 0
     private var streamFileTimeoutWorkItem: DispatchWorkItem?
     private let streamFileTimeoutSeconds: TimeInterval = 10.0 // 10 seconds timeout
+    private var isHandlingCorruptedFile = false
     
     // File streaming recovery timer
     private var fileStreamingRecoveryWorkItem: DispatchWorkItem?
@@ -181,8 +182,7 @@ class BLEService: NSObject {
     }()
     // private let collectionName = "leoFilesProduction"
     // private let collectionName = "leoFilesOpen"
-    // private let collectionName = "leoFilesInternal"
-    private let collectionName = "sparkleoTest"
+    private let collectionName = "leoFilesInternal"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1260,6 +1260,7 @@ class BLEService: NSObject {
             return false
         }
         currentFile = leoHighestStreamableFile
+        isHandlingCorruptedFile = false
         streamFileResponseReceived = false
         waitingForStreamFileResponse = true
         lastStreamFileCommandTime = Date().timeIntervalSince1970
@@ -1297,6 +1298,7 @@ class BLEService: NSObject {
         chargeDataList.removeAll()
         processedDataPoints.removeAll()
         previousChargeData = nil
+        isHandlingCorruptedFile = false
         hasUnwantedCharacters = false
         isFileStreamingActive = false
         rawFileData = ""
@@ -1365,6 +1367,7 @@ class BLEService: NSObject {
         isFileStreamingActive = false
         streamFileResponseReceived = false
         waitingForStreamFileResponse = false
+        isHandlingCorruptedFile = false
         cancelStreamFileTimeout()
         stopFileStreamingRecovery()
         logger.logInfo("[FileStream] File streaming stopped")
@@ -1421,6 +1424,7 @@ class BLEService: NSObject {
     private func processFileStreamingData(_ data: Data) {
         guard let receivedString = String(data: data, encoding: .utf8) else {
             logger.logError("[FileStream] Failed to decode file streaming data")
+            handleCorruptedCurrentStreamFile(reason: "Received non-UTF8 payload while streaming")
             return
         }
         
@@ -1657,6 +1661,7 @@ class BLEService: NSObject {
             // Store data to Firebase/local storage using snapshot of current list
             let dataSnapshot = chargeDataList
             let fileNumberToDelete = currentFile
+            removeStreamedFileOnETX(fileNumberToDelete)
             let isCorruptedFile = !hasFileHeaderRow || isFirstDataPacketSessionMissing
             if !hasFileHeaderRow {
                 logger.logWarning("[FileStream] Missing header row for file \(fileNumberToDelete). Marking as corrupted.")
@@ -1693,6 +1698,58 @@ class BLEService: NSObject {
             // Schedule next file command after delay
             scheduleNextFileStreamCommand()
         }
+    }
+
+    /// Remove the just-streamed file as soon as ETX is detected, before file index transitions.
+    private func removeStreamedFileOnETX(_ fileNumber: Int) {
+        guard fileNumber >= 0 else {
+            logger.logWarning("[FileStream] Cannot send rm_file on ETX - invalid file number: \(fileNumber)")
+            return
+        }
+        guard connectionState == .connected && isUartReady else {
+            logger.logWarning("[FileStream] Cannot send rm_file \(fileNumber) on ETX - not connected or UART not ready")
+            return
+        }
+
+        enqueueCommand("app_msg rm_file \(fileNumber)")
+        logger.logInfo("[FileStream] ETX detected - sent rm_file for file \(fileNumber)")
+    }
+
+    /// Remove and skip current file when stream payload is not decodable/corrupted.
+    private func handleCorruptedCurrentStreamFile(reason: String) {
+        guard !isHandlingCorruptedFile else {
+            logger.logDebug("[FileStream] Corrupted file handling already in progress for file \(currentFile)")
+            return
+        }
+        isHandlingCorruptedFile = true
+
+        logger.logWarning("[FileStream] \(reason). Marking file \(currentFile) as corrupted and removing it.")
+
+        isFileStreamingActive = false
+        waitingForStreamFileResponse = false
+        streamFileResponseReceived = true
+        cancelStreamFileTimeout()
+
+        // Reset parsing state so bad payload bytes do not affect the next file.
+        fileStreamingAccumulatedData = ""
+        rawFileDataAccumulator = ""
+        rawFileData = ""
+        chargeDataList.removeAll()
+        previousChargeData = nil
+        processedDataPoints.removeAll()
+        hasUnwantedCharacters = false
+        hasFileHeaderRow = false
+        hasEvaluatedFirstDataPacketSession = false
+        isFirstDataPacketSessionMissing = false
+
+        if currentFile >= 0 && connectionState == .connected && isUartReady {
+            enqueueCommand("app_msg rm_file \(currentFile)")
+            logger.logInfo("[FileStream] Sent rm_file for corrupted file \(currentFile)")
+        } else {
+            logger.logWarning("[FileStream] Could not send rm_file for corrupted file \(currentFile) - not connected or UART not ready")
+        }
+
+        scheduleNextFileAfterDelay()
     }
     
     // Helper functions for parsing (matching Android)
@@ -2066,17 +2123,8 @@ class BLEService: NSObject {
                 // Raw data for corrupted files is already embedded in firebaseObject["raw_data"].
                 finalizeUpload()
                 
-                // Delete file from device after successful upload
-                if fileNumber >= 0 && self.connectionState == .connected && self.isUartReady {
-                    // DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    //     self.enqueueCommand("app_msg rm_file \(fileNumber)")
-                    //     self.logger.logInfo("[FileStream] Sent rm_file command for file \(fileNumber) after successful upload")
-                    // }
-                } else if fileNumber < 0 {
-                    self.logger.logWarning("[FileStream] Cannot delete file - invalid file number: \(fileNumber)")
-                } else {
-                    self.logger.logWarning("[FileStream] Cannot delete file \(fileNumber) - not connected or UART not ready")
-                }
+                // File deletion is handled at ETX time to guarantee removing the just-streamed file
+                // before currentFile changes to the next/previous index.
             }
         }
     }

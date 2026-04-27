@@ -347,14 +347,21 @@ class BackendLoggingService {
     
     // MARK: - Logging
     
+    private func emitLocalLog(level: String, message: String) {
+        let formatted = "[BackendLogging][\(level)] \(message)"
+        // NSLog is more reliable in Xcode console than print for some run configurations.
+        NSLog("%@", formatted)
+    }
+    
     func log(_ message: String, level: String) {
-        // Backend logging disabled - return early without sending any logs
         if isBackendLoggingDisabled {
+            // Local-only: Xcode / device console (no HTTP to logging backend).
+            emitLocalLog(level: level, message: message)
             return
         }
         
         if !isInitialized || sessionId == nil || deviceKey == nil {
-            print("[BackendLogging] Logging skipped - not initialized. Level: \(level), Message: \(message)")
+            emitLocalLog(level: "LOCAL", message: "Remote logging skipped - not initialized. Level: \(level), Message: \(message)")
             return
         }
         
