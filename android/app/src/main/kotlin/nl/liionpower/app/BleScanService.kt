@@ -1614,6 +1614,10 @@ class BleScanService : Service() {
         try {
             val receivedString = String(data, Charsets.UTF_8)
             android.util.Log.d("BleScanService", "[FileStream] Received ${data.size} bytes of file data")
+            if (receivedString.contains('\uFFFD')) {
+                hasUnwantedCharacters = true
+                android.util.Log.w("BleScanService", "[FileStream] Replacement character detected in packet; file will be marked corrupted")
+            }
             
             // Append incoming data to accumulatedData for processing (this is actual file data)
             fileStreamingAccumulatedData.append(receivedString)
@@ -1718,7 +1722,7 @@ class BleScanService : Service() {
                 }
                 
                 // Check for unwanted characters in the data point
-                if (dataPoint.contains('/') || dataPoint.contains('M') || dataPoint.contains('m')) {
+                if (dataPoint.contains('/') || dataPoint.contains('M') || dataPoint.contains('m') || dataPoint.contains('\uFFFD')) {
                     hasUnwantedCharacters = true
                     android.util.Log.w("BleScanService", "[FileStream] Found unwanted characters in data point")
                 }
@@ -1993,11 +1997,14 @@ class BleScanService : Service() {
                     rawDataStr
                 }
                 android.util.Log.d("BleScanService", "[FileStream] Captured raw file data: ${rawFileData.length} characters")
-                val isCorruptedFile = !headerDataPacketDetectedForCurrentFile || firstDataPacketSessionMissingForCurrentFile
+                val isCorruptedFile = !headerDataPacketDetectedForCurrentFile ||
+                    firstDataPacketSessionMissingForCurrentFile ||
+                    hasUnwantedCharacters
                 if (isCorruptedFile) {
                     val corruptionReasons = mutableListOf<String>()
                     if (!headerDataPacketDetectedForCurrentFile) corruptionReasons.add("missing header")
                     if (firstDataPacketSessionMissingForCurrentFile) corruptionReasons.add("missing session in first data packet")
+                    if (hasUnwantedCharacters) corruptionReasons.add("contains replacement/unwanted characters")
                     android.util.Log.w("BleScanService", "[FileStream] Corrupted file $currentFile detected (${corruptionReasons.joinToString(", ")}).")
                 }
                 
@@ -2020,11 +2027,7 @@ class BleScanService : Service() {
 
                 // Store data to Firebase/local storage using snapshot of current list
                 val dataSnapshot = chargeDataList.toList()
-                if (!hasUnwantedCharacters) {
-                    storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, isCorruptedFile)
-                } else {
-                    android.util.Log.w("BleScanService", "[FileStream] Skipping Firebase upload due to unwanted characters in data")
-                }
+                storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, isCorruptedFile)
                 
                 // Reset for next file - clear all state
                 fileStreamingAccumulatedData.clear()
