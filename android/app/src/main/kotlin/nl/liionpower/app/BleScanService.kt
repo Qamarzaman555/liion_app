@@ -2010,25 +2010,59 @@ class BleScanService : Service() {
                 
                 // Capture completed file number at ETX time to avoid races with currentFile updates.
                 val completedFileNumber = currentFile
-                fileStreamRetryCounts.remove(completedFileNumber)
-                if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                    android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for completed file $completedFileNumber at ETX")
-                    // enqueueCommand("app_msg rm_file $completedFileNumber")
-                    // android.util.Log.i(
-                    //     "BleScanService",
-                    //     "[FileStream] Sent rm_file for completed file $completedFileNumber at ETX"
-                    // )
+
+                // Store data snapshot before we clear state
+                val dataSnapshot = chargeDataList.toList()
+                
+                // Corrupted files: retry the same file once more, then remove and move on.
+                if (isCorruptedFile) {
+                    val corruptedRetryCount = (fileStreamRetryCounts[completedFileNumber] ?: 0) + 1
+                    fileStreamRetryCounts[completedFileNumber] = corruptedRetryCount
+                    if (corruptedRetryCount < MAX_FILE_STREAM_RETRIES) {
+                        android.util.Log.w(
+                            "BleScanService",
+                            "[FileStream] Corrupted file $completedFileNumber first attempt - skipping upload until reconfirmation attempt."
+                        )
+                        android.util.Log.w(
+                            "BleScanService",
+                            "[FileStream] Corrupted file $completedFileNumber retry $corruptedRetryCount/$MAX_FILE_STREAM_RETRIES. Retrying same file."
+                        )
+                        scheduleRetryCurrentFileAfterDelay(completedFileNumber, corruptedRetryCount)
+                    } else {
+                        // Upload corrupted file only on reconfirmation attempt.
+                        storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, true)
+                        android.util.Log.w(
+                            "BleScanService",
+                            "[FileStream] Corrupted file $completedFileNumber still invalid after $MAX_FILE_STREAM_RETRIES attempts. Removing and moving on."
+                        )
+                        if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                            // enqueueCommand("app_msg rm_file $completedFileNumber")
+                            // android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly corrupted file $completedFileNumber")
+                            android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for repeatedly corrupted file $completedFileNumber")
+                        } else {
+                            android.util.Log.w(
+                                "BleScanService",
+                                "[FileStream] Could not send rm_file for corrupted file $completedFileNumber (state=$connectionState, uart=$isUartReady)"
+                            )
+                        }
+                        fileStreamRetryCounts.remove(completedFileNumber)
+                        scheduleNextFileAfterDelay()
+                    }
                 } else {
-                    android.util.Log.w(
-                        "BleScanService",
-                        "[FileStream] Skipped rm_file at ETX (file=$completedFileNumber, state=$connectionState, uart=$isUartReady)"
-                    )
+                    storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, false)
+                    fileStreamRetryCounts.remove(completedFileNumber)
+                    if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
+                        android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for completed file $completedFileNumber at ETX")
+                    } else {
+                        android.util.Log.w(
+                            "BleScanService",
+                            "[FileStream] Skipped rm_file at ETX (file=$completedFileNumber, state=$connectionState, uart=$isUartReady)"
+                        )
+                    }
+                    // Schedule next file command after delay
+                    scheduleNextFileStreamCommand()
                 }
 
-                // Store data to Firebase/local storage using snapshot of current list
-                val dataSnapshot = chargeDataList.toList()
-                storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, isCorruptedFile)
-                
                 // Reset for next file - clear all state
                 fileStreamingAccumulatedData.clear()
                 rawFileData = "" // Clear raw data after storing
@@ -2043,9 +2077,6 @@ class BleScanService : Service() {
                 headerDataPacketDetectedForCurrentFile = false
                 firstDataPacketCheckedForCurrentFile = false
                 firstDataPacketSessionMissingForCurrentFile = false
-                
-                // Schedule next file command after delay
-                scheduleNextFileStreamCommand()
             }
             
         } catch (e: Exception) {
@@ -2563,6 +2594,44 @@ class BleScanService : Service() {
             android.util.Log.i("BleScanService", "[FileStream] ========================================")
         }
         
+        handler.postDelayed(fileStreamingNextFileRunnable!!, FILE_STREAMING_DELAY_MS)
+    }
+
+    private fun scheduleRetryCurrentFileAfterDelay(fileNumber: Int, retryCount: Int) {
+        // Cancel any existing scheduled command
+        fileStreamingNextFileRunnable?.let {
+            handler.removeCallbacks(it)
+            android.util.Log.d("BleScanService", "[FileStream] Cancelled previous delay schedule")
+        }
+
+        // Stop recovery timer during cooldown period to prevent overlap
+        stopFileStreamingRecovery()
+
+        val delaySeconds = FILE_STREAMING_DELAY_MS / 1000
+        android.util.Log.i("BleScanService", "[FileStream] ========================================")
+        android.util.Log.i("BleScanService", "[FileStream] Corrupted file retry scheduled")
+        android.util.Log.i("BleScanService", "[FileStream] File: $fileNumber, attempt: ${retryCount + 1}/$MAX_FILE_STREAM_RETRIES")
+        android.util.Log.i("BleScanService", "[FileStream] Starting ${delaySeconds}s cooldown delay before retry")
+        android.util.Log.i("BleScanService", "[FileStream] ========================================")
+
+        isFileStreamCooldownActive = true
+        fileStreamingNextFileRunnable = Runnable {
+            isFileStreamCooldownActive = false
+            android.util.Log.i("BleScanService", "[FileStream] ========================================")
+            android.util.Log.i("BleScanService", "[FileStream] Cooldown delay completed (${delaySeconds}s)")
+            android.util.Log.i("BleScanService", "[FileStream] Retrying corrupted file: $fileNumber")
+
+            if (connectionState == STATE_CONNECTED && isUartReady) {
+                currentFile = fileNumber
+                requestNextFile()
+            } else {
+                android.util.Log.w("BleScanService", "[FileStream] Cannot retry corrupted file - not connected or UART not ready")
+                stopFileStreaming()
+            }
+
+            android.util.Log.i("BleScanService", "[FileStream] ========================================")
+        }
+
         handler.postDelayed(fileStreamingNextFileRunnable!!, FILE_STREAMING_DELAY_MS)
     }
     
