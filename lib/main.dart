@@ -26,7 +26,6 @@ void main() async {
 
   runApp(const MyApp());
 }
-
 Future<void> _requestPermissionsAndStartService() async {
   // Check Android version - location permission not needed for Android 12+ (API 31+)
   final deviceInfo = DeviceInfoPlugin();

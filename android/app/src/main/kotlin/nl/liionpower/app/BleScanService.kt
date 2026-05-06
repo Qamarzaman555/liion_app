@@ -317,7 +317,7 @@ class BleScanService : Service() {
     
     // File streaming recovery timer
     private var fileStreamingRecoveryRunnable: Runnable? = null
-    private val FILE_STREAMING_RECOVERY_INTERVAL_MS = 10000L // Check every 10 seconds if file streaming should be restarted
+    private val FILE_STREAMING_RECOVERY_INTERVAL_MS = 120000L // Check every 2 minutes if file streaming should be restarted
     
     // File streaming data processing
     data class ChargeData(
@@ -355,8 +355,12 @@ class BleScanService : Service() {
     private var streamFileResponseReceived = false
     private var waitingForStreamFileResponse = false // Flag to track if we're waiting for stream_file response
     private var lastStreamFileCommandTime = 0L // Timestamp when we last sent stream_file command
+    private var lastPyMsgPurpose = ""
     private var streamFileTimeoutRunnable: Runnable? = null
-    private val STREAM_FILE_TIMEOUT_MS = 10000L // 10 seconds timeout
+    private val STREAM_FILE_TIMEOUT_MS = 60000L // 60 seconds timeout
+    private val MAX_FILE_STREAM_RETRIES = 2
+    private val fileStreamRetryCounts = mutableMapOf<Int, Int>()
+    private var isFileStreamCooldownActive = false
     private var stxProcessedForCurrentFile = false // Flag to track if STX has been processed for current file
     private var headerDataPacketDetectedForCurrentFile = false // Set true when Leo sends timestamp header row for current file
     private var firstDataPacketCheckedForCurrentFile = false // Tracks whether first parsed data packet has been validated
@@ -678,6 +682,7 @@ class BleScanService : Service() {
                                 fileCheck = fileCheckValue
                                 streamFileResponseReceived = true // Mark response as received
                                 waitingForStreamFileResponse = false // No longer waiting
+                                lastPyMsgPurpose = ""
                                 cancelStreamFileTimeout() // Cancel any pending timeout
                                 android.util.Log.i("BleScanService", "[FileStream] stream_file response: fileCheck=$fileCheck for file $currentFile")
                                 
@@ -718,6 +723,7 @@ class BleScanService : Service() {
                         // 2. Current file is in valid range
                         // 3. ERROR came within 3 seconds of sending stream_file command
                         if (waitingForStreamFileResponse && 
+                            lastPyMsgPurpose == "stream_file" &&
                             currentFile >= leoFirstFile && 
                             currentFile <= leoLastFile &&
                             timeSinceStreamFileCommand > 0 &&
@@ -732,6 +738,7 @@ class BleScanService : Service() {
                             // Mark that we got a response (even though it's an error) and reset state
                             streamFileResponseReceived = true
                             waitingForStreamFileResponse = false
+                            lastPyMsgPurpose = ""
                             cancelStreamFileTimeout()
                             isFileStreamingActive = false
                             
@@ -779,6 +786,7 @@ class BleScanService : Service() {
                                 fileCheck = fileCheckValue
                                 streamFileResponseReceived = true // Mark response as received
                                 waitingForStreamFileResponse = false // No longer waiting
+                                lastPyMsgPurpose = ""
                                 cancelStreamFileTimeout() // Cancel any pending timeout
                                 android.util.Log.i("BleScanService", "[FileStream] stream_file response: fileCheck=$fileCheck for file $currentFile")
                                 
@@ -815,6 +823,7 @@ class BleScanService : Service() {
                         val currentTime = System.currentTimeMillis()
                         val timeSinceStreamFileCommand = currentTime - lastStreamFileCommandTime
                         if (waitingForStreamFileResponse && 
+                            lastPyMsgPurpose == "stream_file" &&
                             currentFile >= leoFirstFile && 
                             currentFile <= leoLastFile &&
                             timeSinceStreamFileCommand > 0 &&
@@ -828,6 +837,7 @@ class BleScanService : Service() {
                             
                             streamFileResponseReceived = true
                             waitingForStreamFileResponse = false
+                            lastPyMsgPurpose = ""
                             cancelStreamFileTimeout()
                             isFileStreamingActive = false
                             
@@ -1091,7 +1101,7 @@ class BleScanService : Service() {
                                 enqueueCommand("app_msg get_files")
                                 handler.postDelayed({
                                     if (isUartReady && connectionState == STATE_CONNECTED) {
-                                        enqueueCommand("py_msg")
+                                        enqueuePyMsg("get_files")
                                         android.util.Log.i("BleScanService", "[FileStream] py_msg sent after retry get_files")
                                     }
                                 }, 300)
@@ -1119,6 +1129,7 @@ class BleScanService : Service() {
                     fileCheck = fileCheckValue
                     streamFileResponseReceived = true // Mark response as received
                     waitingForStreamFileResponse = false // No longer waiting
+                    lastPyMsgPurpose = ""
                     cancelStreamFileTimeout() // Cancel any pending timeout
                     android.util.Log.i("BleScanService", "[FileStream] stream_file response (RX_CHAR): fileCheck=$fileCheck for file $currentFile")
                     
@@ -1154,6 +1165,7 @@ class BleScanService : Service() {
             // 2. Current file is in valid range
             // 3. ERROR came within 3 seconds of sending stream_file command
             if (waitingForStreamFileResponse && 
+                lastPyMsgPurpose == "stream_file" &&
                 currentFile >= leoFirstFile && 
                 currentFile <= leoLastFile &&
                 timeSinceStreamFileCommand > 0 &&
@@ -1168,6 +1180,7 @@ class BleScanService : Service() {
                 // Mark that we got a response (even though it's an error) and reset state
                 streamFileResponseReceived = true
                 waitingForStreamFileResponse = false
+                lastPyMsgPurpose = ""
                 cancelStreamFileTimeout()
                 isFileStreamingActive = false
                 
@@ -1201,7 +1214,7 @@ class BleScanService : Service() {
         enqueueCommand("app_msg get_files")
         handler.postDelayed({
             if (isUartReady && connectionState == STATE_CONNECTED) {
-                enqueueCommand("py_msg")
+                enqueuePyMsg("get_files")
                 android.util.Log.i("BleScanService", "[FileStream] py_msg sent 300ms after get_files")
             }
         }, 300)
@@ -1209,7 +1222,7 @@ class BleScanService : Service() {
         getFilesTimeoutRunnable = Runnable {
             if (getFilesRangePending && isUartReady && connectionState == STATE_CONNECTED) {
                 android.util.Log.w("BleScanService", "[FileStream] get_files range still pending; sending py_msg reminder")
-                enqueueCommand("py_msg")
+                enqueuePyMsg("get_files")
             }
         }
         handler.postDelayed(getFilesTimeoutRunnable!!, 2000)
@@ -1227,6 +1240,7 @@ class BleScanService : Service() {
             android.util.Log.w("BleScanService", "[FileStream] Already waiting for response or streaming active. Current file: $currentFile, waiting: $waitingForStreamFileResponse, active: $isFileStreamingActive")
             return
         }
+        cancelAllFileStreamingTimers()
         
         // Reset all state before starting file streaming to ensure clean start
         android.util.Log.d("BleScanService", "[FileStream] Resetting state before starting file streaming")
@@ -1261,7 +1275,7 @@ class BleScanService : Service() {
         enqueueCommand("app_msg stream_file $currentFile")
         handler.postDelayed({
             if (isUartReady && connectionState == STATE_CONNECTED) {
-                enqueueCommand("py_msg")
+                enqueuePyMsg("stream_file")
             }
         }, 250)
     }
@@ -1277,6 +1291,7 @@ class BleScanService : Service() {
             android.util.Log.w("BleScanService", "[FileStream] Already waiting for response for file $currentFile, skipping duplicate request")
             return
         }
+        cancelAllFileStreamingTimers()
         
         // Reset all state BEFORE requesting next file to ensure clean start
         // This prevents data from previous file from contaminating the new file
@@ -1307,7 +1322,7 @@ class BleScanService : Service() {
         enqueueCommand("app_msg stream_file $currentFile")
         handler.postDelayed({
             if (isUartReady && connectionState == STATE_CONNECTED) {
-                enqueueCommand("py_msg")
+                enqueuePyMsg("stream_file")
                 // Start timeout after py_msg is sent
                 handler.postDelayed({
                     if (!streamFileResponseReceived && currentFile >= leoFirstFile && currentFile <= leoLastFile) {
@@ -1329,23 +1344,54 @@ class BleScanService : Service() {
             streamFileResponseReceived = false
             waitingForStreamFileResponse = false
             isFileStreamingActive = false
-            
-            // Move to previous file if available
-            if (currentFile > leoFirstFile && connectionState == STATE_CONNECTED) {
-                currentFile--
-                android.util.Log.i("BleScanService", "[FileStream] Moving to previous file due to timeout: $currentFile")
-                requestNextFile()
-            } else if (currentFile == leoFirstFile) {
-                // Retry first file once more
-                android.util.Log.i("BleScanService", "[FileStream] Retrying first file due to timeout: $currentFile")
-                requestNextFile()
-            } else {
-                android.util.Log.i("BleScanService", "[FileStream] Timeout on file below first file. Stopping file streaming.")
-                stopFileStreaming()
-            }
+            handleCurrentFileStreamFailure("timeout")
         }
         
         handler.postDelayed(streamFileTimeoutRunnable!!, STREAM_FILE_TIMEOUT_MS)
+    }
+
+    private fun handleCurrentFileStreamFailure(reason: String) {
+        val failedFile = currentFile
+        if (failedFile < leoFirstFile || failedFile > leoLastFile) {
+            android.util.Log.w("BleScanService", "[FileStream] Ignoring failure for invalid file index: $failedFile (reason=$reason)")
+            stopFileStreaming()
+            return
+        }
+
+        val retryCount = (fileStreamRetryCounts[failedFile] ?: 0) + 1
+        fileStreamRetryCounts[failedFile] = retryCount
+
+        if (retryCount <= MAX_FILE_STREAM_RETRIES) {
+            android.util.Log.w(
+                "BleScanService",
+                "[FileStream] File $failedFile failed ($reason). Retrying $retryCount/$MAX_FILE_STREAM_RETRIES"
+            )
+            if (connectionState == STATE_CONNECTED && isUartReady) {
+                requestNextFile()
+            } else {
+                stopFileStreaming()
+            }
+            return
+        }
+
+        android.util.Log.w(
+            "BleScanService",
+            "[FileStream] File $failedFile exceeded retry limit ($MAX_FILE_STREAM_RETRIES). Removing and moving to previous file."
+        )
+        if (connectionState == STATE_CONNECTED && isUartReady) {
+            // enqueueCommand("app_msg rm_file $failedFile")
+            // android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly failing file $failedFile")
+            android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for repeatedly failing file $failedFile")
+            fileStreamRetryCounts.remove(failedFile)
+            scheduleNextFileAfterDelay()
+        } else {
+            stopFileStreaming()
+        }
+    }
+
+    private fun enqueuePyMsg(purpose: String): Boolean {
+        lastPyMsgPurpose = purpose
+        return enqueueCommand("py_msg")
     }
     
     private fun cancelStreamFileTimeout() {
@@ -1353,6 +1399,20 @@ class BleScanService : Service() {
             handler.removeCallbacks(it)
             streamFileTimeoutRunnable = null
         }
+    }
+
+    private fun cancelAllFileStreamingTimers() {
+        cancelStreamFileTimeout()
+        stopFileStreamingRecovery()
+        fileStreamingNextFileRunnable?.let {
+            handler.removeCallbacks(it)
+            fileStreamingNextFileRunnable = null
+        }
+        getFilesTimeoutRunnable?.let {
+            handler.removeCallbacks(it)
+            getFilesTimeoutRunnable = null
+        }
+        isFileStreamCooldownActive = false
     }
     
     private fun stopFileStreaming() {
@@ -1375,10 +1435,8 @@ class BleScanService : Service() {
         firstDataPacketSessionMissingForCurrentFile = false
         rawFileData = ""
         serialRequested = false
-        cancelStreamFileTimeout()
-        stopFileStreamingRecovery()
-        fileStreamingNextFileRunnable?.let { handler.removeCallbacks(it) }
-        fileStreamingNextFileRunnable = null
+        cancelAllFileStreamingTimers()
+        fileStreamRetryCounts.clear()
         android.util.Log.i("BleScanService", "[FileStream] File streaming stopped and state fully reset")
     }
     
@@ -1396,7 +1454,8 @@ class BleScanService : Service() {
                 currentFile >= leoFirstFile && 
                 currentFile <= leoLastFile && 
                 !isFileStreamingActive &&
-                !waitingForStreamFileResponse) { // Don't restart if we're already waiting for a response
+                !waitingForStreamFileResponse &&
+                !isFileStreamCooldownActive) { // Don't restart during cooldown/wait windows
                 
                 android.util.Log.i("BleScanService", "[FileStream] ========================================")
                 android.util.Log.i("BleScanService", "[FileStream] Recovery: File streaming stopped but should be active")
@@ -1944,12 +2003,14 @@ class BleScanService : Service() {
                 
                 // Capture completed file number at ETX time to avoid races with currentFile updates.
                 val completedFileNumber = currentFile
+                fileStreamRetryCounts.remove(completedFileNumber)
                 if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                    enqueueCommand("app_msg rm_file $completedFileNumber")
-                    android.util.Log.i(
-                        "BleScanService",
-                        "[FileStream] Sent rm_file for completed file $completedFileNumber at ETX"
-                    )
+                    android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for completed file $completedFileNumber at ETX")
+                    // enqueueCommand("app_msg rm_file $completedFileNumber")
+                    // android.util.Log.i(
+                    //     "BleScanService",
+                    //     "[FileStream] Sent rm_file for completed file $completedFileNumber at ETX"
+                    // )
                 } else {
                     android.util.Log.w(
                         "BleScanService",
@@ -2476,7 +2537,9 @@ class BleScanService : Service() {
         android.util.Log.i("BleScanService", "[FileStream] Next file command will be ready after delay")
         android.util.Log.i("BleScanService", "[FileStream] ========================================")
         
+        isFileStreamCooldownActive = true
         fileStreamingNextFileRunnable = Runnable {
+            isFileStreamCooldownActive = false
             android.util.Log.i("BleScanService", "[FileStream] ========================================")
             android.util.Log.i("BleScanService", "[FileStream] Cooldown delay completed (${delaySeconds}s)")
             android.util.Log.i("BleScanService", "[FileStream] BLE stack is ready for next file stream")
@@ -2527,7 +2590,9 @@ class BleScanService : Service() {
         android.util.Log.i("BleScanService", "[FileStream] Next file command will be ready after delay")
         android.util.Log.i("BleScanService", "[FileStream] ========================================")
         
+        isFileStreamCooldownActive = true
         fileStreamingNextFileRunnable = Runnable {
+            isFileStreamCooldownActive = false
             android.util.Log.i("BleScanService", "[FileStream] ========================================")
             android.util.Log.i("BleScanService", "[FileStream] Cooldown delay completed (${delaySeconds}s)")
             android.util.Log.i("BleScanService", "[FileStream] BLE stack is ready for next file stream")
