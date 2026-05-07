@@ -138,12 +138,12 @@ class BLEService: NSObject {
     private var waitingForStreamFileResponse = false
     private var lastStreamFileCommandTime: TimeInterval = 0
     private var streamFileTimeoutWorkItem: DispatchWorkItem?
-    private let streamFileTimeoutSeconds: TimeInterval = 10.0 // 10 seconds timeout
+    private let streamFileTimeoutSeconds: TimeInterval = 60.0 // 60 seconds timeout
     private var isHandlingCorruptedFile = false
     
     // File streaming recovery timer
     private var fileStreamingRecoveryWorkItem: DispatchWorkItem?
-    private let fileStreamingRecoveryIntervalSeconds: TimeInterval = 10.0 // Check every 10 seconds
+    private let fileStreamingRecoveryIntervalSeconds: TimeInterval = 120.0 // Check every 120 seconds
     private let fileStreamingDelaySeconds: TimeInterval = 7.0 // 7 seconds delay after ETX
     
     // File streaming data processing (matching Android ChargeData)
@@ -172,6 +172,9 @@ class BLEService: NSObject {
     private var hasFileHeaderRow = false
     private var hasEvaluatedFirstDataPacketSession = false
     private var isFirstDataPacketSessionMissing = false
+    private let maxCorruptedFileConfirmAttempts = 2
+    private var corruptedFileRetryCounts: [Int: Int] = [:]
+    private var isCorruptedRetryCooldownActive = false
     private var currentSession = 0
     private var currentMode = 0
     private var currentChargeLimit = 0
@@ -182,7 +185,8 @@ class BLEService: NSObject {
     }()
     // private let collectionName = "leoFilesProduction"
     // private let collectionName = "leoFilesOpen"
-    private let collectionName = "leoFilesInternal"
+    // private let collectionName = "leoFilesInternal"
+    private let collectionName = "sparkleoTest"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1203,7 +1207,7 @@ class BLEService: NSObject {
             logger.logWarning("[FileStream] Cannot start file streaming - not connected or UART not ready")
             return ["success": false, "message": "Device not connected or UART not ready"]
         }
-        
+        corruptedFileRetryCounts.removeAll()
         return requestGetFiles()
     }
     
@@ -1368,6 +1372,8 @@ class BLEService: NSObject {
         streamFileResponseReceived = false
         waitingForStreamFileResponse = false
         isHandlingCorruptedFile = false
+        isCorruptedRetryCooldownActive = false
+        corruptedFileRetryCounts.removeAll()
         cancelStreamFileTimeout()
         stopFileStreamingRecovery()
         logger.logInfo("[FileStream] File streaming stopped")
@@ -1422,6 +1428,11 @@ class BLEService: NSObject {
     
     /// Process file streaming data (matching Android processFileStreamingData)
     private func processFileStreamingData(_ data: Data) {
+        if isCorruptedRetryCooldownActive {
+            logger.logDebug("[FileStream] Ignoring incoming stream bytes during corrupted-file retry cooldown")
+            return
+        }
+
         guard let receivedString = String(data: data, encoding: .utf8) else {
             logger.logError("[FileStream] Failed to decode file streaming data")
             handleCorruptedCurrentStreamFile(reason: "Received non-UTF8 payload while streaming")
@@ -1432,6 +1443,10 @@ class BLEService: NSObject {
         
         // Append incoming data to accumulatedData
         fileStreamingAccumulatedData.append(receivedString)
+        if receivedString.contains("\u{FFFD}") {
+            hasUnwantedCharacters = true
+            logger.logWarning("[FileStream] Found UTF replacement character (\\uFFFD) in payload for file \(currentFile)")
+        }
         // Also accumulate raw data separately - capture ALL data when waiting for response or streaming active
         // This ensures we capture data even if it arrives before STX is detected
         if waitingForStreamFileResponse || isFileStreamingActive {
@@ -1493,7 +1508,7 @@ class BLEService: NSObject {
             }
             
             // Check for unwanted characters
-            if dataPoint.contains("/") || dataPoint.contains("M") || dataPoint.contains("m") {
+            if dataPoint.contains("/") || dataPoint.contains("M") || dataPoint.contains("m") || dataPoint.contains("\u{FFFD}") {
                 hasUnwantedCharacters = true
                 logger.logWarning("[FileStream] Found unwanted characters in data point")
             }
@@ -1661,42 +1676,82 @@ class BLEService: NSObject {
             // Store data to Firebase/local storage using snapshot of current list
             let dataSnapshot = chargeDataList
             let fileNumberToDelete = currentFile
-            removeStreamedFileOnETX(fileNumberToDelete)
-            let isCorruptedFile = !hasFileHeaderRow || isFirstDataPacketSessionMissing
+            let isCorruptedFile = !hasFileHeaderRow || isFirstDataPacketSessionMissing || hasUnwantedCharacters
             if !hasFileHeaderRow {
                 logger.logWarning("[FileStream] Missing header row for file \(fileNumberToDelete). Marking as corrupted.")
             }
             if isFirstDataPacketSessionMissing {
                 logger.logWarning("[FileStream] Missing session in first data packet for file \(fileNumberToDelete). Marking as corrupted.")
             }
-            
-            if !hasUnwantedCharacters {
+
+            if isCorruptedFile {
+                let nextAttempt = (corruptedFileRetryCounts[fileNumberToDelete] ?? 0) + 1
+                corruptedFileRetryCounts[fileNumberToDelete] = nextAttempt
+
+                if nextAttempt < maxCorruptedFileConfirmAttempts {
+                    logger.logWarning("[FileStream] Corrupted file \(fileNumberToDelete) attempt \(nextAttempt)/\(maxCorruptedFileConfirmAttempts). Retrying same file without upload/remove.")
+                    resetFileStreamingParsingState()
+                    scheduleCurrentFileRetryAfterDelay()
+                } else {
+                    logger.logWarning("[FileStream] Corrupted file \(fileNumberToDelete) confirmed on attempt \(nextAttempt)/\(maxCorruptedFileConfirmAttempts). Uploading as corrupted with raw data.")
+                    storeDataToFirebase(
+                        dataSnapshot: dataSnapshot,
+                        fileNumber: fileNumberToDelete,
+                        rawData: rawFileData,
+                        isCorruptedFile: true
+                    )
+                    removeStreamedFileOnETX(fileNumberToDelete)
+                    corruptedFileRetryCounts.removeValue(forKey: fileNumberToDelete)
+                    resetFileStreamingParsingState()
+                    scheduleNextFileStreamCommand()
+                }
+            } else {
+                corruptedFileRetryCounts.removeValue(forKey: fileNumberToDelete)
+                removeStreamedFileOnETX(fileNumberToDelete)
                 storeDataToFirebase(
                     dataSnapshot: dataSnapshot,
                     fileNumber: fileNumberToDelete,
                     rawData: rawFileData,
-                    isCorruptedFile: isCorruptedFile
+                    isCorruptedFile: false
                 )
-            } else {
-                logger.logWarning("[FileStream] Skipping Firebase upload due to unwanted characters in data")
+                resetFileStreamingParsingState()
+                scheduleNextFileStreamCommand()
             }
-            
-            // Reset for next file - clear all state
-            fileStreamingAccumulatedData = ""
-            rawFileData = "" // Clear raw data after storing
-            rawFileDataAccumulator = "" // Clear raw data accumulator for next file
-            chargeDataList.removeAll()
-            previousChargeData = nil
-            processedDataPoints.removeAll()
-            hasUnwantedCharacters = false
-            hasFileHeaderRow = false
-            hasEvaluatedFirstDataPacketSession = false
-            isFirstDataPacketSessionMissing = false
-            streamFileResponseReceived = false
-            waitingForStreamFileResponse = false
-            
-            // Schedule next file command after delay
-            scheduleNextFileStreamCommand()
+        }
+    }
+
+    private func resetFileStreamingParsingState() {
+        fileStreamingAccumulatedData = ""
+        rawFileData = ""
+        rawFileDataAccumulator = ""
+        chargeDataList.removeAll()
+        previousChargeData = nil
+        processedDataPoints.removeAll()
+        hasUnwantedCharacters = false
+        hasFileHeaderRow = false
+        hasEvaluatedFirstDataPacketSession = false
+        isFirstDataPacketSessionMissing = false
+        streamFileResponseReceived = false
+        waitingForStreamFileResponse = false
+    }
+
+    private func scheduleCurrentFileRetryAfterDelay() {
+        let delaySeconds = fileStreamingDelaySeconds
+        logger.logInfo("[FileStream] ========================================")
+        logger.logInfo("[FileStream] Retrying same corrupted file \(currentFile) after \(Int(delaySeconds))s cooldown")
+        logger.logInfo("[FileStream] ========================================")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) { [weak self] in
+            guard let self = self else { return }
+            guard self.connectionState == .connected && self.isUartReady else {
+                self.logger.logWarning("[FileStream] Cannot retry corrupted file \(self.currentFile) - not connected or UART not ready")
+                self.isCorruptedRetryCooldownActive = false
+                self.stopFileStreaming()
+                return
+            }
+            self.isCorruptedRetryCooldownActive = false
+            self.logger.logInfo("[FileStream] Cooldown complete. Retrying same file \(self.currentFile)")
+            self.requestNextFile()
         }
     }
 
@@ -1711,7 +1766,7 @@ class BLEService: NSObject {
             return
         }
 
-        enqueueCommand("app_msg rm_file \(fileNumber)")
+        // enqueueCommand("app_msg rm_file \(fileNumber)")
         logger.logInfo("[FileStream] ETX detected - sent rm_file for file \(fileNumber)")
     }
 
@@ -1723,33 +1778,45 @@ class BLEService: NSObject {
         }
         isHandlingCorruptedFile = true
 
-        logger.logWarning("[FileStream] \(reason). Marking file \(currentFile) as corrupted and removing it.")
+        logger.logWarning("[FileStream] \(reason). Handling file \(currentFile) with corrupted retry policy.")
 
         isFileStreamingActive = false
         waitingForStreamFileResponse = false
         streamFileResponseReceived = true
         cancelStreamFileTimeout()
 
-        // Reset parsing state so bad payload bytes do not affect the next file.
-        fileStreamingAccumulatedData = ""
-        rawFileDataAccumulator = ""
-        rawFileData = ""
-        chargeDataList.removeAll()
-        previousChargeData = nil
-        processedDataPoints.removeAll()
-        hasUnwantedCharacters = false
-        hasFileHeaderRow = false
-        hasEvaluatedFirstDataPacketSession = false
-        isFirstDataPacketSessionMissing = false
+        let fileNumber = currentFile
+        let attempt = (corruptedFileRetryCounts[fileNumber] ?? 0) + 1
+        corruptedFileRetryCounts[fileNumber] = attempt
+        let dataSnapshot = chargeDataList
+        let rawPayload = rawFileDataAccumulator.isEmpty ? rawFileData : rawFileDataAccumulator
 
-        if currentFile >= 0 && connectionState == .connected && isUartReady {
-            enqueueCommand("app_msg rm_file \(currentFile)")
-            logger.logInfo("[FileStream] Sent rm_file for corrupted file \(currentFile)")
+        if attempt < maxCorruptedFileConfirmAttempts {
+            logger.logWarning("[FileStream] Corrupted file \(fileNumber) attempt \(attempt)/\(maxCorruptedFileConfirmAttempts). Retrying same file without upload/remove.")
+            resetFileStreamingParsingState()
+            isCorruptedRetryCooldownActive = true
+            scheduleCurrentFileRetryAfterDelay()
         } else {
-            logger.logWarning("[FileStream] Could not send rm_file for corrupted file \(currentFile) - not connected or UART not ready")
-        }
+            logger.logWarning("[FileStream] Corrupted file \(fileNumber) confirmed on attempt \(attempt)/\(maxCorruptedFileConfirmAttempts). Uploading as corrupted with raw data.")
+            storeDataToFirebase(
+                dataSnapshot: dataSnapshot,
+                fileNumber: fileNumber,
+                rawData: rawPayload,
+                isCorruptedFile: true
+            )
 
-        scheduleNextFileAfterDelay()
+            if fileNumber >= 0 && connectionState == .connected && isUartReady {
+                // enqueueCommand("app_msg rm_file \(fileNumber)")
+                logger.logInfo("[FileStream] Sent rm_file for corrupted file \(fileNumber)")
+            } else {
+                logger.logWarning("[FileStream] Could not send rm_file for corrupted file \(fileNumber) - not connected or UART not ready")
+            }
+
+            corruptedFileRetryCounts.removeValue(forKey: fileNumber)
+            resetFileStreamingParsingState()
+            scheduleNextFileAfterDelay()
+        }
+        isHandlingCorruptedFile = false
     }
     
     // Helper functions for parsing (matching Android)
@@ -1913,7 +1980,7 @@ class BLEService: NSObject {
                 self.logger.logInfo("[FileStream] Starting Firebase storage process")
                 self.logger.logInfo("[FileStream] Session: \(self.currentSession), Entries: \(dataSnapshot.count)")
                 
-                if dataSnapshot.isEmpty {
+                if dataSnapshot.isEmpty && !(isCorruptedFile && !rawData.isEmpty) {
                     self.logger.logWarning("[FileStream] No data to upload, skipping")
                     return
                 }
