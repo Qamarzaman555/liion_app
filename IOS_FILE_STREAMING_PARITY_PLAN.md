@@ -183,6 +183,8 @@ Implementation note:
 - [x] Non-UTF8/decode-failure corrupted path now follows the same 2-attempt policy (first retry same file, second upload as corrupted + remove path + move next/previous).
 - [x] Guard added to ignore incoming stream bytes during corrupted retry cooldown, so attempt 2 is counted only after an actual same-file retry request.
 - [x] Corrupted upload with raw payload is allowed even when parsed entry snapshot is empty.
+- [x] Hard guard added: `requestNextFile()` refuses to send `stream_file` while `isFileStreamingActive == true`.
+- [x] `OK py_msg stream_file ...` is now ignored unless `waitingForStreamFileResponse == true` (prevents unrelated `py_msg` responses from affecting active stream state).
 
 Expected outcome:
 - Corrupted files are not dropped permanently.

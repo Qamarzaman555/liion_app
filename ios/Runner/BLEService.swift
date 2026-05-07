@@ -1287,6 +1287,11 @@ class BLEService: NSObject {
             logger.logWarning("[FileStream] Cannot request next file - not connected")
             return
         }
+
+        if isFileStreamingActive {
+            logger.logDebug("[FileStream] Active stream in progress for file \(currentFile), skipping new stream_file request")
+            return
+        }
         
         // Prevent duplicate requests - if we're already waiting for a response, don't request again
         if waitingForStreamFileResponse {
@@ -2765,6 +2770,11 @@ class BLEService: NSObject {
         // Handle stream_file response: "OK py_msg stream_file <fileCheck>" - matching Android
         // fileCheck: 1 = file exists and streaming started, -1 = file doesn't exist
         if parts.count >= 4 && parts[2] == "stream_file" {
+            if !waitingForStreamFileResponse {
+                logger.logDebug("[FileStream] Ignoring stream_file response while not waiting for stream_file ack (likely from unrelated py_msg during active stream)")
+                return
+            }
+
             if let fileCheckValue = Int(parts[3]) {
                 fileCheck = fileCheckValue
                 streamFileResponseReceived = true
@@ -2777,9 +2787,13 @@ class BLEService: NSObject {
                 case 1:
                     // File exists and is being streamed, wait for ETX
                     logger.logInfo("[FileStream] File \(currentFile) exists and streaming started")
-                    isFileStreamingActive = true
-                    // Start timeout timer
-                    startStreamFileTimeout()
+                    if isFileStreamingActive {
+                        logger.logDebug("[FileStream] Duplicate stream_file=1 response while stream is already active for file \(currentFile). Ignoring timeout restart.")
+                    } else {
+                        isFileStreamingActive = true
+                        // Start timeout timer only for initial stream-start ack.
+                        startStreamFileTimeout()
+                    }
                 case -1:
                     // File doesn't exist, move to next file after delay
                     logger.logWarning("[FileStream] File \(currentFile) doesn't exist")
