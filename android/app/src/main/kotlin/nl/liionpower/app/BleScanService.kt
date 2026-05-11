@@ -1379,9 +1379,8 @@ class BleScanService : Service() {
             "[FileStream] File $failedFile exceeded retry limit ($MAX_FILE_STREAM_RETRIES). Removing and moving to previous file."
         )
         if (connectionState == STATE_CONNECTED && isUartReady) {
-            // enqueueCommand("app_msg rm_file $failedFile")
-            // android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly failing file $failedFile")
-            android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for repeatedly failing file $failedFile")
+            enqueueCommand("app_msg rm_file $failedFile")
+            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly failing file $failedFile")
             fileStreamRetryCounts.remove(failedFile)
             scheduleNextFileAfterDelay()
         } else {
@@ -2036,9 +2035,8 @@ class BleScanService : Service() {
                             "[FileStream] Corrupted file $completedFileNumber still invalid after $MAX_FILE_STREAM_RETRIES attempts. Removing and moving on."
                         )
                         if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                            // enqueueCommand("app_msg rm_file $completedFileNumber")
-                            // android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly corrupted file $completedFileNumber")
-                            android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for repeatedly corrupted file $completedFileNumber")
+                            enqueueCommand("app_msg rm_file $completedFileNumber")
+                            android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly corrupted file $completedFileNumber")
                         } else {
                             android.util.Log.w(
                                 "BleScanService",
@@ -2052,11 +2050,12 @@ class BleScanService : Service() {
                     storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, false)
                     fileStreamRetryCounts.remove(completedFileNumber)
                     if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                        android.util.Log.i("BleScanService", "[FileStream] Skipping rm_file for completed file $completedFileNumber at ETX")
+                        enqueueCommand("app_msg rm_file $completedFileNumber")
+                        android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for completed file $completedFileNumber at ETX")
                     } else {
                         android.util.Log.w(
                             "BleScanService",
-                            "[FileStream] Skipped rm_file at ETX (file=$completedFileNumber, state=$connectionState, uart=$isUartReady)"
+                            "[FileStream] Could not send rm_file at ETX (file=$completedFileNumber, state=$connectionState, uart=$isUartReady)"
                         )
                     }
                     // Schedule next file command after delay
