@@ -185,8 +185,8 @@ class BLEService: NSObject {
     }()
     // private let collectionName = "leoFilesProduction"
     // private let collectionName = "leoFilesOpen"
-    // private let collectionName = "leoFilesInternal"
-    private let collectionName = "sparkleoTest"
+    private let collectionName = "leoFilesInternal"
+    // private let collectionName = "sparkleoTest"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
     private enum ConnectionState {
@@ -1771,7 +1771,7 @@ class BLEService: NSObject {
             return
         }
 
-        // enqueueCommand("app_msg rm_file \(fileNumber)")
+        enqueueCommand("app_msg rm_file \(fileNumber)")
         logger.logInfo("[FileStream] ETX detected - sent rm_file for file \(fileNumber)")
     }
 
@@ -1811,7 +1811,7 @@ class BLEService: NSObject {
             )
 
             if fileNumber >= 0 && connectionState == .connected && isUartReady {
-                // enqueueCommand("app_msg rm_file \(fileNumber)")
+                enqueueCommand("app_msg rm_file \(fileNumber)")
                 logger.logInfo("[FileStream] Sent rm_file for corrupted file \(fileNumber)")
             } else {
                 logger.logWarning("[FileStream] Could not send rm_file for corrupted file \(fileNumber) - not connected or UART not ready")
