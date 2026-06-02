@@ -26,7 +26,6 @@ import java.io.StringWriter
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 class BleScanService : Service() {
 
@@ -370,8 +369,8 @@ class BleScanService : Service() {
     private val firestore = FirebaseFirestore.getInstance()
     // private val COLLECTION_NAME = "leoFilesProduction"
     // private val COLLECTION_NAME = "leoFilesOpen"
-    // private val COLLECTION_NAME = "leoFilesInternal"
-    private val COLLECTION_NAME = "sparkleoTest"
+    private val COLLECTION_NAME = "leoFilesInternal"
+    // private val COLLECTION_NAME = "sparkleoTest"
     
     private var otaCancelRequested = false
     private var otaProgress = 0
@@ -447,24 +446,74 @@ class BleScanService : Service() {
 
     // Network connectivity monitoring
     private var connectivityManager: ConnectivityManager? = null
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            handler.post {
-                android.util.Log.i("BleScanService", "[FileStream] Network connectivity restored - syncing pending uploads")
+
+    /**
+     * Tracks whether the last observed network state had validated internet,
+     * so we can fire `syncPendingUploads()` only on an actual offline -> online
+     * transition. Android calls `onCapabilitiesChanged` for every minor change
+     * (link-bandwidth estimator updates, signal strength, metered state, etc.)
+     * which on a stable connection can fire every few seconds; without this
+     * gate we would re-run a full SharedPreferences scan on every callback and
+     * spam the log with "No pending uploads to sync."
+     */
+    @Volatile
+    private var lastKnownHasInternet: Boolean = false
+
+    private fun handleConnectivityChange(hasInternet: Boolean, reason: String) {
+        handler.post {
+            val previous = lastKnownHasInternet
+            lastKnownHasInternet = hasInternet
+            if (hasInternet && !previous) {
+                android.util.Log.i("BleScanService", "[FileStream] $reason - syncing pending uploads")
                 syncPendingUploads()
+            } else if (!hasInternet && previous) {
+                android.util.Log.i("BleScanService", "[FileStream] Internet connectivity lost")
             }
         }
-        
+    }
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            // onCapabilitiesChanged is guaranteed to follow onAvailable with the
+            // current capabilities of the network, so the transition is handled
+            // there. We only log here for diagnostics.
+            android.util.Log.d("BleScanService", "[FileStream] Network available: $network")
+        }
+
+        override fun onLost(network: Network) {
+            handleConnectivityChange(hasInternet = false, reason = "Network lost")
+        }
+
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
             val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                              networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            if (hasInternet) {
-                handler.post {
-                    android.util.Log.i("BleScanService", "[FileStream] Internet connectivity validated - syncing pending uploads")
-                    syncPendingUploads()
-                }
-            }
+            handleConnectivityChange(hasInternet, reason = "Internet connectivity validated")
         }
+    }
+
+    /**
+     * Returns true when the device has a usable internet-capable network.
+     *
+     * Uses Android's ConnectivityManager (the OS-level source of truth) instead
+     * of `ping`. The previous `Runtime.exec("ping -c 1 8.8.8.8")` check with a
+     * 500 ms timeout was unreliable: many Android builds restrict the `ping`
+     * binary for non-root apps, ICMP is blocked on a lot of corporate/public
+     * Wi-Fi networks, and the 500 ms deadline easily expires on slow cellular
+     * or loaded Wi-Fi even when the network is perfectly healthy. The result
+     * was that files were stored locally as "pending" while the device
+     * actually had a working internet connection, and only flushed to Firebase
+     * after the next reconnect event.
+     */
+    private fun isNetworkAvailable(): Boolean {
+        val cm = connectivityManager
+            ?: (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.also {
+                connectivityManager = it
+            }
+            ?: return false
+        val activeNetwork = cm.activeNetwork ?: return false
+        val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     // Battery monitoring
@@ -1379,7 +1428,7 @@ class BleScanService : Service() {
             "[FileStream] File $failedFile exceeded retry limit ($MAX_FILE_STREAM_RETRIES). Removing and moving to previous file."
         )
         if (connectionState == STATE_CONNECTED && isUartReady) {
-            // enqueueCommand("app_msg rm_file $failedFile")
+            enqueueCommand("app_msg rm_file $failedFile")
             android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly failing file $failedFile")
             fileStreamRetryCounts.remove(failedFile)
             scheduleNextFileAfterDelay()
@@ -2035,7 +2084,7 @@ class BleScanService : Service() {
                             "[FileStream] Corrupted file $completedFileNumber still invalid after $MAX_FILE_STREAM_RETRIES attempts. Removing and moving on."
                         )
                         if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                            // enqueueCommand("app_msg rm_file $completedFileNumber")
+                            enqueueCommand("app_msg rm_file $completedFileNumber")
                             android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for repeatedly corrupted file $completedFileNumber")
                         } else {
                             android.util.Log.w(
@@ -2050,7 +2099,7 @@ class BleScanService : Service() {
                     storeDataToFirebase(dataSnapshot, completedFileNumber, rawFileData, false)
                     fileStreamRetryCounts.remove(completedFileNumber)
                     if (completedFileNumber >= 0 && connectionState == STATE_CONNECTED && isUartReady) {
-                        // enqueueCommand("app_msg rm_file $completedFileNumber")
+                        enqueueCommand("app_msg rm_file $completedFileNumber")
                         android.util.Log.i("BleScanService", "[FileStream] Sent rm_file for completed file $completedFileNumber at ETX")
                     } else {
                         android.util.Log.w(
@@ -2283,18 +2332,7 @@ class BleScanService : Service() {
                 android.util.Log.d("BleScanService", "[FileStream] Serial: $serialNumber, Session: $currentSession")
                 android.util.Log.d("BleScanService", "[FileStream] Data entries: ${firebaseData.size}")
                 
-                // Check connectivity (simplified - in production, use proper network check)
-                val isOnline = try {
-                    val runtime = Runtime.getRuntime()
-                    val process = runtime.exec("ping -c 1 8.8.8.8")
-                    val exited = process.waitFor(500, TimeUnit.MILLISECONDS)
-                    val exitCode = if (exited) process.exitValue() else -1
-                    exited && exitCode == 0
-                } catch (e: Exception) {
-                    false
-                }
-                
-                if (!isOnline) {
+                if (!isNetworkAvailable()) {
                     android.util.Log.w("BleScanService", "[FileStream] No internet connection. Saving data locally for later sync.")
                     saveToLocalStorage(serialNumber, currentSession.toString(), fileName, firebaseObject, fileNumber)
                 } else {
@@ -2434,18 +2472,7 @@ class BleScanService : Service() {
                     return@post
                 }
                 
-                // Check connectivity
-                val isOnline = try {
-                    val runtime = Runtime.getRuntime()
-                    val process = runtime.exec("ping -c 1 8.8.8.8")
-                    val exited = process.waitFor(500, TimeUnit.MILLISECONDS)
-                    val exitCode = if (exited) process.exitValue() else -1
-                    exited && exitCode == 0
-                } catch (e: Exception) {
-                    false
-                }
-                
-                if (!isOnline) {
+                if (!isNetworkAvailable()) {
                     android.util.Log.w("BleScanService", "[FileStream] No internet connection. Cannot sync pending uploads.")
                     return@post
                 }
