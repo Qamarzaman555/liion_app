@@ -141,8 +141,8 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
   Future<void> _downloadFromCloud() async {
     // TODO: Change for releases.
     // Automatically download from "Bin file" folder
-    const folderName = 'Internal fw';
-    // const folderName = 'Beta fw';
+    // const folderName = 'Internal fw';
+    const folderName = 'Beta fw';
     // const folderName = 'Production fw';
     await otaController.downloadFolder(folderName);
     if (otaController.cloudBinFilePath.value.isNotEmpty) {
