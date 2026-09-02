@@ -140,9 +140,9 @@ class _LeoFirmwareUpdateDialogState extends State<LeoFirmwareUpdateDialog> {
 
   Future<void> _downloadFromCloud() async {
     // TODO: Change the file path for different releases.
-    const folderName = 'Production fw';
+    // const folderName = 'Production fw';
     // const folderName = 'Beta fw';
-    // const folderName = 'Internal fw';
+    const folderName = 'Internal fw';
     await otaController.downloadFolder(folderName);
     if (otaController.cloudBinFilePath.value.isNotEmpty) {
       selectedFilePath = otaController.cloudBinFilePath.value;

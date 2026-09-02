@@ -183,9 +183,9 @@ class BLEService: NSObject {
     private lazy var firestore: Firestore = {
         return Firestore.firestore()
     }()
-    private let collectionName = "leoFilesProduction"
+    // private let collectionName = "leoFilesProduction"
     // private let collectionName = "leoFilesOpen"
-    // private let collectionName = "leoFilesInternal"
+    private let collectionName = "leoFilesInternal"
     // private let collectionName = "sparkleoTest"
     
     // Connection state (matching Android STATE_DISCONNECTED, STATE_CONNECTING, STATE_CONNECTED)
